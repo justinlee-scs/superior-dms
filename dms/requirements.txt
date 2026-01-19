@@ -1,0 +1,6 @@
+psycopg
+transformers
+torch
+pillow
+pdf2image
+# pip install -r requirements.txt

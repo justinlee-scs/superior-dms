@@ -1,0 +1,21 @@
+# OS / shell junk
+.bash_history
+.psql_history
+.sudo_as_admin_successful
+.motd.legal-displayed
+
+# Cloud credss
+.aws/
+.azure/
+
+# Misc
+*.log
+.cache
+
+# VSCode settings
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+.env
