@@ -1,13 +1,21 @@
+const API_BASE = "http://localhost:8008/api";
+
 export interface DocumentResponse {
   id: string;
   filename: string;
-  status: string;
+  status: string | null;
   document_type: string | null;
   confidence: number | null;
   created_at: string;
 }
 
-const API_BASE = "http://localhost:8008/api";
+export async function fetchDocuments(): Promise<DocumentResponse[]> {
+  const res = await fetch(`${API_BASE}/documents/`);
+  if (!res.ok) {
+    throw new Error("Failed to fetch documents");
+  }
+  return res.json();
+}
 
 export async function uploadDocument(file: File): Promise<DocumentResponse> {
   const formData = new FormData();
@@ -19,18 +27,8 @@ export async function uploadDocument(file: File): Promise<DocumentResponse> {
   });
 
   if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.detail ?? "Upload failed");
-  }
-
-  return res.json();
-}
-
-export async function listDocuments(): Promise<DocumentResponse[]> {
-  const res = await fetch(`${API_BASE}/documents`);
-
-  if (!res.ok) {
-    throw new Error("Failed to load documents");
+    const text = await res.text();
+    throw new Error(text);
   }
 
   return res.json();
