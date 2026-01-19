@@ -2,8 +2,6 @@ from sqlalchemy.orm import Session
 import uuid
 
 from app.db.models import Document, DocumentVersion
-from app.db.models.enums import DocumentClass
-
 
 
 def create_document(
@@ -15,6 +13,7 @@ def create_document(
         id=uuid.uuid4(),
         filename=filename,
         content_hash=content_hash,
+        status="uploaded",
     )
     db.add(document)
     db.commit()
@@ -29,13 +28,12 @@ def create_document_version(
     version = DocumentVersion(
         id=uuid.uuid4(),
         document_id=document_id,
-        processing_status="uploaded",  # REQUIRED (NOT NULL)
+        processing_status="uploaded",
     )
     db.add(version)
     db.commit()
     db.refresh(version)
     return version
-
 
 
 def update_processing_results(
@@ -54,6 +52,7 @@ def update_processing_results(
 
     db.commit()
 
+
 def get_document_by_hash(
     db: Session,
     content_hash: str,
@@ -62,4 +61,21 @@ def get_document_by_hash(
         db.query(Document)
         .filter(Document.content_hash == content_hash)
         .one_or_none()
+    )
+
+
+def get_document_by_id(
+    db: Session,
+    document_id,
+) -> Document | None:
+    return db.get(Document, document_id)
+
+
+def list_documents(
+    db: Session,
+) -> list[Document]:
+    return (
+        db.query(Document)
+        .order_by(Document.created_at.desc())
+        .all()
     )

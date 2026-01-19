@@ -7,7 +7,7 @@ export interface DocumentResponse {
   created_at: string;
 }
 
-const API_BASE = "http://localhost:8008";
+const API_BASE = "http://localhost:8008/api";
 
 export async function uploadDocument(file: File): Promise<DocumentResponse> {
   const formData = new FormData();
