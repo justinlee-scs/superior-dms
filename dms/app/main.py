@@ -18,3 +18,5 @@ app.include_router(documents_router, prefix="/api")
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+allow_origins=["http://localhost:5173"]
