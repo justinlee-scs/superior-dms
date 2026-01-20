@@ -20,3 +20,9 @@ def health():
     return {"status": "ok"}
 
 allow_origins=["http://localhost:5173"]
+
+from app.db.session import Base, engine
+
+@app.on_event("startup")
+def create_tables():
+    Base.metadata.create_all(bind=engine)

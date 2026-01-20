@@ -61,13 +61,13 @@ async def upload_document(
     )
 
     return DocumentResponse(
-        id=document.id,
-        filename=document.filename,
-        status=document.status,
-        document_type=document.document_type,
-        confidence=document.confidence,
-        created_at=document.created_at,
-    )
+    id=document.id,
+    filename=document.filename,
+    status=version.processing_status,
+    document_type=None,
+    confidence=None,
+    created_at=document.created_at,
+)
 
 
 @router.get(
@@ -77,18 +77,18 @@ async def upload_document(
 def get_documents(
     db: Session = Depends(get_db),
 ):
-    documents = list_documents(db=db)
+    rows = list_documents(db=db)
 
     return [
         DocumentResponse(
-            id=d.id,
-            filename=d.filename,
-            status=d.status,
-            document_type=d.document_type,
-            confidence=d.confidence,
-            created_at=d.created_at,
+            id=doc.id,
+            filename=doc.filename,
+            status=processing_status,
+            document_type=classification,
+            confidence=confidence,
+            created_at=doc.created_at,
         )
-        for d in documents
+        for doc, processing_status, classification, confidence in rows
     ]
 
 

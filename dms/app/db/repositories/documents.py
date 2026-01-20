@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import desc
 import uuid
 
 from app.db.models import Document, DocumentVersion
@@ -71,11 +72,29 @@ def get_document_by_id(
     return db.get(Document, document_id)
 
 
-def list_documents(
-    db: Session,
-) -> list[Document]:
+def list_documents(db: Session):
+    subq = (
+        db.query(
+            DocumentVersion.document_id,
+            DocumentVersion.processing_status,
+            DocumentVersion.classification,
+            DocumentVersion.confidence,
+        )
+        .order_by(
+            DocumentVersion.document_id,
+            desc(DocumentVersion.created_at),
+        )
+        .distinct(DocumentVersion.document_id)
+        .subquery()
+    )
+
     return (
-        db.query(Document)
-        .order_by(Document.created_at.desc())
+        db.query(
+            Document,
+            subq.c.processing_status,
+            subq.c.classification,
+            subq.c.confidence,
+        )
+        .outerjoin(subq, Document.id == subq.c.document_id)
         .all()
     )

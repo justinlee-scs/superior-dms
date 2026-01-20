@@ -1,7 +1,11 @@
 import { useState } from "react";
 import { uploadDocument } from "../api/documents";
 
-export default function DocumentUpload() {
+interface Props {
+  onUploadComplete?: () => void;
+}
+
+export default function DocumentUpload({ onUploadComplete }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState("");
 
@@ -12,8 +16,10 @@ export default function DocumentUpload() {
       setStatus("Uploading...");
       await uploadDocument(file);
       setStatus("Processed");
+
+      onUploadComplete?.(); // notify parent
     } catch (e: any) {
-      setStatus(e.message);
+      setStatus(e.message ?? "Upload failed");
     }
   }
 
