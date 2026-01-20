@@ -1,6 +1,7 @@
 from app.db.session import engine, Base
 
 # Force model registration
+import app.db.models
 from app.db.models import Document, DocumentVersion
 
 

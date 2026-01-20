@@ -1,5 +1,7 @@
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import sessionmaker
+import app.db.models
+from app.db.base import Base
 
 DATABASE_URL = "postgresql+psycopg://dms_user:dms_password@localhost:5432/dms"
 
@@ -14,9 +16,6 @@ SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
 )
-
-Base = declarative_base()
-
 
 def get_db():
     db = SessionLocal()

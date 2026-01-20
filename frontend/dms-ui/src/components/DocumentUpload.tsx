@@ -12,14 +12,21 @@ export default function DocumentUpload({ onUploadComplete }: Props) {
   async function handleUpload() {
     if (!file) return;
 
+    setStatus("Uploading...");
+
     try {
-      setStatus("Uploading...");
       await uploadDocument(file);
       setStatus("Processed");
-
-      onUploadComplete?.(); // notify parent
+      onUploadComplete?.();
     } catch (e: any) {
-      setStatus(e.message ?? "Upload failed");
+      if (e?.status === 409) {
+        // Document already exists — this is OK
+        setStatus("Already uploaded");
+        onUploadComplete?.();
+        return;
+      }
+
+      setStatus(e?.message ?? "Upload failed");
     }
   }
 

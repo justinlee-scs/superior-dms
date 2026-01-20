@@ -2,11 +2,10 @@ import enum
 import sqlalchemy as sa
 from sqlalchemy import Column
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import relationship
 from datetime import datetime 
 
-Base = declarative_base()
-
+from app.db.base import Base
 
 class DocumentType(enum.Enum):
     document = "document"
@@ -35,6 +34,12 @@ class Document(Base):
             validate_strings=True,
         ),
         nullable=True
+    )
+    
+    versions = relationship(
+        "DocumentVersion",
+        back_populates="document",
+        cascade="all, delete-orphan",
     )
 
     content_hash = Column(sa.String(64), index=True)

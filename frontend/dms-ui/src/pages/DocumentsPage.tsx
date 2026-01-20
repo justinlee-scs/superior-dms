@@ -8,14 +8,9 @@ export default function DocumentsPage() {
   const [loading, setLoading] = useState(false);
 
   async function loadDocuments() {
+    setLoading(true);
     const data = await fetchDocuments();
     setDocuments(data);
-  }
-
-  async function handleUpload(file: File) {
-    setLoading(true);
-    await fetchDocuments(); // or uploadDocument(file) if wired
-    await loadDocuments();
     setLoading(false);
   }
 

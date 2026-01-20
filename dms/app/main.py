@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.documents import router as documents_router
 
+import app.db.models
+
 app = FastAPI(title="DMS API")
 
 app.add_middleware(
