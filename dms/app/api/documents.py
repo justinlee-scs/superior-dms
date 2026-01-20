@@ -10,11 +10,12 @@ from app.db.repositories.documents import (
     get_document_by_hash,
     get_document_by_id,
     list_documents,
+    update_document_type,
 )
 from app.processing.pipeline import process_document
 from app.services.hash import compute_content_hash
 
-from app.schemas.documents import DocumentResponse
+from app.schemas.documents import DocumentResponse, DocumentTypeUpdate
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -80,16 +81,16 @@ def get_documents(
     rows = list_documents(db=db)
 
     return [
-        DocumentResponse(
-            id=doc.id,
-            filename=doc.filename,
-            status=processing_status,
-            document_type=classification,
-            confidence=confidence,
-            created_at=doc.created_at,
-        )
-        for doc, processing_status, classification, confidence in rows
-    ]
+    DocumentResponse(
+        id=doc.id,
+        filename=doc.filename,
+        status=processing_status,
+        document_type=doc.document_type or classification,
+        confidence=confidence,
+        created_at=doc.created_at,
+    )
+    for doc, processing_status, classification, confidence in rows
+]
 
 
 @router.get(
@@ -103,6 +104,36 @@ def get_document(
     document = get_document_by_id(
         db=db,
         document_id=document_id,
+    )
+
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+
+    return DocumentResponse(
+        id=document.id,
+        filename=document.filename,
+        status=document.status,
+        document_type=document.document_type,
+        confidence=document.confidence,
+        created_at=document.created_at,
+    )
+
+@router.patch(
+    "/{document_id}/type",
+    response_model=DocumentResponse,
+)
+def set_document_type(
+    document_id: UUID,
+    payload: DocumentTypeUpdate,
+    db: Session = Depends(get_db),
+):
+    document = update_document_type(
+        db=db,
+        document_id=document_id,
+        document_type=payload.document_type,
     )
 
     if not document:

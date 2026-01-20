@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 import uuid
+from uuid import UUID
 
 from app.db.models import Document, DocumentVersion
 
@@ -14,7 +15,6 @@ def create_document(
         id=uuid.uuid4(),
         filename=filename,
         content_hash=content_hash,
-        status="uploaded",
     )
     db.add(document)
     db.commit()
@@ -98,3 +98,19 @@ def list_documents(db: Session):
         .outerjoin(subq, Document.id == subq.c.document_id)
         .all()
     )
+    
+def update_document_type(
+    db: Session,
+    document_id: UUID,
+    document_type: str,
+) -> Document | None:
+    document = db.get(Document, document_id)
+
+    if not document:
+        return None
+
+    document.document_type = document_type
+    db.commit()
+    db.refresh(document)
+
+    return document
