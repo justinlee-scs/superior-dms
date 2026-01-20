@@ -8,21 +8,17 @@ from pydantic import BaseModel
 
 
 class DocumentResponse(BaseModel):
-    """
-    Public-facing document representation.
-    Returned by GET /documents/{id} and POST /documents.
-    """
-
     id: UUID
     filename: str
+    status: str | None = None
+    document_type: str | None = None
+    confidence: float | None = None
     created_at: datetime
+    current_version_id: UUID | None = None
 
-    current_version_id: UUID
-    status: str
-    classification: Optional[str] = None
-
-    class Config:
-        orm_mode = True
+    model_config = {
+        "from_attributes": True
+    }
 
 class DocumentTypeEnum(str, Enum):
     statement = "statement"

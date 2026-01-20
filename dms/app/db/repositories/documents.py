@@ -91,11 +91,15 @@ def list_documents(db: Session):
     return (
         db.query(
             Document,
-            subq.c.processing_status,
-            subq.c.classification,
-            subq.c.confidence,
+            DocumentVersion.processing_status,
+            DocumentVersion.classification,
+            DocumentVersion.confidence,
         )
-        .outerjoin(subq, Document.id == subq.c.document_id)
+        .outerjoin(
+            DocumentVersion,
+            Document.current_version_id == DocumentVersion.id,
+        )
+        .order_by(Document.created_at.desc())
         .all()
     )
     

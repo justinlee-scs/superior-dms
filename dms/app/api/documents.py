@@ -1,7 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from uuid import UUID
-from datetime import datetime
 
 from app.db.session import get_db
 from app.db.repositories.documents import (
@@ -62,13 +61,14 @@ async def upload_document(
     )
 
     return DocumentResponse(
-    id=document.id,
-    filename=document.filename,
-    status=version.processing_status,
-    document_type=None,
-    confidence=None,
-    created_at=document.created_at,
-)
+        id=document.id,
+        filename=document.filename,
+        status=version.processing_status,
+        document_type=document.document_type,
+        confidence=None,
+        created_at=document.created_at,
+        current_version_id=version.id,
+    )
 
 
 @router.get(
@@ -81,16 +81,17 @@ def get_documents(
     rows = list_documents(db=db)
 
     return [
-    DocumentResponse(
-        id=doc.id,
-        filename=doc.filename,
-        status=processing_status,
-        document_type=doc.document_type or classification,
-        confidence=confidence,
-        created_at=doc.created_at,
-    )
-    for doc, processing_status, classification, confidence in rows
-]
+        DocumentResponse(
+            id=doc.id,
+            filename=doc.filename,
+            status=processing_status,
+            document_type=doc.document_type or classification,
+            confidence=confidence,
+            created_at=doc.created_at,
+            current_version_id=doc.current_version_id,
+        )
+        for doc, processing_status, classification, confidence in rows
+    ]
 
 
 @router.get(
@@ -119,7 +120,9 @@ def get_document(
         document_type=document.document_type,
         confidence=document.confidence,
         created_at=document.created_at,
+        current_version_id=document.current_version_id,
     )
+
 
 @router.patch(
     "/{document_id}/type",
@@ -149,4 +152,5 @@ def set_document_type(
         document_type=document.document_type,
         confidence=document.confidence,
         created_at=document.created_at,
+        current_version_id=document.current_version_id,
     )
