@@ -4,7 +4,7 @@ from uuid import uuid4
 import enum
 
 import sqlalchemy as sa
-from sqlalchemy import Column, ForeignKey, String, Text, Float
+from sqlalchemy import Column, ForeignKey, String, Text, Float, LargeBinary
 from sqlalchemy import Column, Enum as SQLEnum, DateTime
 from datetime import datetime
 from app.db.models.enums import DocumentClass, ProcessingStatus
@@ -24,7 +24,22 @@ class DocumentVersion(Base):
         nullable=False,
         index=True,
     )
+    
+    content = Column(LargeBinary, nullable=False)
+    
+    extracted_text = Column(Text, nullable=True)
 
+    classification = Column(
+        sa.Enum(
+            DocumentClass,
+            name="document_class_enum",
+            native_enum=True,
+        ),
+        nullable=True,
+    )
+
+    confidence = Column(Float, nullable=True)
+    
     created_at = Column(sa.DateTime, nullable=False, default=datetime.utcnow)
 
     processing_status = Column(
@@ -36,10 +51,6 @@ class DocumentVersion(Base):
         nullable=False,
         default=ProcessingStatus.pending,
     )
-
-    classification = Column(sa.String, nullable=True)
-    confidence = Column(sa.Float, nullable=True)
-    extracted_text = Column(sa.Text, nullable=True)
     
     # THIS relationship uses document_id
     document = relationship(

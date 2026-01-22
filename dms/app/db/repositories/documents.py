@@ -7,7 +7,6 @@ from app.db.models import Document, DocumentVersion
 from app.db.models.enums import ProcessingStatus
 
 
-
 def create_document(
     db: Session,
     filename: str,
@@ -26,12 +25,14 @@ def create_document(
 
 def create_document_version(
     db: Session,
-    document_id,
+    document_id: UUID,
+    file_bytes: bytes,
 ) -> DocumentVersion:
     version = DocumentVersion(
         id=uuid.uuid4(),
         document_id=document_id,
-        processing_status="uploaded",
+        content=file_bytes,
+        processing_status=ProcessingStatus.UPLOADED,
     )
     db.add(version)
     db.commit()
@@ -39,19 +40,34 @@ def create_document_version(
     return version
 
 
+def load_document_version_bytes(
+    db: Session,
+    version_id: UUID,
+) -> bytes:
+    version = db.get(DocumentVersion, version_id)
+
+    if not version:
+        raise ValueError("DocumentVersion not found")
+
+    return version.content
+
+
 def update_processing_results(
     db: Session,
-    version_id,
+    version_id: UUID,
     extracted_text: str,
     classification,
     confidence: float,
 ):
     version = db.get(DocumentVersion, version_id)
 
+    if not version:
+        raise ValueError("DocumentVersion not found")
+
     version.extracted_text = extracted_text
     version.classification = classification
     version.confidence = confidence
-    version.processing_status = "uploaded"
+    version.processing_status = ProcessingStatus.COMPLETED
 
     db.commit()
 
@@ -69,27 +85,12 @@ def get_document_by_hash(
 
 def get_document_by_id(
     db: Session,
-    document_id,
+    document_id: UUID,
 ) -> Document | None:
     return db.get(Document, document_id)
 
 
 def list_documents(db: Session):
-    subq = (
-        db.query(
-            DocumentVersion.document_id,
-            DocumentVersion.processing_status,
-            DocumentVersion.classification,
-            DocumentVersion.confidence,
-        )
-        .order_by(
-            DocumentVersion.document_id,
-            desc(DocumentVersion.created_at),
-        )
-        .distinct(DocumentVersion.document_id)
-        .subquery()
-    )
-
     return (
         db.query(
             Document,
@@ -104,7 +105,8 @@ def list_documents(db: Session):
         .order_by(Document.created_at.desc())
         .all()
     )
-    
+
+
 def update_document_type(
     db: Session,
     document_id: UUID,
