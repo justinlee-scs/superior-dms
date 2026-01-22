@@ -4,6 +4,8 @@ import uuid
 from uuid import UUID
 
 from app.db.models import Document, DocumentVersion
+from app.db.models.enums import ProcessingStatus
+
 
 
 def create_document(
@@ -49,7 +51,7 @@ def update_processing_results(
     version.extracted_text = extracted_text
     version.classification = classification
     version.confidence = confidence
-    version.processing_status = "complete"
+    version.processing_status = "uploaded"
 
     db.commit()
 

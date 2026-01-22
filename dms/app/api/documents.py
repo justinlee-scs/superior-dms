@@ -11,10 +11,11 @@ from app.db.repositories.documents import (
     list_documents,
     update_document_type,
 )
-from app.processing.pipeline import process_document
-from app.services.hash import compute_content_hash
 
 from app.schemas.documents import DocumentResponse, DocumentTypeUpdate
+
+from app.db.models.processing_jobs import ProcessingJob
+from app.db.models.enums import ProcessingStage, ProcessingStatus
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -29,6 +30,8 @@ async def upload_document(
     db: Session = Depends(get_db),
 ):
     file_bytes = await file.read()
+
+    from app.services.hash import compute_content_hash
     content_hash = compute_content_hash(file_bytes)
 
     # DUPLICATE CHECK
@@ -54,16 +57,20 @@ async def upload_document(
         document_id=document.id,
     )
 
-    process_document(
-        db=db,
-        version_id=version.id,
-        file_bytes=file_bytes,
+    # ENQUEUE PROCESSING JOB (NO PROCESSING HERE)
+    job = ProcessingJob(
+        document_version_id=version.id,
+        stage=ProcessingStage.CLASSIFICATION,
+        status=ProcessingStatus.pending,
     )
+
+    db.add(job)
+    db.commit()
 
     return DocumentResponse(
         id=document.id,
         filename=document.filename,
-        status=version.processing_status,
+        status=job.status,
         document_type=document.document_type,
         confidence=None,
         created_at=document.created_at,
@@ -85,12 +92,12 @@ def get_documents(
             id=doc.id,
             filename=doc.filename,
             status=processing_status,
-            document_type=doc.document_type or classification,
+            document_type=doc.document_type or CLASSIFICATION,
             confidence=confidence,
             created_at=doc.created_at,
             current_version_id=doc.current_version_id,
         )
-        for doc, processing_status, classification, confidence in rows
+        for doc, processing_status, CLASSIFICATION, confidence in rows
     ]
 
 

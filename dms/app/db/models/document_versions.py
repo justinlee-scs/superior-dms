@@ -7,19 +7,11 @@ import sqlalchemy as sa
 from sqlalchemy import Column, ForeignKey, String, Text, Float
 from sqlalchemy import Column, Enum as SQLEnum, DateTime
 from datetime import datetime
-from app.db.models.enums import DocumentClass
+from app.db.models.enums import DocumentClass, ProcessingStatus
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from app.db.session import Base
-
-
-class ProcessingStatus(enum.Enum):
-    pending = "pending"
-    processing = "processing"
-    completed = "completed"
-    failed = "failed"
-
 
 class DocumentVersion(Base):
     __tablename__ = "document_versions"
@@ -54,4 +46,10 @@ class DocumentVersion(Base):
         "Document",
         back_populates="versions",
         foreign_keys=[document_id],
+    )
+    
+    processing_jobs = relationship(
+    "ProcessingJob",
+    back_populates="document_version",
+    cascade="all, delete-orphan",
     )
