@@ -1,21 +1,48 @@
 from sqlalchemy.orm import Session
 
-from app.db.models.processing_jobs import ProcessingJob
+from app.db.models.document_versions import DocumentVersion
 from app.db.models.enums import ProcessingStatus
-from app.workers.processor import process_job
+
+from app.services.extraction.handwriting import is_handwritten
+from app.services.extraction.icr import run_icr_model
+from app.services.extraction.classify import classify_document
 
 
-def advance_pipeline(db: Session, job_id) -> None:
-    job = (
-        db.query(ProcessingJob)
-        .filter(ProcessingJob.id == job_id)
+def process_document(
+    db: Session,
+    version_id: str,
+    file_bytes: bytes,
+) -> None:
+    version = (
+        db.query(DocumentVersion)
+        .filter(DocumentVersion.id == version_id)
         .one_or_none()
     )
 
-    if not job:
+    if not version:
         return
 
-    if job.status != ProcessingStatus.pending:
-        return
+    try:
+        # TODO: convert PDF → images
+        images = [file_bytes]  # placeholder
 
-    process_job(db, job)
+        if is_handwritten(file_bytes):
+            text, confidence = run_icr_model(images)
+        else:
+            # TODO: replace with Tesseract OCR
+            text = ""
+            confidence = 0.0
+
+        classification = classify_document(text)
+
+        version.extracted_text = text
+        version.classification = classification
+        version.confidence = confidence
+        version.processing_status = ProcessingStatus.uploaded
+
+    except Exception:
+        version.processing_status = ProcessingStatus.failed
+        raise
+
+    finally:
+        db.commit()

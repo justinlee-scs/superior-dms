@@ -32,7 +32,7 @@ def create_document_version(
         id=uuid.uuid4(),
         document_id=document_id,
         content=file_bytes,
-        processing_status=ProcessingStatus.UPLOADED,
+        processing_status=ProcessingStatus.uploaded,
     )
     db.add(version)
     db.commit()

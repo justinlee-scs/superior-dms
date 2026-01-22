@@ -1,98 +1,51 @@
 from sqlalchemy.orm import Session
 
-from app.db.models.processing_jobs import ProcessingJob
-from app.db.models.enums import (
-    ProcessingStage,
-    ProcessingStatus,
-    DocumentClass,
-)
-
-from app.db.repositories.documents import update_processing_results
-
+from app.db.repositories.documents import load_document_version_bytes, update_processing_results
 from app.services.extraction.pdf import pdf_to_images
 from app.services.extraction.ocr import run_tesseract
 from app.services.extraction.icr import run_icr_model
 from app.services.extraction.classify import classify_document
+from app.db.models.enums import DocumentClass, ProcessingStatus
 
 
-def process_job(db: Session, job: ProcessingJob) -> None:
+def process_document_version(db: Session, version_id: str) -> None:
     """
-    Execute exactly one processing stage for a job.
-    Safe to retry. Safe to resume.
+    Synchronous processor for a DocumentVersion.
+    Runs OCR/ICR, classifies, and updates the version.
     """
 
     try:
-        # Mark running
-        job.status = ProcessingStatus.RUNNING
-        db.commit()
+        # Load raw bytes from repository
+        file_bytes = load_document_version_bytes(db, version_id)
 
-        version_id = job.document_version_id
+        # Convert PDF/images to PIL images
+        images = pdf_to_images(file_bytes)
 
-        # =========================
-        # STAGE 1: CLASSIFICATION (FORMAT-LEVEL)
-        # =========================
-        if job.stage == ProcessingStage.CLASSIFICATION:
-            # NOTE:
-            # At this stage we are NOT doing semantic classification.
-            # We are only preparing for OCR (e.g., PDF → images).
-            # No persistence of results yet.
+        # 1. Attempt OCR first
+        ocr_text, ocr_confidence = run_tesseract(images)
 
-            # Transition only
-            job.stage = ProcessingStage.OCR
-            job.status = ProcessingStatus.[pending]
-            db.commit()
-            return
+        # 2. Fallback to ICR if OCR confidence is low
+        if not ocr_text or ocr_confidence < 0.6:
+            text, confidence = run_icr_model(images)
+        else:
+            text, confidence = ocr_text, ocr_confidence
 
-        # =========================
-        # STAGE 2: OCR / ICR
-        # =========================
-        if job.stage == ProcessingStage.OCR:
-            # Load binary via repository / storage layer
-            # (Assumed to be handled inside pdf_to_images or lower layers)
-            images = pdf_to_images(version_id)
+        # 3. Classify extracted text
+        classification = classify_document(text) or DocumentClass.UNKNOWN
 
-            ocr_text, ocr_confidence = run_tesseract(images)
-
-            if not ocr_text or ocr_confidence < 0.6:
-                text, confidence = run_icr_model(images)
-            else:
-                text, confidence = ocr_text, ocr_confidence
-
-            job.result = {
-                "text": text,
-                "confidence": confidence,
-            }
-
-            job.stage = ProcessingStage.POST_PROCESS
-            job.status = ProcessingStatus.pending
-            db.commit()
-            return
-
-        # =========================
-        # STAGE 3: POST_PROCESS (SEMANTIC)
-        # =========================
-        if job.stage == ProcessingStage.POST_PROCESS:
-            text = (job.result or {}).get("text")
-            confidence = (job.result or {}).get("confidence")
-
-            classification = classify_document(text) or DocumentClass.UNKNOWN
-
-            update_processing_results(
-                db=db,
-                version_id=version_id,
-                extracted_text=text,
-                classification=classification,
-                confidence=confidence,
-            )
-
-            job.status = ProcessingStatus.COMPLETE
-            db.commit()
-            return
+        # 4. Persist results
+        update_processing_results(
+            db=db,
+            version_id=version_id,
+            extracted_text=text,
+            classification=classification,
+            confidence=confidence,
+        )
 
     except Exception as exc:
-        db.rollback()
-        job.status = ProcessingStatus.failed
-        job.result = {
-            "error": str(exc),
-        }
-        db.commit()
+        # If any error occurs, mark version as failed
+        version = db.get("DocumentVersion", version_id)
+        if version:
+            version.processing_status = ProcessingStatus.failed
+            db.commit()
+        raise

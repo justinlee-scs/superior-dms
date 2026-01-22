@@ -58,9 +58,3 @@ class DocumentVersion(Base):
         back_populates="versions",
         foreign_keys=[document_id],
     )
-    
-    processing_jobs = relationship(
-    "ProcessingJob",
-    back_populates="document_version",
-    cascade="all, delete-orphan",
-    )

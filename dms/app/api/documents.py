@@ -14,8 +14,9 @@ from app.db.repositories.documents import (
 
 from app.schemas.documents import DocumentResponse, DocumentTypeUpdate
 
-from app.db.models.processing_jobs import ProcessingJob
 from app.db.models.enums import ProcessingStage, ProcessingStatus
+
+from app.processing.pipeline import process_document
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -55,24 +56,17 @@ async def upload_document(
     version = create_document_version(
         db=db,
         document_id=document.id,
+        file_bytes=file_bytes,
     )
 
-    # ENQUEUE PROCESSING JOB (NO PROCESSING HERE)
-    job = ProcessingJob(
-        document_version_id=version.id,
-        stage=ProcessingStage.CLASSIFICATION,
-        status=ProcessingStatus.pending,
-    )
-
-    db.add(job)
-    db.commit()
+    process_document(db=db, version_id=version.id, file_bytes=file_bytes)
 
     return DocumentResponse(
         id=document.id,
         filename=document.filename,
-        status=job.status,
+        status=version.processing_status,
         document_type=document.document_type,
-        confidence=None,
+        confidence=version.confidence,
         created_at=document.created_at,
         current_version_id=version.id,
     )
