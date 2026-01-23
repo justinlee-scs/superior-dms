@@ -41,7 +41,7 @@ function mapApiDocument(doc: any): Document {
     author: doc.author ?? "System",
     date: doc.created_at?.slice(0, 10) ?? "",
     tags: doc.tags ?? [],
-    workflow: doc.processing_status ?? "uploaded",
+    workflow: doc.status ?? "uploaded",
     project: doc.project ?? "Default",
     documentType: doc.document_type ?? "Document",
     vendor: doc.vendor,
@@ -72,6 +72,8 @@ export default function App() {
    */
   const refreshDocuments = async () => {
     const apiDocs = await listDocuments();
+    //console.log("API documents:", apiDocs);
+    //remove when possible^^^^
     setDocuments(apiDocs.map(mapApiDocument));
   };
 
@@ -212,14 +214,14 @@ export default function App() {
                 {viewMode === "compact" ? (
                   <CompactProjectView
                     documents={filteredDocuments}
-                    onDownload={() => {}}
+                    onDownload={() => { }}
                     onEditWorkflow={handleEditWorkflow}
                     darkMode={darkMode}
                   />
                 ) : viewMode === "grouped" ? (
                   <GroupedDocuments
                     documents={filteredDocuments}
-                    onDownload={() => {}}
+                    onDownload={() => { }}
                     onEditWorkflow={handleEditWorkflow}
                   />
                 ) : (
@@ -228,7 +230,7 @@ export default function App() {
                       <DocumentCard
                         key={doc.id}
                         document={doc}
-                        onDownload={() => {}}
+                        onDownload={() => { }}
                         onEditWorkflow={handleEditWorkflow}
                         onDelete={() => handleDelete(doc)}
                       />
@@ -236,6 +238,7 @@ export default function App() {
                   </div>
                 )}
               </TabsContent>
+
 
               <TabsContent value="upload" className="mt-6">
                 <UploadZone onFilesUploaded={handleUpload} />
@@ -248,7 +251,7 @@ export default function App() {
           document={selectedDocument}
           open={workflowEditorOpen}
           onOpenChange={setWorkflowEditorOpen}
-          onSave={() => {}}
+          onSave={() => { }}
         />
 
         <Toaster />
