@@ -27,6 +27,7 @@ interface DocumentCardProps {
   document: Document;
   onDownload: (doc: Document) => void;
   onEditWorkflow: (doc: Document) => void;
+  onDelete: (doc: Document) => Promise<void>;
 }
 
 const getFileIcon = (type: string) => {
@@ -36,7 +37,7 @@ const getFileIcon = (type: string) => {
   return File;
 };
 
-export function DocumentCard({ document, onDownload, onEditWorkflow }: DocumentCardProps) {
+export function DocumentCard({ document, onDownload, onEditWorkflow, onDelete }: DocumentCardProps) {
   const FileIcon = getFileIcon(document.type);
 
   return (
@@ -62,9 +63,12 @@ export function DocumentCard({ document, onDownload, onEditWorkflow }: DocumentC
               <Download className="w-4 h-4 mr-2" />
               Download
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onEditWorkflow(document)}>
-              Edit Workflow
+              <DropdownMenuItem onClick={() => onEditWorkflow(document)}>
+                Edit Workflow
             </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onDelete(document)}>
+                Delete
+              </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
