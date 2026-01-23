@@ -1,0 +1,80 @@
+# =========================
+# Node / Package Managers
+# =========================
+node_modules/
+.pnpm-store/
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+# npm / pnpm / yarn logs
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# =========================
+# Build Outputs
+# =========================
+dist/
+build/
+out/
+.vite/
+
+# =========================
+# Environment Variables
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# TypeScript
+# =========================
+*.tsbuildinfo
+
+# =========================
+# IDE / Editor
+# =========================
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# =========================
+# OS Files
+# =========================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =========================
+# Coverage / Testing
+# =========================
+coverage/
+.nyc_output/
+
+# =========================
+# Temporary / Misc
+# =========================
+tmp/
+temp/
+.cache/
+
+# =========================
+# Figma / Design Artifacts
+# =========================
+*.fig
+*.sketch
+*.xd
+
+# =========================
+# Optional: Storybook (if added later)
+# =========================
+storybook-static/
