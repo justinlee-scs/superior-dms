@@ -7,6 +7,7 @@ from app.services.extraction.handwriting import is_handwritten
 from app.services.extraction.icr import run_icr_model
 from app.services.extraction.classify import classify_document
 
+from app.services.extraction.ocr_sync import extract_text_from_file
 
 def process_document(
     db: Session,
@@ -23,15 +24,10 @@ def process_document(
         return
 
     try:
-        # TODO: convert PDF → images
-        images = [file_bytes]  # placeholder
-
-        if is_handwritten(file_bytes):
-            text, confidence = run_icr_model(images)
-        else:
-            # TODO: replace with Tesseract OCR
-            text = ""
-            confidence = 0.0
+        text, confidence = extract_text_from_file(
+        file_bytes=file_bytes,
+        filename=version.document.filename,
+)
 
         classification = classify_document(text)
 

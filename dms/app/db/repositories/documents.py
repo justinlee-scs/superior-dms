@@ -37,6 +37,13 @@ def create_document_version(
     db.add(version)
     db.commit()
     db.refresh(version)
+    
+    document = db.get(Document, document_id)
+    if document and not document.current_version_id:
+        document.current_version_id = version.id
+        db.commit()
+        db.refresh(document)
+        
     return version
 
 
@@ -122,3 +129,14 @@ def update_document_type(
     db.refresh(document)
 
     return document
+
+def get_document_version(
+    db: Session,
+    document_id: UUID,
+) -> DocumentVersion | None:
+    document = db.get(Document, document_id)
+
+    if not document or not document.current_version_id:
+        return None
+
+    return db.get(DocumentVersion, document.current_version_id)

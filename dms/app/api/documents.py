@@ -18,6 +18,10 @@ from app.db.models.enums import ProcessingStage, ProcessingStatus
 
 from app.processing.pipeline import process_document
 
+from app.schemas.document_versions import DocumentVersionResponse
+from app.db.repositories.documents import get_document_version
+
+
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
@@ -117,6 +121,7 @@ def get_document(
     return DocumentResponse(
         id=document.id,
         filename=document.filename,
+        #below status doesn't exist but this GET does nothing anywy
         status=document.status,
         document_type=document.document_type,
         confidence=document.confidence,
@@ -155,3 +160,24 @@ def set_document_type(
         created_at=document.created_at,
         current_version_id=document.current_version_id,
     )
+
+@router.get(
+    "/{document_id}/output",
+    response_model=DocumentVersionResponse,
+)
+def get_document_output(
+    document_id: UUID,
+    db: Session = Depends(get_db),
+):
+    version = get_document_version(
+        db=db,
+        document_id=document_id,
+    )
+
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No processed version available for document",
+        )
+
+    return version
