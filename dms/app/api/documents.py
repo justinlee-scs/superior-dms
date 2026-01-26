@@ -202,9 +202,27 @@ def download_document(document_id: UUID, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="File not found")
 
     return StreamingResponse(
-        io.BytesIO(version.file_bytes),
+        io.BytesIO(version.content),  # use correct field
         media_type="application/octet-stream",
         headers={
-            "Content-Disposition": f'attachment; filename="{version.filename}"'
+            "Content-Disposition": f'attachment; filename="{version.document.filename}"'
         },
+    )
+
+@router.get("/{document_id}/preview")
+def preview_document(document_id: UUID, db: Session = Depends(get_db)):
+    version = get_document_version(db=db, document_id=document_id)
+    if not version:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # Use mimetype based on file extension for better preview
+    import mimetypes
+    filename = version.document.filename
+    mime_type, _ = mimetypes.guess_type(filename)
+    mime_type = mime_type or "application/octet-stream"
+
+    return StreamingResponse(
+        io.BytesIO(version.content),
+        media_type=mime_type,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},  # inline allows browser preview
     )

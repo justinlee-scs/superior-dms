@@ -27,6 +27,7 @@ import {
 
 import { toast } from "sonner";
 import { listDocuments, uploadDocument, deleteDocument } from "@/lib/dms";
+import { API_BASE_URL } from "@/lib/api";
 
 /**
  * Maps backend document → UI Document
@@ -131,15 +132,49 @@ export default function App() {
     await refreshDocuments();
   };
 
-  const handlePreview = async (doc: Document) => {
-    toast(`Previewing ${doc.name}...`);
-    // Implement real preview logic
+  //   const handlePreview = async (doc: Document) => {
+  //   try {
+  //     const res = await fetch(`${API_BASE_URL}/documents/${doc.id}/download`);
+  //     if (!res.ok) throw new Error("Preview failed");
+
+  //     const blob = await res.blob();
+  //     const url = window.URL.createObjectURL(blob);
+  //     window.open(url, "_blank"); // Open file in new tab
+  //     // Do not revoke URL immediately because tab still needs it
+  //   } catch (err) {
+  //     console.error(err);
+  //     toast.error("Failed to preview file");
+  //   }
+  // };
+
+  const handlePreview = (doc: Document) => {
+    // Open a new tab with the download URL
+    window.open(`http://127.0.0.1:8008/documents/${doc.id}/preview`, "_blank");
   };
 
+
   const handleDownload = async (doc: Document) => {
-    toast(`Downloading ${doc.name}...`);
-    // Implement real download logic
+    try {
+      const res = await fetch(`${API_BASE_URL}/documents/${doc.id}/download`);
+      if (!res.ok) throw new Error("Download failed");
+
+      const blob = await res.blob(); // Get file content as blob
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = doc.name; // Suggest file name
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      toast.success("Downloading");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to download file");
+    }
   };
+
 
   const handleEditWorkflow = (doc: Document) => {
     setSelectedDocument(doc);
@@ -262,7 +297,7 @@ export default function App() {
           document={selectedDocument}
           open={workflowEditorOpen}
           onOpenChange={setWorkflowEditorOpen}
-          onSave={() => {}}
+          onSave={() => { }}
         />
 
         <Toaster />
