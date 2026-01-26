@@ -17,6 +17,10 @@ app.add_middleware(
 
 app.include_router(documents_router)
 
+@app.get("/")
+def root():
+    return {"message": "DMS API running"}
+
 @app.get("/health")
 def health():
     return {"status": "ok"}

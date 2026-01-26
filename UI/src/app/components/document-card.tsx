@@ -1,4 +1,4 @@
-import { Download, FileText, Image, FileSpreadsheet, File, MoreVertical } from "lucide-react";
+import { Download, FileText, Image, FileSpreadsheet, File, Archive } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
 import {
@@ -18,88 +18,97 @@ export interface Document {
   tags: string[];
   workflow: string;
   project: string;
-  documentType?: string; // Invoice, Contract, Statement, Report, etc.
-  vendor?: string; // Vendor/supplier name
-  projectNumber?: string; // Project number/ID
+  documentType?: string;
+  vendor?: string;
+  projectNumber?: string;
 }
 
 interface DocumentCardProps {
   document: Document;
-  onDownload: (doc: Document) => void;
-  onEditWorkflow: (doc: Document) => void;
-  onDelete: (doc: Document) => Promise<void>;
+  onPreview?: (doc: Document) => void;
+  onDownload?: (doc: Document) => void;
+  onDelete?: (doc: Document) => void;
+  onEditWorkflow?: (doc: Document) => void;
+  darkMode?: boolean;
 }
 
 const getFileIcon = (type: string) => {
   if (type.includes("image")) return Image;
   if (type.includes("pdf") || type.includes("document")) return FileText;
   if (type.includes("spreadsheet") || type.includes("excel")) return FileSpreadsheet;
+  if (type.includes("archive")) return Archive;
   return File;
 };
 
-export function DocumentCard({ document, onDownload, onEditWorkflow, onDelete }: DocumentCardProps) {
+const getWorkflowColor = (workflow: string) => {
+  switch (workflow.toLowerCase()) {
+    case "approved":
+    case "published":
+      return "bg-green-100 text-green-800 border-green-200";
+    case "in review":
+    case "pending approval":
+      return "bg-yellow-100 text-yellow-800 border-yellow-200";
+    case "draft":
+      return "bg-gray-100 text-gray-800 border-gray-200";
+    default:
+      return "bg-blue-100 text-blue-800 border-blue-200";
+  }
+};
+
+export function DocumentCard({
+  document,
+  onPreview,
+  onDownload,
+  onDelete,
+  onEditWorkflow,
+  darkMode,
+}: DocumentCardProps) {
   const FileIcon = getFileIcon(document.type);
 
   return (
-    <div className="border rounded-lg p-4 hover:shadow-md transition-shadow bg-white">
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-blue-50 rounded-lg">
-            <FileIcon className="w-6 h-6 text-blue-600" />
-          </div>
-          <div>
-            <h3 className="font-medium text-sm">{document.name}</h3>
-            <p className="text-xs text-gray-500">{document.size}</p>
-          </div>
+    <div
+      className={`flex items-center gap-3 p-4 border rounded-lg transition-colors ${
+        darkMode ? "bg-gray-800 border-gray-700 hover:bg-gray-750" : "bg-white border-gray-200 hover:bg-blue-50"
+      }`}
+    >
+      {/* File Icon */}
+      <FileIcon className={`w-5 h-5 flex-shrink-0 ${darkMode ? "text-gray-400" : "text-gray-500"}`} />
+
+      {/* File Info */}
+      <div className="flex-1 min-w-0">
+        <div className={`font-medium truncate ${darkMode ? "text-gray-200" : ""}`}>{document.name}</div>
+        <div className={`text-xs truncate ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+          {document.author} • {new Date(document.date).toLocaleDateString()} • {document.size}
         </div>
+      </div>
+
+      {/* Workflow Badge */}
+      <div className="flex-shrink-0">
+        <Badge variant="outline" className={`text-xs ${getWorkflowColor(document.workflow)}`}>
+          {document.workflow}
+        </Badge>
+      </div>
+
+      {/* Actions Dropdown */}
+      <div className="flex-shrink-0">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-              <MoreVertical className="w-4 h-4" />
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+              <span className="sr-only">Open menu</span>
+              <span className="text-xs">⋯</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onDownload(document)}>
-              <Download className="w-4 h-4 mr-2" />
-              Download
-            </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onEditWorkflow(document)}>
-                Edit Workflow
-            </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onDelete(document)}>
-                Delete
+            {onPreview && <DropdownMenuItem onClick={() => onPreview(document)}>Preview</DropdownMenuItem>}
+            {onDownload && (
+              <DropdownMenuItem onClick={() => onDownload(document)}>
+                <Download className="w-4 h-4 mr-2" /> Download
               </DropdownMenuItem>
+            )}
+            {onDelete && <DropdownMenuItem onClick={() => onDelete(document)}>Delete</DropdownMenuItem>}
+            {onEditWorkflow && <DropdownMenuItem onClick={() => onEditWorkflow(document)}>Edit Workflow</DropdownMenuItem>}
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
-
-      <div className="space-y-2 text-xs">
-        <div className="flex justify-between">
-          <span className="text-gray-500">Project:</span>
-          <span className="font-medium">{document.project}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-gray-500">Author:</span>
-          <span>{document.author}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-gray-500">Date:</span>
-          <span>{document.date}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-gray-500">Workflow:</span>
-          <Badge variant="outline" className="text-xs">
-            {document.workflow}
-          </Badge>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-1 mt-3">
-        {document.tags.map((tag) => (
-          <Badge key={tag} variant="secondary" className="text-xs">
-            {tag}
-          </Badge>
-        ))}
       </div>
     </div>
   );

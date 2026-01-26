@@ -4,7 +4,9 @@ import { Badge } from "@/app/components/ui/badge";
 
 interface GroupedDocumentsProps {
   documents: Document[];
+  onPreview: (doc: Document) => void;
   onDownload: (doc: Document) => void;
+  onDelete: (doc: Document) => void;
   onEditWorkflow: (doc: Document) => void;
 }
 
@@ -34,7 +36,9 @@ const getTypeCategory = (type: string) => {
 
 export function GroupedDocuments({
   documents,
+  onPreview,
   onDownload,
+  onDelete,
   onEditWorkflow,
 }: GroupedDocumentsProps) {
   // Group documents by type
@@ -97,8 +101,10 @@ export function GroupedDocuments({
                 <DocumentCard
                   key={doc.id}
                   document={doc}
-                  onDownload={onDownload}
-                  onEditWorkflow={onEditWorkflow}
+                  onPreview={() => onPreview(doc)}
+                  onDownload={() => onDownload(doc)}
+                  onDelete={async () => onDelete(doc)}
+                  onEditWorkflow={() => onEditWorkflow(doc)}
                 />
               ))}
             </div>

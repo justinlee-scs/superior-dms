@@ -12,7 +12,9 @@ import type { Document } from "@/app/components/document-card";
 
 interface CompactProjectViewProps {
   documents: Document[];
+  onPreview: (doc: Document) => void;
   onDownload: (doc: Document) => void;
+  onDelete: (doc: Document) => void;
   onEditWorkflow: (doc: Document) => void;
   darkMode?: boolean;
 }
@@ -42,37 +44,33 @@ const getWorkflowColor = (workflow: string) => {
 
 type SortOption = "date" | "name" | "size";
 
-export function CompactProjectView({ documents, onDownload, onEditWorkflow, darkMode }: CompactProjectViewProps) {
+export function CompactProjectView({
+  documents,
+  onPreview,
+  onDownload,
+  onDelete,
+  onEditWorkflow,
+  darkMode,
+}: CompactProjectViewProps) {
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
   const [collapsedTypes, setCollapsedTypes] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<Record<string, SortOption>>({});
 
-  // Group documents by project, then by document type
   const groupedDocuments = useMemo(() => {
     const projects: Record<string, Record<string, Document[]>> = {};
-    
     documents.forEach((doc) => {
-      if (!projects[doc.project]) {
-        projects[doc.project] = {};
-      }
+      if (!projects[doc.project]) projects[doc.project] = {};
       const docType = doc.documentType || "Other";
-      if (!projects[doc.project][docType]) {
-        projects[doc.project][docType] = [];
-      }
+      if (!projects[doc.project][docType]) projects[doc.project][docType] = [];
       projects[doc.project][docType].push(doc);
     });
-
     return projects;
   }, [documents]);
 
   const toggleProject = (project: string) => {
     setCollapsedProjects((prev) => {
       const next = new Set(prev);
-      if (next.has(project)) {
-        next.delete(project);
-      } else {
-        next.add(project);
-      }
+      next.has(project) ? next.delete(project) : next.add(project);
       return next;
     });
   };
@@ -80,18 +78,13 @@ export function CompactProjectView({ documents, onDownload, onEditWorkflow, dark
   const toggleType = (key: string) => {
     setCollapsedTypes((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
+      next.has(key) ? next.delete(key) : next.add(key);
       return next;
     });
   };
 
   const getSortedDocuments = (project: string, docs: Document[]): Document[] => {
     const sortOption = sortBy[project] || "date";
-    
     return [...docs].sort((a, b) => {
       switch (sortOption) {
         case "date":
@@ -118,7 +111,6 @@ export function CompactProjectView({ documents, onDownload, onEditWorkflow, dark
         const isProjectCollapsed = collapsedProjects.has(project);
         const projectDocs = Object.values(types).flat();
         const currentSort = sortBy[project] || "date";
-        // Get project number from first document in project
         const projectNumber = projectDocs[0]?.projectNumber;
 
         return (
@@ -130,11 +122,7 @@ export function CompactProjectView({ documents, onDownload, onEditWorkflow, dark
                   onClick={() => toggleProject(project)}
                   className={`flex items-center gap-2 transition-colors ${darkMode ? "hover:text-blue-400" : "hover:text-blue-600"}`}
                 >
-                  {isProjectCollapsed ? (
-                    <ChevronRight className="w-4 h-4" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4" />
-                  )}
+                  {isProjectCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   <span className="font-semibold text-base">{project}</span>
                   {projectNumber && (
                     <span className={`text-xs px-2 py-0.5 rounded ${darkMode ? "bg-gray-700 text-gray-300" : "bg-gray-200 text-gray-600"}`}>
@@ -145,7 +133,7 @@ export function CompactProjectView({ documents, onDownload, onEditWorkflow, dark
                     ({projectDocs.length} {projectDocs.length === 1 ? "file" : "files"})
                   </span>
                 </button>
-                
+
                 {!isProjectCollapsed && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -170,7 +158,7 @@ export function CompactProjectView({ documents, onDownload, onEditWorkflow, dark
               </div>
             </div>
 
-            {/* Document Types and Files */}
+            {/* Document Types */}
             {!isProjectCollapsed && (
               <div>
                 {Object.entries(types).map(([docType, docs]) => {
@@ -184,95 +172,67 @@ export function CompactProjectView({ documents, onDownload, onEditWorkflow, dark
                       <button
                         onClick={() => toggleType(typeKey)}
                         className={`w-full px-8 py-2 flex items-center gap-2 transition-colors text-sm ${
-                          darkMode 
-                            ? "bg-gray-850 hover:bg-gray-800" 
-                            : "bg-gray-25 hover:bg-gray-100"
+                          darkMode ? "bg-gray-850 hover:bg-gray-800" : "bg-gray-25 hover:bg-gray-100"
                         }`}
                       >
-                        {isTypeCollapsed ? (
-                          <ChevronRight className="w-3 h-3" />
-                        ) : (
-                          <ChevronDown className="w-3 h-3" />
-                        )}
+                        {isTypeCollapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                         <span className={`font-medium ${darkMode ? "text-gray-300" : "text-gray-700"}`}>{docType}</span>
-                        <span className={`text-xs ${darkMode ? "text-gray-500" : "text-gray-500"}`}>
-                          ({docs.length})
-                        </span>
+                        <span className={`text-xs ${darkMode ? "text-gray-500" : "text-gray-500"}`}>({docs.length})</span>
                       </button>
 
                       {/* Document List */}
-                      {!isTypeCollapsed && (
-                        <div>
-                          {sortedDocs.map((doc) => {
-                            const FileIcon = getFileIcon(doc.type);
-                            
-                            return (
-                              <div
-                                key={doc.id}
-                                className={`flex items-center gap-3 pl-20 pr-4 py-2 transition-colors border-t first:border-t-0 group ${
-                                  darkMode 
-                                    ? "hover:bg-gray-750 border-gray-700" 
-                                    : "hover:bg-blue-50"
-                                }`}
-                              >
-                                {/* File Icon */}
-                                <FileIcon className={`w-4 h-4 flex-shrink-0 ${darkMode ? "text-gray-400" : "text-gray-500"}`} />
-                                
-                                {/* File Name */}
-                                <div className="flex-1 min-w-0">
-                                  <span className={`text-sm truncate block ${darkMode ? "text-gray-200" : ""}`}>{doc.name}</span>
-                                </div>
-
-                                {/* Date */}
-                                <div className={`w-28 flex-shrink-0 text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
-                                  {new Date(doc.date).toLocaleDateString()}
-                                </div>
-
-                                {/* Author */}
-                                <div className={`w-36 flex-shrink-0 text-xs truncate ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
-                                  {doc.author}
-                                </div>
-
-                                {/* Workflow Status */}
-                                <div className="w-32 flex-shrink-0">
-                                  <Badge 
-                                    variant="outline" 
-                                    className={`text-xs ${getWorkflowColor(doc.workflow)}`}
-                                  >
-                                    {doc.workflow}
-                                  </Badge>
-                                </div>
-
-                                {/* Size */}
-                                <div className={`w-20 flex-shrink-0 text-xs text-right ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
-                                  {doc.size}
-                                </div>
-
-                                {/* Actions */}
-                                <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                                        <span className="sr-only">Open menu</span>
-                                        <span className="text-xs">⋯</span>
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <DropdownMenuItem onClick={() => onDownload(doc)}>
-                                        <Download className="w-4 h-4 mr-2" />
-                                        Download
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem onClick={() => onEditWorkflow(doc)}>
-                                        Edit Workflow
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </div>
+                      {!isTypeCollapsed &&
+                        sortedDocs.map((doc) => {
+                          const FileIcon = getFileIcon(doc.type);
+                          return (
+                            <div
+                              key={doc.id}
+                              className={`flex items-center gap-3 pl-20 pr-4 py-2 transition-colors border-t first:border-t-0 group ${
+                                darkMode ? "hover:bg-gray-750 border-gray-700" : "hover:bg-blue-50"
+                              }`}
+                            >
+                              <FileIcon className={`w-4 h-4 flex-shrink-0 ${darkMode ? "text-gray-400" : "text-gray-500"}`} />
+                              <div className="flex-1 min-w-0">
+                                <span className={`text-sm truncate block ${darkMode ? "text-gray-200" : ""}`}>{doc.name}</span>
                               </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                              <div className={`w-28 flex-shrink-0 text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+                                {new Date(doc.date).toLocaleDateString()}
+                              </div>
+                              <div className={`w-36 flex-shrink-0 text-xs truncate ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
+                                {doc.author}
+                              </div>
+                              <div className="w-32 flex-shrink-0">
+                                <Badge variant="outline" className={`text-xs ${getWorkflowColor(doc.workflow)}`}>
+                                  {doc.workflow}
+                                </Badge>
+                              </div>
+                              <div className={`w-20 flex-shrink-0 text-xs text-right ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+                                {doc.size}
+                              </div>
+
+                              {/* Actions Dropdown */}
+                              <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                                      <span className="sr-only">Open menu</span>
+                                      <span className="text-xs">⋯</span>
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => onPreview(doc)}>Preview</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => onDownload(doc)}>
+                                      <Download className="w-4 h-4 mr-2" />
+                                      Download
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => onDelete(doc)}>Delete</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => onEditWorkflow(doc)}>Edit Workflow</DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            </div>
+                          );
+                        })}
                     </div>
                   );
                 })}

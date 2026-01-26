@@ -130,6 +130,7 @@ def update_document_type(
 
     return document
 
+
 def get_document_version(
     db: Session,
     document_id: UUID,
@@ -140,3 +141,25 @@ def get_document_version(
         return None
 
     return db.get(DocumentVersion, document.current_version_id)
+
+
+def delete_document(
+    db: Session,
+    document_id: UUID,
+) -> None:
+    """
+    Deletes a document and all its versions.
+    Raises ValueError if document does not exist.
+    """
+    document = db.get(Document, document_id)
+    if not document:
+        raise ValueError(f"Document {document_id} not found")
+
+    # Delete all versions associated with this document
+    versions = db.query(DocumentVersion).filter(DocumentVersion.document_id == document_id).all()
+    for v in versions:
+        db.delete(v)
+
+    # Delete the document itself
+    db.delete(document)
+    db.commit()

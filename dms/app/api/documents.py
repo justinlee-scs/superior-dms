@@ -21,6 +21,10 @@ from app.processing.pipeline import process_document
 from app.schemas.document_versions import DocumentVersionResponse
 from app.db.repositories.documents import get_document_version
 
+from app.db.repositories.documents import delete_document as delete_document_repo
+from fastapi.responses import StreamingResponse
+import io
+
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -181,3 +185,26 @@ def get_document_output(
         )
 
     return version
+
+@router.delete("/{document_id}", status_code=204)
+def delete_document(document_id: UUID, db: Session = Depends(get_db)):
+    document = get_document_by_id(db=db, document_id=document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    delete_document_repo(db=db, document_id=document_id)
+
+
+@router.get("/{document_id}/download")
+def download_document(document_id: UUID, db: Session = Depends(get_db)):
+    version = get_document_version(db=db, document_id=document_id)
+    if not version:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return StreamingResponse(
+        io.BytesIO(version.file_bytes),
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{version.filename}"'
+        },
+    )

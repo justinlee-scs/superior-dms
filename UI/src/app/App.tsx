@@ -30,7 +30,6 @@ import { listDocuments, uploadDocument, deleteDocument } from "@/lib/dms";
 
 /**
  * Maps backend document → UI Document
- * This is the ONLY place you should touch if backend fields change.
  */
 function mapApiDocument(doc: any): Document {
   return {
@@ -72,8 +71,6 @@ export default function App() {
    */
   const refreshDocuments = async () => {
     const apiDocs = await listDocuments();
-    //console.log("API documents:", apiDocs);
-    //remove when possible^^^^
     setDocuments(apiDocs.map(mapApiDocument));
   };
 
@@ -132,6 +129,16 @@ export default function App() {
     await deleteDocument(doc.id);
     toast.success("Document deleted");
     await refreshDocuments();
+  };
+
+  const handlePreview = async (doc: Document) => {
+    toast(`Previewing ${doc.name}...`);
+    // Implement real preview logic
+  };
+
+  const handleDownload = async (doc: Document) => {
+    toast(`Downloading ${doc.name}...`);
+    // Implement real download logic
   };
 
   const handleEditWorkflow = (doc: Document) => {
@@ -214,14 +221,18 @@ export default function App() {
                 {viewMode === "compact" ? (
                   <CompactProjectView
                     documents={filteredDocuments}
-                    onDownload={() => { }}
+                    onPreview={handlePreview}
+                    onDownload={handleDownload}
+                    onDelete={handleDelete}
                     onEditWorkflow={handleEditWorkflow}
                     darkMode={darkMode}
                   />
                 ) : viewMode === "grouped" ? (
                   <GroupedDocuments
                     documents={filteredDocuments}
-                    onDownload={() => { }}
+                    onPreview={handlePreview}
+                    onDownload={handleDownload}
+                    onDelete={handleDelete}
                     onEditWorkflow={handleEditWorkflow}
                   />
                 ) : (
@@ -230,15 +241,15 @@ export default function App() {
                       <DocumentCard
                         key={doc.id}
                         document={doc}
-                        onDownload={() => { }}
-                        onEditWorkflow={handleEditWorkflow}
+                        onPreview={() => handlePreview(doc)}
+                        onDownload={() => handleDownload(doc)}
                         onDelete={() => handleDelete(doc)}
+                        onEditWorkflow={() => handleEditWorkflow(doc)}
                       />
                     ))}
                   </div>
                 )}
               </TabsContent>
-
 
               <TabsContent value="upload" className="mt-6">
                 <UploadZone onFilesUploaded={handleUpload} />
@@ -251,7 +262,7 @@ export default function App() {
           document={selectedDocument}
           open={workflowEditorOpen}
           onOpenChange={setWorkflowEditorOpen}
-          onSave={() => { }}
+          onSave={() => {}}
         />
 
         <Toaster />

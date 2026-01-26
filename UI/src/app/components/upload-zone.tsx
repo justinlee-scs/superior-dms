@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Upload, X } from "lucide-react";
 import { useDrop } from "react-dnd";
 import { NativeTypes } from "react-dnd-html5-backend";
@@ -10,6 +10,7 @@ interface UploadZoneProps {
 
 export function UploadZone({ onFilesUploaded }: UploadZoneProps) {
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const dropRef = useRef<HTMLDivElement>(null);
 
   const handleDrop = useCallback(
     (item: { files: File[] }) => {
@@ -32,6 +33,12 @@ export function UploadZone({ onFilesUploaded }: UploadZoneProps) {
     [handleDrop]
   );
 
+  useEffect(() => {
+    if (dropRef.current) {
+      drop(dropRef);
+    }
+  }, [drop]);
+
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const files = Array.from(e.target.files);
@@ -49,7 +56,7 @@ export function UploadZone({ onFilesUploaded }: UploadZoneProps) {
   return (
     <div className="space-y-4">
       <div
-        ref={drop}
+        ref={dropRef}
         className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
           isActive
             ? "border-blue-500 bg-blue-50"
