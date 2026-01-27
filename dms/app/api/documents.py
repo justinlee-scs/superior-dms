@@ -25,6 +25,8 @@ from app.db.repositories.documents import delete_document as delete_document_rep
 from fastapi.responses import StreamingResponse
 import io
 
+from app.deps import require_role
+from app.db.models.user import User
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -226,3 +228,9 @@ def preview_document(document_id: UUID, db: Session = Depends(get_db)):
         media_type=mime_type,
         headers={"Content-Disposition": f'inline; filename="{filename}"'},  # inline allows browser preview
     )
+
+@router.post("/documents")
+def upload_document(
+    user: User = Depends(require_role("editor")),
+):
+    return {"msg": f"{user.username} uploaded a document"}
