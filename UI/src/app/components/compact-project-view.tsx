@@ -77,29 +77,15 @@ export function CompactProjectView({
     documents.forEach((doc) => {
       if (!projects[doc.project]) projects[doc.project] = {};
       const docType = doc.documentType || "Other";
-      if (!projects[doc.project][docType]) projects[doc.project][docType] = [];
+      if (!projects[doc.project][docType]) {
+        projects[doc.project][docType] = [];
+      }
       projects[doc.project][docType].push(doc);
     });
     return projects;
   }, [documents]);
 
-  const toggleProject = (project: string) => {
-    setCollapsedProjects((prev) => {
-      const next = new Set(prev);
-      next.has(project) ? next.delete(project) : next.add(project);
-      return next;
-    });
-  };
-
-  const toggleType = (key: string) => {
-    setCollapsedTypes((prev) => {
-      const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
-      return next;
-    });
-  };
-
-  const getSortedDocuments = (project: string, docs: Document[]): Document[] => {
+  const getSortedDocuments = (project: string, docs: Document[]) => {
     const sortOption = sortBy[project] || "date";
     return [...docs].sort((a, b) => {
       switch (sortOption) {
@@ -115,65 +101,80 @@ export function CompactProjectView({
     });
   };
 
-  const changeSortOption = (project: string, option: SortOption) => {
-    setSortBy((prev) => ({ ...prev, [project]: option }));
+  const selectionState = (docs: Document[]) => {
+    const selectedCount = docs.filter((d) => selection.isSelected(d.id)).length;
+    return {
+      checked: docs.length > 0 && selectedCount === docs.length,
+      indeterminate: selectedCount > 0 && selectedCount < docs.length,
+    };
   };
+
+  const toggleMany = (docs: Document[]) => {
+  const allSelected = docs.every((d) => selection.isSelected(d.id));
+
+  docs.forEach((doc) => {
+    allSelected ? selection.remove(doc) : selection.add(doc);
+  });
+};
 
   return (
     <div className="space-y-4">
       {Object.entries(groupedDocuments).map(([project, types]) => {
-        const isProjectCollapsed = collapsedProjects.has(project);
         const projectDocs = Object.values(types).flat();
+        const projectSel = selectionState(projectDocs);
+        const isProjectCollapsed = collapsedProjects.has(project);
         const currentSort = sortBy[project] || "date";
-        const projectNumber = projectDocs[0]?.projectNumber;
 
         return (
           <div key={project} className="border rounded-lg overflow-hidden">
             {/* Project header */}
-            <div className="border-b px-4 py-3 bg-gray-50">
-              <div className="flex items-center justify-between">
+            <div className="border-b px-4 py-3 bg-gray-50 flex justify-between">
+              <div className="flex items-center gap-3">
+                <SelectionCheckbox
+                  checked={projectSel.checked}
+                  indeterminate={projectSel.indeterminate}
+                  onToggle={() => toggleMany(projectDocs)}
+                />
+
                 <button
-                  onClick={() => toggleProject(project)}
+                  onClick={() =>
+                    setCollapsedProjects((prev) => {
+                      const next = new Set(prev);
+                      next.has(project) ? next.delete(project) : next.add(project);
+                      return next;
+                    })
+                  }
                   className="flex items-center gap-2"
                 >
-                  {isProjectCollapsed ? (
-                    <ChevronRight className="w-4 h-4" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4" />
-                  )}
+                  {isProjectCollapsed ? <ChevronRight /> : <ChevronDown />}
                   <span className="font-semibold">{project}</span>
-                  {projectNumber && (
-                    <span className="text-xs bg-gray-200 px-2 py-0.5 rounded">
-                      {projectNumber}
-                    </span>
-                  )}
                   <span className="text-sm text-gray-500">
                     ({projectDocs.length} files)
                   </span>
                 </button>
-
-                {!isProjectCollapsed && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm">
-                        <ArrowUpDown className="w-3 h-3 mr-1" />
-                        Sort
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => changeSortOption(project, "date")}>
-                        Date {currentSort === "date" && "✓"}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => changeSortOption(project, "name")}>
-                        Name {currentSort === "name" && "✓"}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => changeSortOption(project, "size")}>
-                        Size {currentSort === "size" && "✓"}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
               </div>
+
+              {!isProjectCollapsed && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm">
+                      <ArrowUpDown className="w-3 h-3 mr-1" />
+                      Sort
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setSortBy({ ...sortBy, [project]: "date" })}>
+                      Date {currentSort === "date" && "✓"}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setSortBy({ ...sortBy, [project]: "name" })}>
+                      Name {currentSort === "name" && "✓"}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setSortBy({ ...sortBy, [project]: "size" })}>
+                      Size {currentSort === "size" && "✓"}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
 
             {!isProjectCollapsed &&
@@ -181,24 +182,35 @@ export function CompactProjectView({
                 const typeKey = `${project}-${docType}`;
                 const isTypeCollapsed = collapsedTypes.has(typeKey);
                 const sortedDocs = getSortedDocuments(project, docs);
+                const typeSel = selectionState(sortedDocs);
 
                 return (
                   <div key={typeKey}>
                     {/* Type header */}
-                    <button
-                      onClick={() => toggleType(typeKey)}
-                      className="w-full px-8 py-2 flex items-center gap-2 text-sm bg-gray-100"
-                    >
-                      {isTypeCollapsed ? (
-                        <ChevronRight className="w-3 h-3" />
-                      ) : (
-                        <ChevronDown className="w-3 h-3" />
-                      )}
-                      <span className="font-medium">{docType}</span>
-                      <span className="text-xs text-gray-500">
-                        ({docs.length})
-                      </span>
-                    </button>
+                    <div className="flex items-center gap-3 px-8 py-2 bg-gray-100 text-sm">
+                      <SelectionCheckbox
+                        checked={typeSel.checked}
+                        indeterminate={typeSel.indeterminate}
+                        onToggle={() => toggleMany(sortedDocs)}
+                      />
+
+                      <button
+                        onClick={() =>
+                          setCollapsedTypes((prev) => {
+                            const next = new Set(prev);
+                            next.has(typeKey) ? next.delete(typeKey) : next.add(typeKey);
+                            return next;
+                          })
+                        }
+                        className="flex items-center gap-2"
+                      >
+                        {isTypeCollapsed ? <ChevronRight /> : <ChevronDown />}
+                        <span className="font-medium">{docType}</span>
+                        <span className="text-xs text-gray-500">
+                          ({sortedDocs.length})
+                        </span>
+                      </button>
+                    </div>
 
                     {!isTypeCollapsed &&
                       sortedDocs.map((doc) => {
@@ -218,9 +230,7 @@ export function CompactProjectView({
                             <FileIcon className="w-4 h-4 text-gray-500" />
 
                             <div className="flex-1 min-w-0">
-                              <span className="text-sm truncate block">
-                                {doc.name}
-                              </span>
+                              <span className="text-sm truncate block">{doc.name}</span>
                             </div>
 
                             <div className="w-28 text-xs text-gray-500">
