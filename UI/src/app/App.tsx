@@ -8,6 +8,9 @@ import { CompactProjectView } from "@/app/components/compact-project-view";
 import { SearchFilters, type FilterState } from "@/app/components/search-filters";
 import { UploadZone } from "@/app/components/upload-zone";
 import { WorkflowEditor } from "@/app/components/workflow-editor";
+import { BulkActionBar } from "@/app/components/bulk-action-bar";
+
+import { SelectionProvider, useSelection } from "@/app/selection/selection-context";
 
 import { Button } from "@/app/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
@@ -22,7 +25,6 @@ import {
   AlignJustify,
   Moon,
   Sun,
-  UserCircle,
 } from "lucide-react";
 
 import { toast } from "sonner";
@@ -49,7 +51,7 @@ function mapApiDocument(doc: any): Document {
   };
 }
 
-export default function App() {
+function AppInner() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [filters, setFilters] = useState<FilterState>({
     searchText: "",
@@ -67,8 +69,10 @@ export default function App() {
     useState<"compact" | "grid" | "list" | "grouped">("compact");
   const [darkMode, setDarkMode] = useState(false);
 
+  const selection = useSelection();
+
   /**
-   * Load documents from backend
+   * Load documents
    */
   const refreshDocuments = async () => {
     const apiDocs = await listDocuments();
@@ -132,49 +136,30 @@ export default function App() {
     await refreshDocuments();
   };
 
-  //   const handlePreview = async (doc: Document) => {
-  //   try {
-  //     const res = await fetch(`${API_BASE_URL}/documents/${doc.id}/download`);
-  //     if (!res.ok) throw new Error("Preview failed");
-
-  //     const blob = await res.blob();
-  //     const url = window.URL.createObjectURL(blob);
-  //     window.open(url, "_blank"); // Open file in new tab
-  //     // Do not revoke URL immediately because tab still needs it
-  //   } catch (err) {
-  //     console.error(err);
-  //     toast.error("Failed to preview file");
-  //   }
-  // };
-
   const handlePreview = (doc: Document) => {
-    // Open a new tab with the download URL
-    window.open(`http://127.0.0.1:8008/documents/${doc.id}/preview`, "_blank");
+    window.open(
+      `${API_BASE_URL}/documents/${doc.id}/preview`,
+      "_blank"
+    );
   };
-
 
   const handleDownload = async (doc: Document) => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/documents/${doc.id}/download`);
-      if (!res.ok) throw new Error("Download failed");
-
-      const blob = await res.blob(); // Get file content as blob
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = doc.name; // Suggest file name
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-
-      toast.success("Downloading");
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to download file");
+    const res = await fetch(`${API_BASE_URL}/documents/${doc.id}/download`);
+    if (!res.ok) {
+      toast.error("Download failed");
+      return;
     }
-  };
 
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = doc.name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  };
 
   const handleEditWorkflow = (doc: Document) => {
     setSelectedDocument(doc);
@@ -239,7 +224,7 @@ export default function App() {
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-auto p-6">
+          <div className="flex-1 overflow-auto p-6 pb-24">
             <Tabs defaultValue="documents">
               <TabsList>
                 <TabsTrigger value="documents">
@@ -291,17 +276,41 @@ export default function App() {
               </TabsContent>
             </Tabs>
           </div>
+
+          <BulkActionBar
+            count={selection.selected.size}
+            onDownload={async () => {
+              for (const doc of selection.selected.values()) {
+                await handleDownload(doc);
+              }
+            }}
+            onDelete={async () => {
+              for (const doc of selection.selected.values()) {
+                await handleDelete(doc);
+              }
+              selection.clear();
+            }}
+            onClear={selection.clear}
+          />
         </div>
 
         <WorkflowEditor
           document={selectedDocument}
           open={workflowEditorOpen}
           onOpenChange={setWorkflowEditorOpen}
-          onSave={() => { }}
+          onSave={() => {}}
         />
 
         <Toaster />
       </div>
     </DndProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <SelectionProvider>
+      <AppInner />
+    </SelectionProvider>
   );
 }

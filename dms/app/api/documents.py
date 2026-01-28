@@ -228,9 +228,3 @@ def preview_document(document_id: UUID, db: Session = Depends(get_db)):
         media_type=mime_type,
         headers={"Content-Disposition": f'inline; filename="{filename}"'},  # inline allows browser preview
     )
-
-@router.post("/documents")
-def upload_document(
-    user: User = Depends(require_role("editor")),
-):
-    return {"msg": f"{user.username} uploaded a document"}
