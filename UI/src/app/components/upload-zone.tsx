@@ -6,6 +6,7 @@ import { Button } from "@/app/components/ui/button";
 
 interface UploadZoneProps {
   onFileUploaded: (file: File) => Promise<void>;
+  darkMode?: boolean;
 }
 
 type UploadedFile = {
@@ -13,7 +14,7 @@ type UploadedFile = {
   status: "uploading" | "success" | "error";
 };
 
-export function UploadZone({ onFileUploaded }: UploadZoneProps) {
+export function UploadZone({ onFileUploaded, darkMode }: UploadZoneProps) {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const dropRef = useRef<HTMLDivElement>(null);
 
@@ -83,11 +84,14 @@ export function UploadZone({ onFileUploaded }: UploadZoneProps) {
     <div className="space-y-4">
       <div
         ref={dropRef}
-        className={`border-2 border-dashed rounded-lg p-8 text-center ${
-          isOver && canDrop
-            ? "border-blue-500 bg-blue-50 dark:bg-blue-950"
-            : "border-gray-300 dark:border-gray-700"
-        }`}
+        className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${darkMode
+          ? isOver && canDrop
+            ? "border-blue-500 bg-blue-900"
+            : "border-black bg-gray-900"
+          : isOver && canDrop
+            ? "border-blue-500 bg-blue-50"
+            : "border-gray-300 bg-white"
+          }`}
       >
         <Upload className="w-12 h-12 mx-auto mb-4 text-gray-400" />
         <p>
@@ -111,7 +115,10 @@ export function UploadZone({ onFileUploaded }: UploadZoneProps) {
           {uploadedFiles.map(({ file, status }, index) => (
             <div
               key={`${file.name}-${index}`}
-              className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-900"
+              className={`flex items-center justify-between p-3 rounded-lg ${darkMode
+                  ? "bg-gray-800 text-gray-100"
+                  : "bg-gray-50 text-gray-900"
+                }`}
             >
               <div className="flex items-center gap-3">
                 {status === "uploading" && (

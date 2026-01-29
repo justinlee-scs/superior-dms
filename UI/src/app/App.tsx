@@ -405,7 +405,10 @@ function AppInner() {
 
               <TabsContent value="upload" className="mt-6">
                 {/* <UploadZone onFilesUploaded={handleUpload} /> */}
-                <UploadZone onFileUploaded={handleFileUpload} />
+                <UploadZone 
+                onFileUploaded={handleFileUpload}
+                darkMode={darkMode}
+                 />
               </TabsContent>
             </Tabs>
           </div>
