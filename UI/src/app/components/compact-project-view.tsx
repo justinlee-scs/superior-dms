@@ -36,23 +36,39 @@ interface CompactProjectViewProps {
 const getFileIcon = (type: string) => {
   if (type.includes("image")) return Image;
   if (type.includes("pdf") || type.includes("document")) return FileText;
-  if (type.includes("spreadsheet") || type.includes("excel")) return FileSpreadsheet;
+  if (type.includes("spreadsheet") || type.includes("excel"))
+    return FileSpreadsheet;
   if (type.includes("archive")) return Archive;
   return File;
 };
 
-const getWorkflowColor = (workflow: string) => {
+const getWorkflowColor = (workflow: string, darkMode?: boolean) => {
+  const base =
+    "border text-xs font-medium rounded-md px-2 py-0.5 whitespace-nowrap";
+
   switch (workflow.toLowerCase()) {
     case "approved":
     case "published":
-      return "bg-green-100 text-green-800 border-green-200";
+      return `${base} ${darkMode
+        ? "bg-green-900/30 text-green-300 border-green-800"
+        : "bg-green-100 text-green-800 border-green-200"
+        }`;
     case "in review":
     case "pending approval":
-      return "bg-yellow-100 text-yellow-800 border-yellow-200";
+      return `${base} ${darkMode
+        ? "bg-yellow-900/30 text-yellow-300 border-yellow-800"
+        : "bg-yellow-100 text-yellow-800 border-yellow-200"
+        }`;
     case "draft":
-      return "bg-gray-100 text-gray-800 border-gray-200";
+      return `${base} ${darkMode
+        ? "bg-gray-800 text-gray-300 border-gray-700"
+        : "bg-gray-100 text-gray-800 border-gray-200"
+        }`;
     default:
-      return "bg-blue-100 text-blue-800 border-blue-200";
+      return `${base} ${darkMode
+        ? "bg-blue-900/30 text-blue-300 border-blue-800"
+        : "bg-blue-100 text-blue-800 border-blue-200"
+        }`;
   }
 };
 
@@ -66,7 +82,9 @@ export function CompactProjectView({
   onEditWorkflow,
   darkMode,
 }: CompactProjectViewProps) {
-  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
+  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(
+    new Set()
+  );
   const [collapsedTypes, setCollapsedTypes] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<Record<string, SortOption>>({});
 
@@ -102,7 +120,9 @@ export function CompactProjectView({
   };
 
   const selectionState = (docs: Document[]) => {
-    const selectedCount = docs.filter((d) => selection.isSelected(d.id)).length;
+    const selectedCount = docs.filter((d) =>
+      selection.isSelected(d.id)
+    ).length;
     return {
       checked: docs.length > 0 && selectedCount === docs.length,
       indeterminate: selectedCount > 0 && selectedCount < docs.length,
@@ -110,12 +130,11 @@ export function CompactProjectView({
   };
 
   const toggleMany = (docs: Document[]) => {
-  const allSelected = docs.every((d) => selection.isSelected(d.id));
-
-  docs.forEach((doc) => {
-    allSelected ? selection.remove(doc) : selection.add(doc);
-  });
-};
+    const allSelected = docs.every((d) => selection.isSelected(d.id));
+    docs.forEach((doc) =>
+      allSelected ? selection.remove(doc) : selection.add(doc)
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -126,9 +145,20 @@ export function CompactProjectView({
         const currentSort = sortBy[project] || "date";
 
         return (
-          <div key={project} className="border rounded-lg overflow-hidden">
+          <div
+            key={project}
+            className={`border rounded-lg overflow-hidden ${darkMode
+              ? "border-gray-800 bg-gray-900"
+              : "border-gray-200 bg-white"
+              }`}
+          >
             {/* Project header */}
-            <div className="border-b px-4 py-3 bg-gray-50 flex justify-between">
+            <div
+              className={`px-4 py-3 flex justify-between border-b ${darkMode
+                ? "bg-gray-800 border-gray-700"
+                : "bg-gray-50 border-gray-200"
+                }`}
+            >
               <div className="flex items-center gap-3">
                 <SelectionCheckbox
                   checked={projectSel.checked}
@@ -140,7 +170,9 @@ export function CompactProjectView({
                   onClick={() =>
                     setCollapsedProjects((prev) => {
                       const next = new Set(prev);
-                      next.has(project) ? next.delete(project) : next.add(project);
+                      next.has(project)
+                        ? next.delete(project)
+                        : next.add(project);
                       return next;
                     })
                   }
@@ -148,7 +180,7 @@ export function CompactProjectView({
                 >
                   {isProjectCollapsed ? <ChevronRight /> : <ChevronDown />}
                   <span className="font-semibold">{project}</span>
-                  <span className="text-sm text-gray-500">
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
                     ({projectDocs.length} files)
                   </span>
                 </button>
@@ -163,13 +195,25 @@ export function CompactProjectView({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => setSortBy({ ...sortBy, [project]: "date" })}>
+                    <DropdownMenuItem
+                      onClick={() =>
+                        setSortBy({ ...sortBy, [project]: "date" })
+                      }
+                    >
                       Date {currentSort === "date" && "✓"}
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setSortBy({ ...sortBy, [project]: "name" })}>
+                    <DropdownMenuItem
+                      onClick={() =>
+                        setSortBy({ ...sortBy, [project]: "name" })
+                      }
+                    >
                       Name {currentSort === "name" && "✓"}
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setSortBy({ ...sortBy, [project]: "size" })}>
+                    <DropdownMenuItem
+                      onClick={() =>
+                        setSortBy({ ...sortBy, [project]: "size" })
+                      }
+                    >
                       Size {currentSort === "size" && "✓"}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
@@ -187,7 +231,12 @@ export function CompactProjectView({
                 return (
                   <div key={typeKey}>
                     {/* Type header */}
-                    <div className="flex items-center gap-3 px-8 py-2 bg-gray-100 text-sm">
+                    <div
+                      className={`flex items-center gap-3 px-8 py-2 text-sm ${darkMode
+                        ? "bg-gray-800 border-gray-700"
+                        : "bg-gray-50 border-gray-200"
+                        }`}
+                    >
                       <SelectionCheckbox
                         checked={typeSel.checked}
                         indeterminate={typeSel.indeterminate}
@@ -198,15 +247,21 @@ export function CompactProjectView({
                         onClick={() =>
                           setCollapsedTypes((prev) => {
                             const next = new Set(prev);
-                            next.has(typeKey) ? next.delete(typeKey) : next.add(typeKey);
+                            next.has(typeKey)
+                              ? next.delete(typeKey)
+                              : next.add(typeKey);
                             return next;
                           })
                         }
                         className="flex items-center gap-2"
                       >
-                        {isTypeCollapsed ? <ChevronRight /> : <ChevronDown />}
+                        {isTypeCollapsed ? (
+                          <ChevronRight />
+                        ) : (
+                          <ChevronDown />
+                        )}
                         <span className="font-medium">{docType}</span>
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
                           ({sortedDocs.length})
                         </span>
                       </button>
@@ -220,7 +275,10 @@ export function CompactProjectView({
                         return (
                           <div
                             key={doc.id}
-                            className="flex items-center gap-3 pl-20 pr-4 py-2 border-t hover:bg-blue-50 group"
+                            className={`flex items-center gap-3 pl-20 pr-4 py-2 border-t group transition-colors ${darkMode
+                              ? "border-gray-800 hover:bg-gray-800/60"
+                              : "border-gray-200 hover:bg-blue-50"
+                              }`}
                           >
                             <SelectionCheckbox
                               checked={checked}
@@ -230,24 +288,28 @@ export function CompactProjectView({
                             <FileIcon className="w-4 h-4 text-gray-500" />
 
                             <div className="flex-1 min-w-0">
-                              <span className="text-sm truncate block">{doc.name}</span>
+                              <span className="text-sm truncate block">
+                                {doc.name}
+                              </span>
                             </div>
 
                             <div className="w-28 text-xs text-gray-500">
                               {new Date(doc.date).toLocaleDateString()}
                             </div>
 
-                            <div className="w-36 text-xs text-gray-600 truncate">
+                            <div className="w-36 text-xs text-gray-600 dark:text-gray-400 truncate">
                               {doc.author}
                             </div>
 
                             <div className="w-32">
-                              <Badge
-                                variant="outline"
-                                className={`text-xs ${getWorkflowColor(doc.workflow)}`}
+                              <span
+                                className={getWorkflowColor(
+                                  doc.workflow,
+                                  darkMode
+                                )}
                               >
                                 {doc.workflow}
-                              </Badge>
+                              </span>
                             </div>
 
                             <div className="w-20 text-xs text-right text-gray-500">
@@ -262,17 +324,25 @@ export function CompactProjectView({
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => onPreview(doc)}>
+                                  <DropdownMenuItem
+                                    onClick={() => onPreview(doc)}
+                                  >
                                     Preview
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => onDownload(doc)}>
+                                  <DropdownMenuItem
+                                    onClick={() => onDownload(doc)}
+                                  >
                                     <Download className="w-4 h-4 mr-2" />
                                     Download
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => onDelete(doc)}>
+                                  <DropdownMenuItem
+                                    onClick={() => onDelete(doc)}
+                                  >
                                     Delete
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => onEditWorkflow(doc)}>
+                                  <DropdownMenuItem
+                                    onClick={() => onEditWorkflow(doc)}
+                                  >
                                     Edit Workflow
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
