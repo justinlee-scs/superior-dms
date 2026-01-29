@@ -15,7 +15,7 @@ export function BulkActionBar({
   if (count === 0) return null;
 
   return (
-    <div className="sticky bottom-0 z-40 bg-white border-t p-4 flex items-center gap-3">
+    <div className="sticky top-0 z-40 bg-white border-b p-4 flex items-center gap-3">
       <span className="text-sm font-medium">{count} selected</span>
       <Button size="sm" onClick={onDownload}>
         Download

@@ -53,6 +53,9 @@ function mapApiDocument(doc: any): Document {
 
 function AppInner() {
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [deletedQueue, setDeletedQueue] = useState<
+    { doc: Document; timeoutId: ReturnType<typeof setTimeout> }[]
+  >([]);
   const [filters, setFilters] = useState<FilterState>({
     searchText: "",
     selectedTags: [],
@@ -130,11 +133,85 @@ function AppInner() {
     await refreshDocuments();
   };
 
-  const handleDelete = async (doc: Document) => {
-    await deleteDocument(doc.id);
-    toast.success("Document deleted");
-    await refreshDocuments();
+  const handleDelete = (doc: Document) => {
+    // Remove from UI immediately
+    setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+
+    // Schedule backend delete
+    const timeoutId = setTimeout(async () => {
+      try {
+        await deleteDocument(doc.id);
+        setDeletedQueue((prev) => prev.filter((item) => item.doc.id !== doc.id));
+      } catch {
+        toast.error(`Failed to delete ${doc.name}`);
+        await refreshDocuments();
+      }
+    }, 5000);
+
+    // Add to deleted queue
+    setDeletedQueue((prev) => [...prev, { doc, timeoutId }]);
+
+    // Show toast with Undo button
+    const toastId = toast(
+      <div className="flex items-center gap-4">
+        <span>{doc.name} deleted</span>
+        <button
+          className="underline text-blue-600"
+          onClick={() => {
+            clearTimeout(timeoutId); // cancel backend delete
+            setDocuments((prev) => [...prev, doc]); // restore UI
+            setDeletedQueue((prev) => prev.filter((item) => item.doc.id !== doc.id));
+            toast.dismiss(toastId);
+          }}
+        >
+          Undo
+        </button>
+      </div>,
+      { duration: 5000 }
+    );
   };
+
+  const handleBulkDelete = async () => {
+    const docsToDelete = Array.from(selection.selected.values());
+
+    docsToDelete.forEach((doc) => {
+      // Remove from UI
+      setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+
+      const timeoutId = setTimeout(async () => {
+        try {
+          await deleteDocument(doc.id);
+          setDeletedQueue((prev) => prev.filter((item) => item.doc.id !== doc.id));
+        } catch {
+          toast.error(`Failed to delete ${doc.name}`);
+          await refreshDocuments();
+        }
+      }, 5000);
+
+      setDeletedQueue((prev) => [...prev, { doc, timeoutId }]);
+
+      const toastId = toast(
+        <div className="flex items-center gap-4">
+          <span>{doc.name} deleted</span>
+          <button
+            className="underline text-blue-600"
+            onClick={() => {
+              clearTimeout(timeoutId);
+              setDocuments((prev) => [...prev, doc]);
+              setDeletedQueue((prev) => prev.filter((item) => item.doc.id !== doc.id));
+              toast.dismiss(toastId);
+            }}
+          >
+            Undo
+          </button>
+        </div>,
+        { duration: 5000 }
+      );
+    });
+
+    selection.clear();
+  };
+
 
   const handlePreview = (doc: Document) => {
     window.open(
@@ -237,6 +314,22 @@ function AppInner() {
                 </TabsTrigger>
               </TabsList>
 
+              <BulkActionBar
+                count={selection.selected.size}
+                onDownload={async () => {
+                  for (const doc of selection.selected.values()) {
+                    await handleDownload(doc);
+                  }
+                }}
+                onDelete={async () => {
+                  for (const doc of selection.selected.values()) {
+                    await handleDelete(doc);
+                  }
+                  selection.clear();
+                }}
+                onClear={selection.clear}
+              />
+
               <TabsContent value="documents" className="mt-6">
                 {viewMode === "compact" ? (
                   <CompactProjectView
@@ -277,31 +370,17 @@ function AppInner() {
             </Tabs>
           </div>
 
-          <BulkActionBar
-            count={selection.selected.size}
-            onDownload={async () => {
-              for (const doc of selection.selected.values()) {
-                await handleDownload(doc);
-              }
-            }}
-            onDelete={async () => {
-              for (const doc of selection.selected.values()) {
-                await handleDelete(doc);
-              }
-              selection.clear();
-            }}
-            onClear={selection.clear}
+
+
+          <WorkflowEditor
+            document={selectedDocument}
+            open={workflowEditorOpen}
+            onOpenChange={setWorkflowEditorOpen}
+            onSave={() => { }}
           />
+
+          <Toaster />
         </div>
-
-        <WorkflowEditor
-          document={selectedDocument}
-          open={workflowEditorOpen}
-          onOpenChange={setWorkflowEditorOpen}
-          onSave={() => {}}
-        />
-
-        <Toaster />
       </div>
     </DndProvider>
   );
