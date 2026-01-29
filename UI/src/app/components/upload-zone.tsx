@@ -1,24 +1,56 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Upload, X } from "lucide-react";
+import { Upload, X, Check } from "lucide-react";
 import { useDrop } from "react-dnd";
 import { NativeTypes } from "react-dnd-html5-backend";
 import { Button } from "@/app/components/ui/button";
 
 interface UploadZoneProps {
-  onFilesUploaded: (files: File[]) => void;
+  onFileUploaded: (file: File) => Promise<void>;
 }
 
-export function UploadZone({ onFilesUploaded }: UploadZoneProps) {
-  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+type UploadedFile = {
+  file: File;
+  status: "uploading" | "success" | "error";
+};
+
+export function UploadZone({ onFileUploaded }: UploadZoneProps) {
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const dropRef = useRef<HTMLDivElement>(null);
+
+  const uploadFile = async (file: File) => {
+    setUploadedFiles((prev) => [
+      ...prev,
+      { file, status: "uploading" },
+    ]);
+
+    try {
+      await onFileUploaded(file);
+
+      setUploadedFiles((prev) =>
+        prev.map((f) =>
+          f.file === file ? { ...f, status: "success" } : f
+        )
+      );
+    } catch {
+      setUploadedFiles((prev) =>
+        prev.map((f) =>
+          f.file === file ? { ...f, status: "error" } : f
+        )
+      );
+    }
+  };
+
+  const handleFiles = async (files: File[]) => {
+    for (const file of files) {
+      uploadFile(file);
+    }
+  };
 
   const handleDrop = useCallback(
     (item: { files: File[] }) => {
-      const files = Array.from(item.files);
-      setUploadedFiles((prev) => [...prev, ...files]);
-      onFilesUploaded(files);
+      handleFiles(Array.from(item.files));
     },
-    [onFilesUploaded]
+    []
   );
 
   const [{ isOver, canDrop }, drop] = useDrop(
@@ -34,39 +66,33 @@ export function UploadZone({ onFilesUploaded }: UploadZoneProps) {
   );
 
   useEffect(() => {
-    if (dropRef.current) {
-      drop(dropRef);
-    }
+    if (dropRef.current) drop(dropRef);
   }, [drop]);
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const files = Array.from(e.target.files);
-      setUploadedFiles((prev) => [...prev, ...files]);
-      onFilesUploaded(files);
-    }
+    if (!e.target.files) return;
+    handleFiles(Array.from(e.target.files));
+    e.target.value = "";
   };
 
   const removeFile = (index: number) => {
     setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const isActive = isOver && canDrop;
-
   return (
     <div className="space-y-4">
       <div
         ref={dropRef}
-        className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-          isActive
-            ? "border-blue-500 bg-blue-50"
-            : "border-gray-300 hover:border-gray-400"
+        className={`border-2 border-dashed rounded-lg p-8 text-center ${
+          isOver && canDrop
+            ? "border-blue-500 bg-blue-50 dark:bg-blue-950"
+            : "border-gray-300 dark:border-gray-700"
         }`}
       >
         <Upload className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-        <p className="mb-2">
+        <p>
           Drag and drop files here, or{" "}
-          <label className="text-blue-600 hover:underline cursor-pointer">
+          <label className="text-blue-600 cursor-pointer underline">
             browse
             <input
               type="file"
@@ -76,21 +102,28 @@ export function UploadZone({ onFilesUploaded }: UploadZoneProps) {
             />
           </label>
         </p>
-        <p className="text-sm text-gray-500">
-          Supports all document types
-        </p>
       </div>
 
       {uploadedFiles.length > 0 && (
         <div className="space-y-2">
-          <h3 className="font-medium text-sm">Uploaded Files</h3>
-          {uploadedFiles.map((file, index) => (
+          <h3 className="text-sm font-medium">Uploaded Files</h3>
+
+          {uploadedFiles.map(({ file, status }, index) => (
             <div
-              key={index}
-              className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+              key={`${file.name}-${index}`}
+              className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-900"
             >
               <div className="flex items-center gap-3">
-                <Upload className="w-4 h-4 text-green-600" />
+                {status === "uploading" && (
+                  <Upload className="w-4 h-4 text-gray-400 animate-pulse" />
+                )}
+                {status === "success" && (
+                  <Check className="w-4 h-4 text-green-500" />
+                )}
+                {status === "error" && (
+                  <X className="w-4 h-4 text-red-500" />
+                )}
+
                 <div>
                   <p className="text-sm">{file.name}</p>
                   <p className="text-xs text-gray-500">
@@ -98,11 +131,12 @@ export function UploadZone({ onFilesUploaded }: UploadZoneProps) {
                   </p>
                 </div>
               </div>
+
               <Button
-                variant="ghost"
                 size="sm"
+                variant="ghost"
                 onClick={() => removeFile(index)}
-                className="h-8 w-8 p-0"
+                disabled={status === "uploading"}
               >
                 <X className="w-4 h-4" />
               </Button>

@@ -25,6 +25,8 @@ import {
   AlignJustify,
   Moon,
   Sun,
+  CheckCircle2,
+  AlertTriangle
 } from "lucide-react";
 
 import { toast } from "sonner";
@@ -125,12 +127,49 @@ function AppInner() {
   /**
    * Actions
    */
-  const handleUpload = async (files: File[]) => {
-    for (const file of files) {
-      await uploadDocument(file);
-    }
-    toast.success("Upload complete");
-    await refreshDocuments();
+  // const handleUpload = async (files: File[]) => {
+  //   let successCount = 0;
+  //   let failureCount = 0;
+
+  //   for (const file of files) {
+  //     try {
+  //       await uploadDocument(file);
+  //       successCount++;
+  //     } catch (err: any) {
+  //       failureCount++;
+
+  //       // Optional: surface duplicate vs generic error
+  //       if (err?.status === 409) {
+  //         toast.error(`Duplicate file: ${file.name}`);
+  //       } else {
+  //         toast.error(`Failed to upload ${file.name}`);
+  //       }
+
+  //       // IMPORTANT: continue loop, do NOT throw
+  //     }
+  //   }
+
+  //   if (successCount && !failureCount) {
+  //     toast(
+  //       <div className="flex items-center gap-3">
+  //         <CheckCircle2 className="w-5 h-5 text-green-600" />
+  //         <span>{successCount} file(s) uploaded</span>
+  //       </div>
+  //     );
+  //   } else if (successCount && failureCount) {
+  //     toast(
+  //       <div className="flex items-center gap-3">
+  //         <AlertTriangle className="w-5 h-5 text-yellow-600" />
+  //         <span>
+  //           {successCount} uploaded, {failureCount} failed
+  //         </span>
+  //       </div>
+  //     );
+  //   }
+  // };
+
+  const handleFileUpload = async (file: File) => {
+    await uploadDocument(file); // MUST throw on failure
   };
 
   const handleDelete = (doc: Document) => {
@@ -171,46 +210,46 @@ function AppInner() {
     );
   };
 
-  const handleBulkDelete = async () => {
-    const docsToDelete = Array.from(selection.selected.values());
+  // const handleBulkDelete = async () => {
+  //   const docsToDelete = Array.from(selection.selected.values());
 
-    docsToDelete.forEach((doc) => {
-      // Remove from UI
-      setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+  //   docsToDelete.forEach((doc) => {
+  //     // Remove from UI
+  //     setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
 
-      const timeoutId = setTimeout(async () => {
-        try {
-          await deleteDocument(doc.id);
-          setDeletedQueue((prev) => prev.filter((item) => item.doc.id !== doc.id));
-        } catch {
-          toast.error(`Failed to delete ${doc.name}`);
-          await refreshDocuments();
-        }
-      }, 5000);
+  //     const timeoutId = setTimeout(async () => {
+  //       try {
+  //         await deleteDocument(doc.id);
+  //         setDeletedQueue((prev) => prev.filter((item) => item.doc.id !== doc.id));
+  //       } catch {
+  //         toast.error(`Failed to delete ${doc.name}`);
+  //         await refreshDocuments();
+  //       }
+  //     }, 5000);
 
-      setDeletedQueue((prev) => [...prev, { doc, timeoutId }]);
+  //     setDeletedQueue((prev) => [...prev, { doc, timeoutId }]);
 
-      const toastId = toast(
-        <div className="flex items-center gap-4">
-          <span>{doc.name} deleted</span>
-          <button
-            className="underline text-blue-600"
-            onClick={() => {
-              clearTimeout(timeoutId);
-              setDocuments((prev) => [...prev, doc]);
-              setDeletedQueue((prev) => prev.filter((item) => item.doc.id !== doc.id));
-              toast.dismiss(toastId);
-            }}
-          >
-            Undo
-          </button>
-        </div>,
-        { duration: 5000 }
-      );
-    });
+  //     const toastId = toast(
+  //       <div className="flex items-center gap-4">
+  //         <span>{doc.name} deleted</span>
+  //         <button
+  //           className="underline text-blue-600"
+  //           onClick={() => {
+  //             clearTimeout(timeoutId);
+  //             setDocuments((prev) => [...prev, doc]);
+  //             setDeletedQueue((prev) => prev.filter((item) => item.doc.id !== doc.id));
+  //             toast.dismiss(toastId);
+  //           }}
+  //         >
+  //           Undo
+  //         </button>
+  //       </div>,
+  //       { duration: 5000 }
+  //     );
+  //   });
 
-    selection.clear();
-  };
+  //   selection.clear();
+  // };
 
 
   const handlePreview = (doc: Document) => {
@@ -365,7 +404,8 @@ function AppInner() {
               </TabsContent>
 
               <TabsContent value="upload" className="mt-6">
-                <UploadZone onFilesUploaded={handleUpload} />
+                {/* <UploadZone onFilesUploaded={handleUpload} /> */}
+                <UploadZone onFileUploaded={handleFileUpload} />
               </TabsContent>
             </Tabs>
           </div>

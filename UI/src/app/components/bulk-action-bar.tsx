@@ -20,9 +20,9 @@ export function BulkActionBar({
       <Button size="sm" onClick={onDownload}>
         Download
       </Button>
-      <Button size="sm" variant="destructive" onClick={onDelete}>
+      {/* <Button size="sm" variant="destructive" onClick={onDelete}>
         Delete
-      </Button>
+      </Button> */}
       <Button size="sm" variant="ghost" onClick={onClear}>
         Clear
       </Button>
