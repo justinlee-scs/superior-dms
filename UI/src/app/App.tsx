@@ -355,19 +355,19 @@ function AppInner() {
 
               <BulkActionBar
                 count={selection.selected.size}
+                darkMode={darkMode}
                 onDownload={async () => {
                   for (const doc of selection.selected.values()) {
                     await handleDownload(doc);
                   }
-                }}
+                } }
                 onDelete={async () => {
                   for (const doc of selection.selected.values()) {
                     await handleDelete(doc);
                   }
                   selection.clear();
-                }}
-                onClear={selection.clear}
-              />
+                } }
+                onClear={selection.clear} documents={[]}              />
 
               <TabsContent value="documents" className="mt-6">
                 {viewMode === "compact" ? (
