@@ -5,8 +5,6 @@ from app.api.documents import router as documents_router
 
 import app.db.models
 
-from app.api import auth, users
-
 app = FastAPI(title="DMS API")
 
 app.add_middleware(
@@ -18,8 +16,6 @@ app.add_middleware(
 )
 
 app.include_router(documents_router)
-app.include_router(auth.router)
-app.include_router(users.router)
 
 @app.get("/")
 def root():

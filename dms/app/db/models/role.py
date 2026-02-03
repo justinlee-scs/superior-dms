@@ -2,6 +2,7 @@ import uuid
 from sqlalchemy import Column, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
+import uuid
 
 from app.db.base import Base
 
@@ -13,4 +14,9 @@ class Role(Base):
     name = Column(String, unique=True, nullable=False)
     description = Column(String, nullable=True)
 
-    users = relationship("User", back_populates="role")
+    permissions = relationship(
+        "Permission",
+        secondary="role_permissions",
+        backref="roles",
+        lazy="selectin",
+    )
