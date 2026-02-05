@@ -1,8 +1,17 @@
 from app.db.session import engine, Base
 
 # Force model registration
-import app.db.models
-from app.db.models import Document, DocumentVersion
+from app.db.models.user import User
+from app.db.models.role import Role
+from app.db.models.permission import Permission
+
+from app.db.models.user_role import user_roles
+from app.db.models.role_permission import role_permissions
+
+from app.db.models.user_permission_override import UserPermissionOverride
+
+from app.db.models.document import Document
+from app.db.models.document_version import DocumentVersion
 
 
 def init_db():

@@ -25,8 +25,6 @@ from app.db.repositories.documents import delete_document as delete_document_rep
 from fastapi.responses import StreamingResponse
 import io
 
-from app.deps import require_role
-from app.db.models.user import User
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 

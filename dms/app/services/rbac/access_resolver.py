@@ -11,6 +11,8 @@ def resolve_permissions(db: Session, user: User) -> set[str]:
     overrides = get_user_overrides(db, user)
 
     for key, effect in overrides.items():
+        if effect not in ("ALLOW", "DENY"):
+            continue
         if effect == "DENY":
             permissions.discard(key)
         elif effect == "ALLOW":
