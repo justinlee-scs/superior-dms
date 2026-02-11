@@ -7,6 +7,10 @@ from app.api.auth import router as auth_router
 
 import app.db.models
 
+from fastapi import Depends
+from app.auth.deps import get_current_user
+from app.db.models.user import User
+
 app = FastAPI(title="DMS API")
 
 app.add_middleware(
@@ -18,12 +22,18 @@ app.add_middleware(
 )
 
 app.include_router(documents_router)
+
 app.include_router(access_router)
+
 app.include_router(auth_router)
 
 @app.get("/")
 def root():
     return {"message": "DMS API running"}
+
+@app.get("/documents")
+def list_docs(user: User = Depends(get_current_user)):
+    return {"msg": f"Hello {user.email}"}
 
 @app.get("/health")
 def health():

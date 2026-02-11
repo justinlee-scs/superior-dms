@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "./api";
+import { apiFetch } from "./api";
 
 /**
  * Upload a document file
@@ -7,10 +7,21 @@ export async function uploadDocument(file: File) {
   const form = new FormData();
   form.append("file", file);
 
-  const res = await fetch(`${API_BASE_URL}/documents/upload`, {
+  const token = sessionStorage.getItem("access_token");
+
+  const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/documents/upload`, {
     method: "POST",
+    headers: token
+      ? { Authorization: `Bearer ${token}` }
+      : undefined,
     body: form,
   });
+
+  if (res.status === 401) {
+    sessionStorage.removeItem("access_token");
+    window.location.reload();
+    throw new Error("Unauthorized");
+  }
 
   if (!res.ok) {
     const text = await res.text();
@@ -23,48 +34,29 @@ export async function uploadDocument(file: File) {
 /**
  * Get a single document by ID
  */
-export async function getDocument(id: string) {
-  const res = await fetch(`${API_BASE_URL}/documents/${id}`);
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "Fetch failed");
-  }
-  return res.json();
+export function getDocument(id: string) {
+  return apiFetch(`/documents/${id}`);
 }
 
 /**
- * Get processed output of a document version
+ * Get processed output
  */
-export async function getDocumentOutput(id: string) {
-  const res = await fetch(`${API_BASE_URL}/documents/${id}/output`);
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "Output fetch failed");
-  }
-  return res.json();
+export function getDocumentOutput(id: string) {
+  return apiFetch(`/documents/${id}/output`);
 }
 
 /**
  * Delete a document
  */
-export async function deleteDocument(id: string) {
-  const res = await fetch(`${API_BASE_URL}/documents/${id}`, {
+export function deleteDocument(id: string) {
+  return apiFetch(`/documents/${id}`, {
     method: "DELETE",
   });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "Delete failed");
-  }
 }
 
 /**
  * List all documents
  */
-export async function listDocuments() {
-  const res = await fetch(`${API_BASE_URL}/documents/`); // trailing slash matches FastAPI
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "List failed");
-  }
-  return res.json();
+export function listDocuments() {
+  return apiFetch(`/documents/`);
 }
