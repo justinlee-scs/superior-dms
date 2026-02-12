@@ -18,4 +18,14 @@
 # Python
 __pycache__/
 *.pyc
-.env
+.env.venv/
+
+*.pyo
+*.pyd
+
+.venv/
+venv/
+
+*.egg-info/
+dist/
+build/
