@@ -5,8 +5,14 @@ transformers
 torch
 pillow
 pdf2image
+pytesseract
 
+uvicorn
 fastapi
 sqlalchemy
+
 passlib[argon2]
 python-jose[cryptography]
+pydantic[email]
+
+python-multipart

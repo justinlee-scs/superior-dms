@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.db.session import SessionLocal
 from app.db.models.user import User
 from app.db.models.role import Role
-from app.services.security import hash_password
+from app.auth.jwt import hash_password
 
 
 ADMIN_EMAIL = "justin.lee@scsgroup.ca"

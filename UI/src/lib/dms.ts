@@ -1,19 +1,31 @@
+// File: dms.ts
 import { apiFetch } from "./api";
 
-/**
- * Upload a document file
- */
+export function listDocuments() {
+  return apiFetch("/documents/");
+}
+
+export function getDocument(id: string) {
+  return apiFetch(`/documents/${id}`);
+}
+
+export function getDocumentOutput(id: string) {
+  return apiFetch(`/documents/${id}/output`);
+}
+
+export function deleteDocument(id: string) {
+  return apiFetch(`/documents/${id}`, { method: "DELETE" });
+}
+
 export async function uploadDocument(file: File) {
   const form = new FormData();
   form.append("file", file);
 
-  const token = sessionStorage.getItem("access_token");
-
   const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/documents/upload`, {
     method: "POST",
-    headers: token
-      ? { Authorization: `Bearer ${token}` }
-      : undefined,
+    headers: {
+      Authorization: `Bearer ${sessionStorage.getItem("access_token")}`,
+    },
     body: form,
   });
 
@@ -29,34 +41,4 @@ export async function uploadDocument(file: File) {
   }
 
   return res.json();
-}
-
-/**
- * Get a single document by ID
- */
-export function getDocument(id: string) {
-  return apiFetch(`/documents/${id}`);
-}
-
-/**
- * Get processed output
- */
-export function getDocumentOutput(id: string) {
-  return apiFetch(`/documents/${id}/output`);
-}
-
-/**
- * Delete a document
- */
-export function deleteDocument(id: string) {
-  return apiFetch(`/documents/${id}`, {
-    method: "DELETE",
-  });
-}
-
-/**
- * List all documents
- */
-export function listDocuments() {
-  return apiFetch(`/documents/`);
 }

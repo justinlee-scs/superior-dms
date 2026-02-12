@@ -80,7 +80,7 @@ function AppInner() {
    * Load documents
    */
   const refreshDocuments = async () => {
-    const apiDocs = await listDocuments();
+    const apiDocs = await listDocuments() as any[];
     setDocuments(apiDocs.map(mapApiDocument));
   };
 

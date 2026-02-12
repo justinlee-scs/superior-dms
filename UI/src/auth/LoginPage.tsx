@@ -46,7 +46,15 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
       if (!data?.access_token) {
         throw new Error("No access token returned from server");
       }
+      sessionStorage.setItem("access_token", data.access_token);
 
+      // optional: fetch user info
+      const meRes = await fetch(`${API_BASE_URL}/auth/me`, {
+        headers: { Authorization: `Bearer ${data.access_token}` },
+      });
+      const user = await meRes.json();
+      sessionStorage.setItem("user", JSON.stringify(user));
+      
       // Pass token upward (no storage)
       onSuccess(data.access_token);
     } catch (err: any) {
@@ -93,9 +101,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
               </div>
             </div>
 
-            {error && (
-              <div className="text-sm text-red-600">{error}</div>
-            )}
+            {error && <div className="text-sm text-red-600">{error}</div>}
 
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Signing in…" : "Sign in"}
