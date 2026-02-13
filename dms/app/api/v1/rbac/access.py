@@ -9,7 +9,7 @@ from app.db.models.user import User
 router = APIRouter(prefix="/access", tags=["access"])
 
 
-@router.get("/me")
+@router.get("/me") #is this a duplicate of /me in api/auth.py
 def get_my_access(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

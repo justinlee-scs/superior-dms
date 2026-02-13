@@ -11,7 +11,7 @@ from app.db.session import SessionLocal
 from app.db.models.user import User
 from app.db.models.role import Role
 from app.services.rbac.access_resolver import resolve_permissions
-from app.services.security import hash_password
+from app.auth.jwt import hash_password
 
 # Config
 ADMIN_EMAIL = "justin.lee@scsgroup.ca"

@@ -6,7 +6,11 @@ import io
 import mimetypes
 
 from app.db.session import get_db
-from app.deps import require_role
+from app.deps import require_role #remove?
+
+from app.services.rbac.permission_checker import require_permission
+from app.db.models.user import User
+from app.services.rbac.policy import Permissions
 
 from app.db.repositories.documents import (
     create_document,
@@ -35,7 +39,8 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 async def upload_document(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    _=Depends(require_role("editor")),
+    #_=Depends(require_role("editor")),
+    _=Depends(require_permission(Permissions.DOCUMENT_UPLOAD)),
 ):
     file_bytes = await file.read()
 
@@ -77,7 +82,8 @@ async def upload_document(
 @router.get("/", response_model=list[DocumentResponse])
 def get_documents(
     db: Session = Depends(get_db),
-    _=Depends(require_role("viewer")), #what if we comment out the viewing thing real quick one time
+    #_=Depends(require_role("viewer")), #what if we comment out the viewing thing real quick one time
+    _=Depends(require_permission(Permissions.DOCUMENT_READ)),
 ):
     rows = list_documents(db=db)
 
@@ -99,7 +105,8 @@ def get_documents(
 def get_document(
     document_id: UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_role("viewer")),
+    #_=Depends(require_role("viewer")),
+    _=Depends(require_permission(Permissions.DOCUMENT_READ)),
 ):
     document = get_document_by_id(db=db, document_id=document_id)
     if not document:
@@ -121,7 +128,8 @@ def set_document_type(
     document_id: UUID,
     payload: DocumentTypeUpdate,
     db: Session = Depends(get_db),
-    _=Depends(require_role("editor")),
+    #_=Depends(require_role("editor")),
+    _=Depends(require_permission(Permissions.DOCUMENT_UPDATE)),
 ):
     document = update_document_type(
         db=db,
@@ -147,7 +155,8 @@ def set_document_type(
 def get_document_output(
     document_id: UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_role("viewer")),
+    #_=Depends(require_role("viewer")),
+    _=Depends(require_permission(Permissions.DOCUMENT_READ)),
 ):
     version = get_document_version(db=db, document_id=document_id)
     if not version:
@@ -159,7 +168,8 @@ def get_document_output(
 def delete_document(
     document_id: UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_role("admin")),
+    #_=Depends(require_role("admin")),
+    _=Depends(require_permission(Permissions.DOCUMENT_DELETE)),
 ):
     document = get_document_by_id(db=db, document_id=document_id)
     if not document:
@@ -172,7 +182,8 @@ def delete_document(
 def download_document(
     document_id: UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_role("viewer")),
+    #_=Depends(require_role("viewer")),
+    _=Depends(require_permission(Permissions.DOCUMENT_DOWNLOAD)),
 ):
     version = get_document_version(db=db, document_id=document_id)
     if not version:
@@ -191,7 +202,8 @@ def download_document(
 def preview_document(
     document_id: UUID,
     db: Session = Depends(get_db),
-    _=Depends(require_role("viewer")),
+    #_=Depends(require_role("viewer")),
+    _=Depends(require_permission(Permissions.DOCUMENT_PREVIEW)),
 ):
     version = get_document_version(db=db, document_id=document_id)
     if not version:
