@@ -6,6 +6,11 @@ class Permissions:
     DOCUMENT_PREVIEW = "document.preview"
     DOCUMENT_MOVE = "document.move"
     DOCUMENT_UPDATE = "document.update"
+    DOCUMENT_VERSION_READ = "document_version.read"
+    DOCUMENT_VERSION_CREATE = "document_version.create"
+    DOCUMENT_VERSION_PREVIEW = "document_version.preview"
+    DOCUMENT_VERSION_DOWNLOAD = "document_version.download"
+    DOCUMENT_VERSION_SET_CURRENT = "document_version.set_current"
 
     WORKFLOW_ASSIGN = "workflow.assign"
     WORKFLOW_ADVANCE = "workflow.advance"

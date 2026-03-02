@@ -6,10 +6,8 @@ import io
 import mimetypes
 
 from app.db.session import get_db
-from app.deps import require_role #remove?
 
 from app.services.rbac.permission_checker import require_permission
-from app.db.models.user import User
 from app.services.rbac.policy import Permissions
 
 from app.db.repositories.documents import (
@@ -20,11 +18,18 @@ from app.db.repositories.documents import (
     list_documents,
     update_document_type,
     get_document_version,
+    get_document_version_by_id,
+    list_document_versions,
+    set_current_document_version,
     delete_document as delete_document_repo,
 )
 
 from app.schemas.documents import DocumentResponse, DocumentTypeUpdate
-from app.schemas.document_versions import DocumentVersionResponse
+from app.schemas.document_versions import (
+    DocumentVersionResponse,
+    DocumentVersionListItem,
+    SetCurrentVersionResponse,
+)
 from app.processing.pipeline import process_document
 
 
@@ -64,6 +69,7 @@ async def upload_document(
         db=db,
         document_id=document.id,
         file_bytes=file_bytes,
+        set_as_current=True,
     )
 
     process_document(db=db, version_id=version.id, file_bytes=file_bytes)
@@ -96,8 +102,10 @@ def get_documents(
             confidence=confidence,
             created_at=doc.created_at,
             current_version_id=doc.current_version_id,
+            version_count=version_count or 1,
+            current_version_number=current_version_number or 1,
         )
-        for doc, processing_status, CLASSIFICATION, confidence in rows
+        for doc, processing_status, CLASSIFICATION, confidence, version_count, current_version_number in rows
     ]
 
 
@@ -112,14 +120,25 @@ def get_document(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
+    current_version = get_document_version(db=db, document_id=document_id)
+    versions = list_document_versions(db=db, document_id=document_id)
+    current_version_number = None
+    if current_version:
+        for index, version in enumerate(versions):
+            if version.id == current_version.id:
+                current_version_number = index + 1
+                break
+
     return DocumentResponse(
         id=document.id,
         filename=document.filename,
-        status=document.status,
+        status=current_version.processing_status if current_version else None,
         document_type=document.document_type,
-        confidence=document.confidence,
+        confidence=current_version.confidence if current_version else None,
         created_at=document.created_at,
         current_version_id=document.current_version_id,
+        version_count=len(versions) or 1,
+        current_version_number=current_version_number or 1,
     )
 
 
@@ -208,6 +227,137 @@ def preview_document(
     version = get_document_version(db=db, document_id=document_id)
     if not version:
         raise HTTPException(status_code=404, detail="File not found")
+
+    filename = version.document.filename
+    mime_type, _ = mimetypes.guess_type(filename)
+    mime_type = mime_type or "application/octet-stream"
+
+    return StreamingResponse(
+        io.BytesIO(version.content),
+        media_type=mime_type,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
+@router.get("/{document_id}/versions", response_model=list[DocumentVersionListItem])
+def get_document_versions(
+    document_id: UUID,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permissions.DOCUMENT_VERSION_READ)),
+):
+    document = get_document_by_id(db=db, document_id=document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    versions = list_document_versions(db=db, document_id=document_id)
+    return [
+        DocumentVersionListItem(
+            id=version.id,
+            document_id=version.document_id,
+            version_number=index + 1,
+            is_current=document.current_version_id == version.id,
+            processing_status=version.processing_status,
+            classification=version.classification,
+            confidence=version.confidence,
+            created_at=version.created_at,
+            size_bytes=len(version.content) if version.content else 0,
+        )
+        for index, version in enumerate(versions)
+    ]
+
+
+@router.post(
+    "/{document_id}/versions",
+    response_model=DocumentVersionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_new_document_version(
+    document_id: UUID,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permissions.DOCUMENT_VERSION_CREATE)),
+):
+    document = get_document_by_id(db=db, document_id=document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    file_bytes = await file.read()
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    version = create_document_version(
+        db=db,
+        document_id=document_id,
+        file_bytes=file_bytes,
+        set_as_current=True,
+    )
+
+    # Keep canonical display name aligned with latest uploaded version.
+    if file.filename:
+        document.filename = file.filename
+        db.commit()
+        db.refresh(document)
+
+    process_document(db=db, version_id=version.id, file_bytes=file_bytes)
+    return version
+
+
+@router.post(
+    "/{document_id}/versions/{version_id}/set-current",
+    response_model=SetCurrentVersionResponse,
+)
+def set_current_version(
+    document_id: UUID,
+    version_id: UUID,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permissions.DOCUMENT_VERSION_SET_CURRENT)),
+):
+    document = get_document_by_id(db=db, document_id=document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    version = get_document_version_by_id(db=db, version_id=version_id)
+    if not version or version.document_id != document.id:
+        raise HTTPException(status_code=404, detail="Document version not found")
+
+    set_current_document_version(db=db, document=document, version=version)
+    return SetCurrentVersionResponse(
+        status="ok",
+        document_id=document.id,
+        current_version_id=version.id,
+    )
+
+
+@router.get("/{document_id}/versions/{version_id}/download")
+def download_document_version(
+    document_id: UUID,
+    version_id: UUID,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permissions.DOCUMENT_VERSION_DOWNLOAD)),
+):
+    version = get_document_version_by_id(db=db, version_id=version_id)
+    if not version or version.document_id != document_id:
+        raise HTTPException(status_code=404, detail="File version not found")
+
+    return StreamingResponse(
+        io.BytesIO(version.content),
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{version.document.filename}"'
+        },
+    )
+
+
+@router.get("/{document_id}/versions/{version_id}/preview")
+def preview_document_version(
+    document_id: UUID,
+    version_id: UUID,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permissions.DOCUMENT_VERSION_PREVIEW)),
+):
+    version = get_document_version_by_id(db=db, version_id=version_id)
+    if not version or version.document_id != document_id:
+        raise HTTPException(status_code=404, detail="File version not found")
 
     filename = version.document.filename
     mime_type, _ = mimetypes.guess_type(filename)

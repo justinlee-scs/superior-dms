@@ -30,6 +30,7 @@ interface CompactProjectViewProps {
   onDownload: (doc: Document) => void;
   onDelete: (doc: Document) => void;
   onEditWorkflow: (doc: Document) => void;
+  onOpenVersions?: (doc: Document) => void;
   darkMode?: boolean;
 }
 
@@ -80,6 +81,7 @@ export function CompactProjectView({
   onDownload,
   onDelete,
   onEditWorkflow,
+  onOpenVersions,
   darkMode,
 }: CompactProjectViewProps) {
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(
@@ -291,6 +293,18 @@ export function CompactProjectView({
                               <span className="text-sm truncate block">
                                 {doc.name}
                               </span>
+                              <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
+                                <span className="rounded bg-gray-100 px-1.5 py-0.5">
+                                  v{doc.currentVersionNumber ?? 1}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="text-blue-600 hover:underline"
+                                  onClick={() => onOpenVersions?.(doc)}
+                                >
+                                  {doc.versionCount ?? 1} ver.
+                                </button>
+                              </div>
                             </div>
 
                             <div className="w-28 text-xs text-gray-500">

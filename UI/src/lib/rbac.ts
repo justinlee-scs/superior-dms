@@ -61,6 +61,13 @@ export function createRole(payload: { name: string; description?: string }) {
   });
 }
 
+export function updateRole(roleId: string, payload: { name?: string; description?: string }) {
+  return apiFetch<Role>(`/rbac/roles/${roleId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function setRolePermissions(roleId: string, permissionKeys: string[]) {
   return apiFetch<{ status: string; permission_keys: string[] }>(`/rbac/roles/${roleId}/permissions`, {
     method: "PUT",

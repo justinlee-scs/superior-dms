@@ -21,6 +21,9 @@ export interface Document {
   documentType?: string;
   vendor?: string;
   projectNumber?: string;
+  currentVersionId?: string;
+  currentVersionNumber?: number;
+  versionCount?: number;
 }
 
 interface DocumentCardProps {

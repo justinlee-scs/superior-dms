@@ -15,11 +15,19 @@ ROLE_PERMISSION_MAP = {
         "document.preview",
         "document.move",
         "document.update",
+        "document_version.read",
+        "document_version.create",
+        "document_version.preview",
+        "document_version.download",
+        "document_version.set_current",
     ],
     "viewer": [
         "document.read",
         "document.download",
         "document.preview",
+        "document_version.read",
+        "document_version.preview",
+        "document_version.download",
     ],
 }
 

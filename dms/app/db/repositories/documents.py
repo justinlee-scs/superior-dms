@@ -27,6 +27,7 @@ def create_document_version(
     db: Session,
     document_id: UUID,
     file_bytes: bytes,
+    set_as_current: bool = False,
 ) -> DocumentVersion:
     version = DocumentVersion(
         id=uuid.uuid4(),
@@ -39,7 +40,7 @@ def create_document_version(
     db.refresh(version)
     
     document = db.get(Document, document_id)
-    if document and not document.current_version_id:
+    if document and (set_as_current or not document.current_version_id):
         document.current_version_id = version.id
         db.commit()
         db.refresh(document)
@@ -74,7 +75,7 @@ def update_processing_results(
     version.extracted_text = extracted_text
     version.classification = classification
     version.confidence = confidence
-    version.processing_status = ProcessingStatus.COMPLETED
+    version.processing_status = ProcessingStatus.uploaded
 
     db.commit()
 
@@ -98,7 +99,7 @@ def get_document_by_id(
 
 
 def list_documents(db: Session):
-    return (
+    rows = (
         db.query(
             Document,
             DocumentVersion.processing_status,
@@ -112,6 +113,37 @@ def list_documents(db: Session):
         .order_by(Document.created_at.desc())
         .all()
     )
+
+    document_ids = [doc.id for doc, *_ in rows]
+    if not document_ids:
+        return []
+
+    versions = (
+        db.query(DocumentVersion.document_id, DocumentVersion.id)
+        .filter(DocumentVersion.document_id.in_(document_ids))
+        .order_by(DocumentVersion.document_id.asc(), DocumentVersion.created_at.asc())
+        .all()
+    )
+
+    version_ids_by_document: dict[UUID, list[UUID]] = {}
+    for document_id, version_id in versions:
+        version_ids_by_document.setdefault(document_id, []).append(version_id)
+
+    return [
+        (
+            doc,
+            processing_status,
+            classification,
+            confidence,
+            len(version_ids_by_document.get(doc.id, [])),
+            (
+                version_ids_by_document.get(doc.id, []).index(doc.current_version_id) + 1
+                if doc.current_version_id and doc.current_version_id in version_ids_by_document.get(doc.id, [])
+                else None
+            ),
+        )
+        for doc, processing_status, classification, confidence in rows
+    ]
 
 
 def update_document_type(
@@ -141,6 +173,35 @@ def get_document_version(
         return None
 
     return db.get(DocumentVersion, document.current_version_id)
+
+
+def get_document_version_by_id(
+    db: Session,
+    version_id: UUID,
+) -> DocumentVersion | None:
+    return db.get(DocumentVersion, version_id)
+
+
+def list_document_versions(
+    db: Session,
+    document_id: UUID,
+) -> list[DocumentVersion]:
+    return (
+        db.query(DocumentVersion)
+        .filter(DocumentVersion.document_id == document_id)
+        .order_by(DocumentVersion.created_at.asc())
+        .all()
+    )
+
+
+def set_current_document_version(
+    db: Session,
+    document: Document,
+    version: DocumentVersion,
+) -> None:
+    document.current_version_id = version.id
+    db.commit()
+    db.refresh(document)
 
 
 def delete_document(

@@ -15,7 +15,7 @@ from app.db.repositories.roles import (
 )
 from app.db.repositories.permissions import get_permission_by_key
 from app.db.models.permission import Permission
-from app.schemas.role import RoleWithPermissions, RoleResponse, RoleCreate, RolePermissionSet
+from app.schemas.role import RoleWithPermissions, RoleResponse, RoleCreate, RolePermissionSet, RoleUpdate
 from app.services.rbac.permission_checker import require_permission
 from app.services.rbac.policy import Permissions
 
@@ -39,6 +39,29 @@ def create_role(payload: RoleCreate, db: Session = Depends(get_db)):
 
     role = Role(id=uuid.uuid4(), name=payload.name, description=payload.description)
     db.add(role)
+    db.commit()
+    db.refresh(role)
+    return role
+
+
+@router.patch("/{role_id}", response_model=RoleResponse)
+def update_role(role_id: UUID, payload: RoleUpdate, db: Session = Depends(get_db)):
+    role = db.get(Role, role_id)
+    if not role:
+        raise HTTPException(404, "Role not found")
+
+    if payload.name is not None:
+        name = payload.name.strip()
+        if not name:
+            raise HTTPException(400, "Role name cannot be empty")
+        existing = db.query(Role).filter(Role.name == name, Role.id != role.id).one_or_none()
+        if existing:
+            raise HTTPException(409, "Role name already exists")
+        role.name = name
+
+    if payload.description is not None:
+        role.description = payload.description.strip() or None
+
     db.commit()
     db.refresh(role)
     return role

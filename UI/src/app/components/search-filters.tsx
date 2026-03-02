@@ -101,7 +101,7 @@ export function SearchFilters({
       </div>
 
       {/* Filter by Tags */}
-      <div className="space-y-2">
+      <div className={`space-y-3 rounded-xl border p-4 ${darkMode ? "border-gray-700 bg-gray-800/70" : "border-gray-200 bg-white"}`}>
         <Label className={`flex items-center gap-2 ${darkMode ? "text-gray-200" : ""}`}>
           <Tag className="w-4 h-4" />
           Tags
@@ -113,7 +113,13 @@ export function SearchFilters({
               <Badge
                 key={tag}
                 variant={isSelected ? "default" : "outline"}
-                className={`cursor-pointer ${darkMode && !isSelected ? "border-gray-600 text-gray-300 hover:bg-gray-800" : ""}`}
+                className={`cursor-pointer rounded-full px-3 py-1 text-xs ${
+                  isSelected
+                    ? "bg-[#020825] text-white hover:bg-[#1a2248]"
+                    : darkMode
+                      ? "border-gray-600 text-gray-300 hover:bg-gray-700"
+                      : "border-gray-300 text-gray-700 hover:bg-gray-100"
+                }`}
                 onClick={() => toggleTag(tag)}
               >
                 {tag}

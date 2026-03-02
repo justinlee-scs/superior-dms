@@ -25,3 +25,8 @@ class RoleCreate(BaseModel):
 
 class RolePermissionSet(BaseModel):
     permission_keys: list[str]
+
+
+class RoleUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None

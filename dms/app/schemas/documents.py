@@ -15,6 +15,8 @@ class DocumentResponse(BaseModel):
     confidence: float | None = None
     created_at: datetime
     current_version_id: UUID | None = None
+    version_count: int = 1
+    current_version_number: int | None = 1
 
     model_config = {
         "from_attributes": True

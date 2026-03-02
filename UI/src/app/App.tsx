@@ -9,6 +9,8 @@ import { SearchFilters, type FilterState } from "@/app/components/search-filters
 import { UploadZone } from "@/app/components/upload-zone";
 import { WorkflowEditor } from "@/app/components/workflow-editor";
 import { BulkActionBar } from "@/app/components/bulk-action-bar";
+import { VersionHistoryModal } from "@/app/components/version-history-modal";
+import { ProfileDialog } from "@/app/components/profile-dialog";
 
 import { SelectionProvider, useSelection } from "@/app/selection/selection-context";
 
@@ -27,7 +29,8 @@ import {
   Sun,
   CheckCircle2,
   AlertTriangle,
-  Shield
+  Shield,
+  UserCircle2
 } from "lucide-react";
 
 import { toast } from "sonner";
@@ -35,7 +38,6 @@ import { listDocuments, uploadDocument, deleteDocument } from "@/lib/dms";
 import { API_BASE_URL } from "@/lib/api";
 import { getMyAccess } from "@/lib/rbac";
 import RolesPage from "@/admin/roles-page";
-import UsersPage from "@/admin/users-page";
 
 /**
  * Maps backend document → UI Document
@@ -54,6 +56,9 @@ function mapApiDocument(doc: any): Document {
     documentType: doc.document_type ?? "Document",
     vendor: doc.vendor,
     projectNumber: doc.project_number,
+    currentVersionId: doc.current_version_id,
+    currentVersionNumber: doc.current_version_number ?? 1,
+    versionCount: doc.version_count ?? 1,
   };
 }
 
@@ -78,7 +83,9 @@ function AppInner() {
     useState<"compact" | "grid" | "list" | "grouped">("compact");
   const [darkMode, setDarkMode] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [adminView, setAdminView] = useState<"users" | "roles">("users");
+  const [versionModalDoc, setVersionModalDoc] = useState<Document | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"documents" | "upload" | "admin">("documents");
 
   const selection = useSelection();
 
@@ -87,7 +94,8 @@ function AppInner() {
    */
   const refreshDocuments = async () => {
     const apiDocs = await listDocuments() as any[];
-    setDocuments(apiDocs.map(mapApiDocument));
+    const baseDocs = apiDocs.map(mapApiDocument);
+    setDocuments(baseDocs);
   };
 
   useEffect(() => {
@@ -103,7 +111,14 @@ function AppInner() {
         const hasAdminRoles = access.permissions.includes("admin.roles");
         setIsAdmin(hasAdminUsers || hasAdminRoles);
       })
-      .catch(() => setIsAdmin(false));
+      .catch(() => {
+        setIsAdmin(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    refreshDocuments().catch(() => toast.error("Failed to load documents"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /**
@@ -269,14 +284,24 @@ function AppInner() {
 
 
   const handlePreview = (doc: Document) => {
-    window.open(
-      `${API_BASE_URL}/documents/${doc.id}/preview`,
-      "_blank"
-    );
+    const token = sessionStorage.getItem("access_token");
+    fetch(`${API_BASE_URL}/documents/${doc.id}/preview`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Preview failed");
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        window.open(url, "_blank");
+      })
+      .catch(() => toast.error("Preview failed"));
   };
 
   const handleDownload = async (doc: Document) => {
-    const res = await fetch(`${API_BASE_URL}/documents/${doc.id}/download`);
+    const token = sessionStorage.getItem("access_token");
+    const res = await fetch(`${API_BASE_URL}/documents/${doc.id}/download`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
     if (!res.ok) {
       toast.error("Download failed");
       return;
@@ -324,6 +349,16 @@ function AppInner() {
               </div>
 
               <div className="flex gap-2">
+                {isAdmin && (
+                  <Button variant="outline" onClick={() => setActiveTab("admin")}>
+                    <Shield className="mr-2 h-4 w-4" />
+                    Admin
+                  </Button>
+                )}
+                <Button variant="outline" onClick={() => setProfileOpen(true)}>
+                  <UserCircle2 className="mr-2 h-4 w-4" />
+                  Profile
+                </Button>
                 <Button
                   variant={viewMode === "compact" ? "default" : "outline"}
                   onClick={() => setViewMode("compact")}
@@ -357,7 +392,10 @@ function AppInner() {
 
           {/* Content */}
           <div className="flex-1 overflow-auto p-6 pb-24">
-            <Tabs defaultValue="documents">
+            <Tabs
+              value={activeTab}
+              onValueChange={(value) => setActiveTab(value as "documents" | "upload" | "admin")}
+            >
               <TabsList>
                 <TabsTrigger value="documents">
                   <FileText className="w-4 h-4 mr-2" />
@@ -367,12 +405,6 @@ function AppInner() {
                   <UploadIcon className="w-4 h-4 mr-2" />
                   Upload
                 </TabsTrigger>
-                {isAdmin && (
-                  <TabsTrigger value="admin">
-                    <Shield className="w-4 h-4 mr-2" />
-                    Admin
-                  </TabsTrigger>
-                )}
               </TabsList>
 
               <BulkActionBar
@@ -399,6 +431,7 @@ function AppInner() {
                     onDownload={handleDownload}
                     onDelete={handleDelete}
                     onEditWorkflow={handleEditWorkflow}
+                    onOpenVersions={(doc) => setVersionModalDoc(doc)}
                     darkMode={darkMode}
                   />
                 ) : viewMode === "grouped" ? (
@@ -435,21 +468,7 @@ function AppInner() {
 
               {isAdmin && (
                 <TabsContent value="admin" className="mt-6">
-                  <div className="flex gap-2">
-                    <Button
-                      variant={adminView === "users" ? "default" : "outline"}
-                      onClick={() => setAdminView("users")}
-                    >
-                      Users
-                    </Button>
-                    <Button
-                      variant={adminView === "roles" ? "default" : "outline"}
-                      onClick={() => setAdminView("roles")}
-                    >
-                      Roles
-                    </Button>
-                  </div>
-                  {adminView === "users" ? <UsersPage /> : <RolesPage />}
+                  <RolesPage darkMode={darkMode} onBackToDocuments={() => setActiveTab("documents")} />
                 </TabsContent>
               )}
             </Tabs>
@@ -463,6 +482,15 @@ function AppInner() {
             onOpenChange={setWorkflowEditorOpen}
             onSave={() => { }}
           />
+
+          <VersionHistoryModal
+            open={versionModalDoc !== null}
+            document={versionModalDoc}
+            onClose={() => setVersionModalDoc(null)}
+            onUpdated={refreshDocuments}
+          />
+
+          <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
 
           <Toaster />
         </div>
