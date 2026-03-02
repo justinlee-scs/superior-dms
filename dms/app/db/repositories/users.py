@@ -10,13 +10,15 @@ from app.db.models.user_permission_override import (
 
 
 def assign_role(db: Session, user: User, role: Role) -> None:
-    user.roles.append(role)
-    db.commit()
+    if role not in user.roles:
+        user.roles.append(role)
+        db.commit()
 
 
 def remove_role(db: Session, user: User, role: Role) -> None:
-    user.roles.remove(role)
-    db.commit()
+    if role in user.roles:
+        user.roles.remove(role)
+        db.commit()
 
 
 def set_permission_override(
@@ -40,5 +42,42 @@ def set_permission_override(
             effect=effect,
         )
         db.add(override)
+
+    db.commit()
+
+
+def set_roles(db: Session, user: User, roles: list[Role]) -> None:
+    user.roles = roles
+    db.commit()
+
+
+def clear_permission_overrides(db: Session, user: User) -> None:
+    (
+        db.query(UserPermissionOverride)
+        .filter(UserPermissionOverride.user_id == user.id)
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+
+
+def set_permission_overrides(
+    db: Session,
+    user: User,
+    overrides: list[tuple[Permission, PermissionEffect]],
+) -> None:
+    (
+        db.query(UserPermissionOverride)
+        .filter(UserPermissionOverride.user_id == user.id)
+        .delete(synchronize_session=False)
+    )
+
+    for permission, effect in overrides:
+        db.add(
+            UserPermissionOverride(
+                user_id=user.id,
+                permission_id=permission.id,
+                effect=effect,
+            )
+        )
 
     db.commit()

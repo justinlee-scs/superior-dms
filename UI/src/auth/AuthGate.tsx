@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import LoginPage from "./LoginPage";
 import App from "../app/App";
 
@@ -9,6 +9,12 @@ import App from "../app/App";
  */
 export default function AuthGate() {
   const [token, setToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    sessionStorage.removeItem("access_token");
+    sessionStorage.removeItem("user");
+    setToken(null);
+  }, []);
 
   if (!token) {
     return (

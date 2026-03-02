@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.documents import router as documents_router
-from app.api.v1.rbac.access import router as access_router
+from app.api.v1.rbac import api_router as rbac_router
 from app.api.auth import router as auth_router
 
 import app.db.models
@@ -22,10 +22,8 @@ app.add_middleware(
 )
 
 app.include_router(documents_router)
-
-app.include_router(access_router)
-
 app.include_router(auth_router)
+app.include_router(rbac_router, prefix="/rbac")
 
 @app.get("/")
 def root():

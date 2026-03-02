@@ -1,10 +1,10 @@
-import uuid
 from sqlalchemy import Column, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import uuid
 
 from app.db.base import Base
+from app.db.models.role_hierarchy import role_hierarchy
 
 
 class Role(Base):
@@ -28,3 +28,18 @@ class Role(Base):
         lazy="selectin",
     )
 
+    managed_roles = relationship(
+        "Role",
+        secondary=role_hierarchy,
+        primaryjoin=id == role_hierarchy.c.manager_role_id,
+        secondaryjoin=id == role_hierarchy.c.managed_role_id,
+        lazy="selectin",
+    )
+
+    manager_roles = relationship(
+        "Role",
+        secondary=role_hierarchy,
+        primaryjoin=id == role_hierarchy.c.managed_role_id,
+        secondaryjoin=id == role_hierarchy.c.manager_role_id,
+        lazy="selectin",
+    )

@@ -16,3 +16,12 @@ class RoleResponse(BaseModel):
 
 class RoleWithPermissions(RoleResponse):
     permissions: list[PermissionResponse]
+
+
+class RoleCreate(BaseModel):
+    name: str
+    description: str | None = None
+
+
+class RolePermissionSet(BaseModel):
+    permission_keys: list[str]

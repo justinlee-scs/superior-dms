@@ -26,12 +26,16 @@ import {
   Moon,
   Sun,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  Shield
 } from "lucide-react";
 
 import { toast } from "sonner";
 import { listDocuments, uploadDocument, deleteDocument } from "@/lib/dms";
 import { API_BASE_URL } from "@/lib/api";
+import { getMyAccess } from "@/lib/rbac";
+import RolesPage from "@/admin/roles-page";
+import UsersPage from "@/admin/users-page";
 
 /**
  * Maps backend document → UI Document
@@ -73,6 +77,8 @@ function AppInner() {
   const [viewMode, setViewMode] =
     useState<"compact" | "grid" | "list" | "grouped">("compact");
   const [darkMode, setDarkMode] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminView, setAdminView] = useState<"users" | "roles">("users");
 
   const selection = useSelection();
 
@@ -88,6 +94,16 @@ function AppInner() {
     refreshDocuments().catch(() =>
       toast.error("Failed to load documents")
     );
+  }, []);
+
+  useEffect(() => {
+    getMyAccess()
+      .then((access) => {
+        const hasAdminUsers = access.permissions.includes("admin.users");
+        const hasAdminRoles = access.permissions.includes("admin.roles");
+        setIsAdmin(hasAdminUsers || hasAdminRoles);
+      })
+      .catch(() => setIsAdmin(false));
   }, []);
 
   /**
@@ -351,6 +367,12 @@ function AppInner() {
                   <UploadIcon className="w-4 h-4 mr-2" />
                   Upload
                 </TabsTrigger>
+                {isAdmin && (
+                  <TabsTrigger value="admin">
+                    <Shield className="w-4 h-4 mr-2" />
+                    Admin
+                  </TabsTrigger>
+                )}
               </TabsList>
 
               <BulkActionBar
@@ -410,6 +432,26 @@ function AppInner() {
                 darkMode={darkMode}
                  />
               </TabsContent>
+
+              {isAdmin && (
+                <TabsContent value="admin" className="mt-6">
+                  <div className="flex gap-2">
+                    <Button
+                      variant={adminView === "users" ? "default" : "outline"}
+                      onClick={() => setAdminView("users")}
+                    >
+                      Users
+                    </Button>
+                    <Button
+                      variant={adminView === "roles" ? "default" : "outline"}
+                      onClick={() => setAdminView("roles")}
+                    >
+                      Roles
+                    </Button>
+                  </div>
+                  {adminView === "users" ? <UsersPage /> : <RolesPage />}
+                </TabsContent>
+              )}
             </Tabs>
           </div>
 

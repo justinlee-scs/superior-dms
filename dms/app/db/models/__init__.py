@@ -10,6 +10,7 @@ from app.db.models.user import User
 # join tables (must be imported)
 from app.db.models.user_role import user_roles
 from app.db.models.role_permission import role_permissions
+from app.db.models.role_hierarchy import role_hierarchy
 
 from app.db.models.user_permission_override import UserPermissionOverride
 

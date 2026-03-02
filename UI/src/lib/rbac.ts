@@ -1,0 +1,138 @@
+import { apiFetch } from "@/lib/api";
+
+export type PermissionEffect = "ALLOW" | "DENY";
+
+export type Permission = {
+  id: string;
+  key: string;
+  description: string | null;
+};
+
+export type Role = {
+  id: string;
+  name: string;
+  description: string | null;
+};
+
+export type RoleWithPermissions = Role & {
+  permissions: Permission[];
+};
+
+export type User = {
+  id: string;
+  username: string;
+  email: string;
+  is_active: boolean;
+  roles: Role[];
+};
+
+export type UserPermissionsResponse = {
+  user_id: string;
+  default_permissions: string[];
+  effective_permissions: string[];
+  overrides: Record<string, PermissionEffect>;
+};
+
+export type AccessMeResponse = {
+  user: {
+    id: string;
+    email: string;
+  };
+  roles: Array<{ id: string; name: string }>;
+  permissions: string[];
+};
+
+export function getMyAccess() {
+  return apiFetch<AccessMeResponse>("/rbac/access/me");
+}
+
+export function listRoles() {
+  return apiFetch<Role[]>("/rbac/roles/");
+}
+
+export function getRole(roleId: string) {
+  return apiFetch<RoleWithPermissions>(`/rbac/roles/${roleId}`);
+}
+
+export function createRole(payload: { name: string; description?: string }) {
+  return apiFetch<Role>("/rbac/roles/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function setRolePermissions(roleId: string, permissionKeys: string[]) {
+  return apiFetch<{ status: string; permission_keys: string[] }>(`/rbac/roles/${roleId}/permissions`, {
+    method: "PUT",
+    body: JSON.stringify({ permission_keys: permissionKeys }),
+  });
+}
+
+export function copyRolePermissions(roleId: string, sourceRoleId: string) {
+  return apiFetch<{ status: string; permission_keys: string[] }>(
+    `/rbac/roles/${roleId}/copy-from/${sourceRoleId}`,
+    { method: "POST" },
+  );
+}
+
+export function listManagedRoles(roleId: string) {
+  return apiFetch<Role[]>(`/rbac/roles/${roleId}/managed-roles`);
+}
+
+export function addManagedRole(roleId: string, managedRoleId: string) {
+  return apiFetch<{ status: string }>(`/rbac/roles/${roleId}/managed-roles/${managedRoleId}`, {
+    method: "POST",
+  });
+}
+
+export function removeManagedRole(roleId: string, managedRoleId: string) {
+  return apiFetch<{ status: string }>(`/rbac/roles/${roleId}/managed-roles/${managedRoleId}`, {
+    method: "DELETE",
+  });
+}
+
+export function listPermissions() {
+  return apiFetch<Permission[]>("/rbac/permissions/");
+}
+
+export function listUsers() {
+  return apiFetch<User[]>("/rbac/users/");
+}
+
+export function createUser(payload: { username: string; email: string; password: string; is_active?: boolean }) {
+  return apiFetch<User>("/rbac/users/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function setUserRoles(userId: string, roleIds: string[]) {
+  return apiFetch<{ status: string; role_ids: string[] }>(`/rbac/users/${userId}/roles`, {
+    method: "PUT",
+    body: JSON.stringify({ role_ids: roleIds }),
+  });
+}
+
+export function getUserPermissions(userId: string) {
+  return apiFetch<UserPermissionsResponse>(`/rbac/users/${userId}/permissions`);
+}
+
+export function getUserDefaultPermissions(userId: string) {
+  return apiFetch<{ user_id: string; permissions: string[] }>(`/rbac/users/${userId}/permissions/default`);
+}
+
+export function resetUserPermissionsToDefault(userId: string) {
+  return apiFetch<{ status: string; permissions: string[] }>(`/rbac/users/${userId}/permissions/reset-default`, {
+    method: "POST",
+  });
+}
+
+export function setUserOverrides(
+  userId: string,
+  overrides: Array<{ permission_key: string; effect: PermissionEffect }>,
+) {
+  return apiFetch<{ status: string }>(`/rbac/users/${userId}/overrides`, {
+    method: "PUT",
+    body: JSON.stringify({ overrides }),
+  });
+}

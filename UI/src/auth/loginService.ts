@@ -22,7 +22,7 @@ export async function loginRequest(email: string, password: string): Promise<{ a
   const { access_token } = await res.json();
 
   // get user info
-  const userRes = await fetch(`${API_BASE_URL}/access/me`, {
+  const userRes = await fetch(`${API_BASE_URL}/rbac/access/me`, {
     headers: { Authorization: `Bearer ${access_token}` },
   });
 

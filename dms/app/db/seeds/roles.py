@@ -7,6 +7,7 @@ from app.db.models.permission import Permission
 
 ROLE_PERMISSION_MAP = {
     "admin": "ALL",
+    "unassigned": [],
     "editor": [
         "document.read",
         "document.upload",
