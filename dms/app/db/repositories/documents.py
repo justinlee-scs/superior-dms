@@ -81,6 +81,10 @@ def update_processing_results(
     classification,
     confidence: float,
     tags: list[str] | None = None,
+    ocr_raw_confidence: float | None = None,
+    ocr_engine: str | None = None,
+    ocr_model_version: str | None = None,
+    ocr_latency_ms: int | None = None,
 ):
     version = db.get(DocumentVersion, version_id)
 
@@ -91,6 +95,10 @@ def update_processing_results(
     version.classification = classification
     version.confidence = confidence
     version.tags = tags or []
+    version.ocr_raw_confidence = ocr_raw_confidence
+    version.ocr_engine = ocr_engine
+    version.ocr_model_version = ocr_model_version
+    version.ocr_latency_ms = ocr_latency_ms
     version.processing_status = ProcessingStatus.uploaded
 
     db.commit()

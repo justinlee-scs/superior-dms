@@ -9,7 +9,7 @@ from app.services.extraction.icr import run_icr_model
 from app.services.extraction.classify import classify_document
 from app.services.extraction.tags import derive_tags
 
-from app.services.extraction.ocr_sync import extract_text_from_file
+from app.services.extraction.ocr_sync import extract_text_with_metadata
 
 def process_document(
     db: Session,
@@ -28,10 +28,12 @@ def process_document(
         return
 
     try:
-        text, confidence = extract_text_from_file(
-        file_bytes=file_bytes,
-        filename=version.document.filename,
-)
+        extraction = extract_text_with_metadata(
+            file_bytes=file_bytes,
+            filename=version.document.filename,
+        )
+        text = extraction.text
+        confidence = extraction.confidence
 
         classification = classify_document(text)
         existing_tags = list_existing_tags(db)
@@ -46,6 +48,10 @@ def process_document(
         version.extracted_text = text
         version.classification = classification
         version.confidence = confidence
+        version.ocr_raw_confidence = extraction.raw_confidence
+        version.ocr_engine = extraction.engine
+        version.ocr_model_version = extraction.model_version
+        version.ocr_latency_ms = extraction.latency_ms
         version.tags = tags
         version.processing_status = ProcessingStatus.uploaded
 

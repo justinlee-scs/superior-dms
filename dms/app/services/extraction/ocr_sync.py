@@ -1,11 +1,79 @@
-from typing import Tuple
+import io
+import logging
+import os
+from functools import lru_cache
 from pathlib import Path
+from typing import Tuple
+
+from PIL import Image
+
+from app.services.extraction.handwriting import is_handwritten
+from app.services.extraction.icr import run_icr_model
+from app.services.extraction.office import OFFICE_EXTENSIONS
+from app.services.extraction.providers import ExtractionResult, OCRProvider
 from app.services.extraction.pdf import pdf_to_images
-from app.services.extraction.ocr import run_tesseract
-from app.services.extraction.office import (
-    OFFICE_EXTENSIONS,
-    extract_text_from_office_file,
-)
+from app.services.extraction.tesseract_provider import TesseractProvider
+from app.services.extraction.trocr_provider import TrOCRProvider
+
+logger = logging.getLogger(__name__)
+
+SUPPORTED_IMAGE_EXTENSIONS = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".tif",
+    ".tiff",
+    ".bmp",
+    ".gif",
+    ".webp",
+}
+
+
+def validate_input_file(file_bytes: bytes, filename: str) -> str:
+    if not file_bytes:
+        raise ValueError("Input file is empty.")
+
+    suffix = Path(filename or "").suffix.lower()
+    if not suffix:
+        return suffix
+
+    supported_extensions = OFFICE_EXTENSIONS | SUPPORTED_IMAGE_EXTENSIONS | {".pdf"}
+    if suffix not in supported_extensions:
+        raise ValueError(f"Unsupported file type '{suffix}'.")
+
+    return suffix
+
+
+def _to_images(file_bytes: bytes, suffix: str) -> list[Image.Image]:
+    if suffix == ".pdf":
+        return pdf_to_images(file_bytes)
+    return [Image.open(io.BytesIO(file_bytes))]
+
+
+@lru_cache(maxsize=1)
+def _build_ocr_provider() -> OCRProvider:
+    provider = os.getenv("OCR_PROVIDER", "tesseract").strip().lower()
+
+    if provider == "trocr":
+        model = os.getenv("TROCR_MODEL_PATH", "microsoft/trocr-base-handwritten")
+        return TrOCRProvider(model_name_or_path=model)
+
+    if provider != "tesseract":
+        raise ValueError(f"Unsupported OCR_PROVIDER '{provider}'.")
+
+    return TesseractProvider()
+
+
+def get_ocr_provider() -> OCRProvider:
+    return _build_ocr_provider()
+
+
+def get_ocr_provider_safe() -> OCRProvider:
+    try:
+        return _build_ocr_provider()
+    except Exception as exc:
+        logger.warning("OCR provider init failed, falling back to tesseract: %s", exc)
+        return TesseractProvider()
 
 
 def extract_text_from_file(
@@ -17,20 +85,61 @@ def extract_text_from_file(
     Returns (text, confidence).
     """
 
-    suffix = Path(filename or "").suffix.lower()
+    result = extract_text_with_metadata(file_bytes=file_bytes, filename=filename)
+    return result.text or "", result.confidence or 0.0
 
+
+def extract_text_with_metadata(
+    file_bytes: bytes,
+    filename: str,
+) -> ExtractionResult:
+    return extract_with_fallback(file_bytes=file_bytes, filename=filename)
+
+
+def extract_with_fallback(
+    file_bytes: bytes,
+    filename: str,
+    *,
+    min_confidence: float | None = None,
+) -> ExtractionResult:
+    suffix = validate_input_file(file_bytes=file_bytes, filename=filename)
+    threshold = min_confidence if min_confidence is not None else float(
+        os.getenv("OCR_MIN_CONFIDENCE", "0.60")
+    )
+
+    primary = get_ocr_provider_safe()
+    try:
+        result = primary.extract(file_bytes=file_bytes, filename=filename)
+    except Exception as exc:
+        logger.warning("Primary OCR provider failed: %s", exc)
+        result = TesseractProvider().extract(file_bytes=file_bytes, filename=filename)
+        result.metadata["fallback_reason"] = "primary_provider_error"
+        return result
+
+    if result.confidence >= threshold:
+        return result
+
+    # For low-confidence OCR, only image/pdf files can use ICR fallback.
     if suffix in OFFICE_EXTENSIONS:
-        text = extract_text_from_office_file(file_bytes, filename)
-        return text or "", 1.0
+        return result
 
-    if suffix == ".pdf":
-        images = pdf_to_images(file_bytes)
-    else:
-        from PIL import Image
-        import io
+    images = _to_images(file_bytes=file_bytes, suffix=suffix)
+    if is_handwritten(images):
+        icr_text, icr_confidence = run_icr_model(images)
+        if icr_confidence >= result.confidence:
+            return ExtractionResult(
+                text=icr_text or "",
+                confidence=icr_confidence or 0.0,
+                raw_confidence=icr_confidence or 0.0,
+                engine=f"{result.engine}+icr_fallback",
+                model_version=result.model_version,
+                latency_ms=result.latency_ms,
+                metadata={**result.metadata, "fallback_reason": "low_confidence_handwriting"},
+            )
 
-        images = [Image.open(io.BytesIO(file_bytes))]
+    if result.engine == "tesseract":
+        return result
 
-    text, confidence = run_tesseract(images)
-
-    return text or "", confidence or 0.0
+    fallback = TesseractProvider().extract(file_bytes=file_bytes, filename=filename)
+    fallback.metadata["fallback_reason"] = "low_confidence"
+    return fallback

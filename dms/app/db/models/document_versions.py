@@ -33,6 +33,10 @@ class DocumentVersion(Base):
     )
 
     confidence = Column(Float, nullable=True)
+    ocr_raw_confidence = Column(Float, nullable=True)
+    ocr_engine = Column(sa.String(64), nullable=True)
+    ocr_model_version = Column(sa.String(128), nullable=True)
+    ocr_latency_ms = Column(sa.Integer, nullable=True)
 
     tags = Column(sa.JSON, nullable=False, default=list)
     

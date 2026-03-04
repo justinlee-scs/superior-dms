@@ -1,3 +1,5 @@
+import time
+
 from sqlalchemy.orm import Session
 
 from app.db.repositories.documents import (
@@ -21,6 +23,7 @@ def process_document_version(db: Session, version_id: str) -> None:
     """
 
     try:
+        start = time.perf_counter()
         version = db.get(DocumentVersion, version_id)
         if not version:
             return
@@ -37,8 +40,13 @@ def process_document_version(db: Session, version_id: str) -> None:
         # 2. Fallback to ICR if OCR confidence is low
         if not ocr_text or ocr_confidence < 0.6:
             text, confidence = run_icr_model(images)
+            ocr_engine = "tesseract+icr_fallback"
+            ocr_model_version = "pytesseract+placeholder_icr"
         else:
             text, confidence = ocr_text, ocr_confidence
+            ocr_engine = "tesseract"
+            ocr_model_version = "pytesseract"
+        ocr_latency_ms = int((time.perf_counter() - start) * 1000)
 
         # 3. Classify extracted text
         classification = classify_document(text) or DocumentClass.UNKNOWN
@@ -59,6 +67,10 @@ def process_document_version(db: Session, version_id: str) -> None:
             classification=classification,
             confidence=confidence,
             tags=tags,
+            ocr_raw_confidence=ocr_confidence,
+            ocr_engine=ocr_engine,
+            ocr_model_version=ocr_model_version,
+            ocr_latency_ms=ocr_latency_ms,
         )
 
     except Exception as exc:

@@ -53,3 +53,35 @@ def create_tables():
                 """
             )
         )
+        conn.execute(
+            text(
+                """
+                ALTER TABLE document_versions
+                ADD COLUMN IF NOT EXISTS ocr_raw_confidence DOUBLE PRECISION
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                ALTER TABLE document_versions
+                ADD COLUMN IF NOT EXISTS ocr_engine VARCHAR(64)
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                ALTER TABLE document_versions
+                ADD COLUMN IF NOT EXISTS ocr_model_version VARCHAR(128)
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                ALTER TABLE document_versions
+                ADD COLUMN IF NOT EXISTS ocr_latency_ms INTEGER
+                """
+            )
+        )

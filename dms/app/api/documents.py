@@ -327,6 +327,8 @@ def get_document_versions(
             processing_status=version.processing_status,
             classification=version.classification,
             confidence=version.confidence,
+            ocr_engine=version.ocr_engine,
+            ocr_model_version=version.ocr_model_version,
             tags=version.tags or [],
             created_at=version.created_at,
             size_bytes=len(version.content) if version.content else 0,

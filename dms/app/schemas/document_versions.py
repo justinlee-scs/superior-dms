@@ -11,6 +11,10 @@ class DocumentVersionResponse(BaseModel):
     extracted_text: str | None
     classification: str | None
     confidence: float | None
+    ocr_raw_confidence: float | None = None
+    ocr_engine: str | None = None
+    ocr_model_version: str | None = None
+    ocr_latency_ms: int | None = None
     tags: list[str] = Field(default_factory=list)
     created_at: datetime
 
@@ -26,6 +30,8 @@ class DocumentVersionListItem(BaseModel):
     processing_status: ProcessingStatus
     classification: str | None
     confidence: float | None
+    ocr_engine: str | None = None
+    ocr_model_version: str | None = None
     tags: list[str] = Field(default_factory=list)
     created_at: datetime
     size_bytes: int
