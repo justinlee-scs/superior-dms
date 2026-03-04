@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.api.documents import router as documents_router
 from app.api.v1.rbac import api_router as rbac_router
@@ -37,10 +38,18 @@ def list_docs(user: User = Depends(get_current_user)):
 def health():
     return {"status": "ok"}
 
-allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-
 from app.db.session import Base, engine
 
 @app.on_event("startup")
 def create_tables():
     Base.metadata.create_all(bind=engine)
+    # Lightweight compatibility migration for older local DBs.
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                ALTER TABLE document_versions
+                ADD COLUMN IF NOT EXISTS tags JSON NOT NULL DEFAULT '[]'::json
+                """
+            )
+        )

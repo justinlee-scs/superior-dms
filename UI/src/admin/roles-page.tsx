@@ -53,6 +53,8 @@ const PERMISSION_LABELS: Record<string, string> = {
   "workflow.assign": "Edit Workflows",
   "admin.users": "Manage Users",
   "admin.roles": "Manage Roles",
+  "tags.read": "View Tags",
+  "tags.edit": "Edit Tags",
 };
 
 const PERMISSION_DESCRIPTIONS: Record<string, string> = {
@@ -66,11 +68,14 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   "workflow.assign": "Can modify workflows",
   "admin.users": "Can create and update users",
   "admin.roles": "Can create and update roles",
+  "tags.read": "Can view document tags",
+  "tags.edit": "Can add, remove, and replace document tags",
 };
 
 function permissionGroup(permissionKey: string): string {
   if (permissionKey.startsWith("document_version.")) return "Versioning";
   if (permissionKey.startsWith("document.")) return "Documents";
+  if (permissionKey.startsWith("tags.")) return "Tags";
   if (permissionKey.startsWith("workflow.")) return "Workflows";
   if (permissionKey.startsWith("admin.")) return "Administration";
   return "Other";
@@ -121,6 +126,10 @@ export default function RolesPage({
   const selectedUser = useMemo(
     () => users.find((user) => user.id === selectedUserId) ?? null,
     [users, selectedUserId],
+  );
+  const hierarchyManagerRole = useMemo(
+    () => roles.find((role) => role.id === selectedRoleId) ?? null,
+    [roles, selectedRoleId],
   );
 
   const groupedPermissions = useMemo(() => {
@@ -805,6 +814,63 @@ export default function RolesPage({
               <p className={`mt-1 text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
                 Visual representation of which roles can manage other roles. Higher roles inherit management authority.
               </p>
+
+              <div
+                className={`mt-4 rounded-xl border p-4 ${
+                  darkMode ? "border-gray-700 bg-gray-800" : "border-gray-200 bg-[#f8f8f9]"
+                }`}
+              >
+                <div className="mb-3 text-lg font-semibold">Edit Hierarchy</div>
+                <div className="mb-4 grid gap-2">
+                  <label className={`text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
+                    Manager Role
+                  </label>
+                  <select
+                    className="h-10 rounded-xl border border-gray-300 bg-white px-3 text-sm text-black"
+                    value={selectedRoleId ?? ""}
+                    onChange={(event) => setSelectedRoleId(event.target.value || null)}
+                    disabled={loading || roles.length === 0}
+                  >
+                    {roles.map((role) => (
+                      <option key={role.id} value={role.id}>
+                        {role.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {!hierarchyManagerRole && (
+                  <div className={`text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
+                    Select a role to edit which roles it can manage.
+                  </div>
+                )}
+
+                {hierarchyManagerRole && (
+                  <div className="space-y-2">
+                    <div className={`text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
+                      Roles managed by <span className="font-semibold">{hierarchyManagerRole.name}</span>:
+                    </div>
+                    {roles
+                      .filter((role) => role.id !== hierarchyManagerRole.id)
+                      .map((role) => (
+                        <label key={role.id} className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2">
+                          <div>
+                            <div className="text-sm font-semibold">{role.name}</div>
+                            <div className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+                              {role.description || "No description"}
+                            </div>
+                          </div>
+                          <Checkbox
+                            checked={managedRoleIds.has(role.id)}
+                            onCheckedChange={(checked) =>
+                              void onToggleManagedRole(role.id, checked === true)
+                            }
+                          />
+                        </label>
+                      ))}
+                  </div>
+                )}
+              </div>
 
               <div className="mt-5 space-y-3">
                 {roles.map((role) => {

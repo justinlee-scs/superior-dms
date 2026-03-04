@@ -20,6 +20,8 @@ ROLE_PERMISSION_MAP = {
         "document_version.preview",
         "document_version.download",
         "document_version.set_current",
+        "tags.read",
+        "tags.edit",
     ],
     "viewer": [
         "document.read",

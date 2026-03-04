@@ -37,6 +37,7 @@ export function VersionHistoryModal({
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [settingCurrentId, setSettingCurrentId] = useState<string | null>(null);
 
   const sortedVersions = useMemo(
     () => [...versions].sort((a, b) => b.version_number - a.version_number),
@@ -86,6 +87,7 @@ export function VersionHistoryModal({
   };
 
   const onSetCurrent = async (version: DocumentVersion) => {
+    setSettingCurrentId(version.id);
     try {
       await setCurrentDocumentVersion(document.id, version.id);
       const fresh = await listDocumentVersions(document.id);
@@ -94,6 +96,8 @@ export function VersionHistoryModal({
       toast.success(`v${version.version_number} is now current`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to set current version");
+    } finally {
+      setSettingCurrentId(null);
     }
   };
 
@@ -175,15 +179,14 @@ export function VersionHistoryModal({
                         )}
                       </div>
                       <div className="flex items-center gap-2">
-                        {!isCurrent && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => void onSetCurrent(version)}
-                          >
-                            Set Current
-                          </Button>
-                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={isCurrent || settingCurrentId === version.id}
+                          onClick={() => void onSetCurrent(version)}
+                        >
+                          {isCurrent ? "Current" : settingCurrentId === version.id ? "Setting..." : "Set Current"}
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"

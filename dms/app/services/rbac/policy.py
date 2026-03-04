@@ -11,6 +11,8 @@ class Permissions:
     DOCUMENT_VERSION_PREVIEW = "document_version.preview"
     DOCUMENT_VERSION_DOWNLOAD = "document_version.download"
     DOCUMENT_VERSION_SET_CURRENT = "document_version.set_current"
+    DOCUMENT_TAG_READ = "tags.read"
+    DOCUMENT_TAG_EDIT = "tags.edit"
 
     WORKFLOW_ASSIGN = "workflow.assign"
     WORKFLOW_ADVANCE = "workflow.advance"

@@ -10,6 +10,7 @@ class DocumentClass(str, Enum):
 class ProcessingStage(str, enum.Enum):
     CLASSIFICATION = "CLASSIFICATION"
     OCR = "OCR"
+    TAGGING = "TAGGING"
     POST_PROCESS = "POST_PROCESS"
 
 

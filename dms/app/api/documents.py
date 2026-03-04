@@ -4,6 +4,9 @@ from uuid import UUID
 from fastapi.responses import StreamingResponse
 import io
 import mimetypes
+from pathlib import Path
+
+from PIL import Image, UnidentifiedImageError
 
 from app.db.session import get_db
 
@@ -11,11 +14,14 @@ from app.services.rbac.permission_checker import require_permission
 from app.services.rbac.policy import Permissions
 
 from app.db.repositories.documents import (
+    add_document_version_tags,
     create_document,
     create_document_version,
     get_document_by_hash,
     get_document_by_id,
     list_documents,
+    remove_document_version_tags,
+    replace_document_version_tags,
     update_document_type,
     get_document_version,
     get_document_version_by_id,
@@ -30,10 +36,60 @@ from app.schemas.document_versions import (
     DocumentVersionListItem,
     SetCurrentVersionResponse,
 )
+from app.schemas.tags import DocumentVersionTagsResponse, TagUpdateRequest
 from app.processing.pipeline import process_document
+from app.services.extraction.office import OFFICE_EXTENSIONS, is_valid_office_file
 
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+ALLOWED_FILE_EXTENSIONS = {
+    ".pdf",
+    *OFFICE_EXTENSIONS,
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".tif",
+    ".tiff",
+    ".bmp",
+    ".gif",
+    ".webp",
+}
+
+
+def _validate_supported_upload(file: UploadFile, file_bytes: bytes) -> None:
+    filename = file.filename or ""
+    suffix = Path(filename).suffix.lower()
+
+    if suffix not in ALLOWED_FILE_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Unsupported file type: '{suffix or 'unknown'}'",
+        )
+
+    if suffix == ".pdf":
+        if not file_bytes.startswith(b"%PDF-"):
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail="File extension is .pdf but file content is not a valid PDF header",
+            )
+        return
+
+    if suffix in OFFICE_EXTENSIONS:
+        if not is_valid_office_file(file_bytes, filename):
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail="Unsupported or invalid Office file",
+            )
+        return
+
+    try:
+        Image.open(io.BytesIO(file_bytes)).verify()
+    except (UnidentifiedImageError, OSError):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Unsupported or invalid image file",
+        )
 
 
 @router.post(
@@ -48,31 +104,43 @@ async def upload_document(
     _=Depends(require_permission(Permissions.DOCUMENT_UPLOAD)),
 ):
     file_bytes = await file.read()
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    _validate_supported_upload(file, file_bytes)
 
     from app.services.hash import compute_content_hash
     content_hash = compute_content_hash(file_bytes)
 
-    existing = get_document_by_hash(db=db, content_hash=content_hash)
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Document with identical content already exists",
+    with db.begin():
+        existing = get_document_by_hash(db=db, content_hash=content_hash)
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Document with identical content already exists",
+            )
+
+        document = create_document(
+            db=db,
+            filename=file.filename,
+            content_hash=content_hash,
+            commit=False,
         )
 
-    document = create_document(
-        db=db,
-        filename=file.filename,
-        content_hash=content_hash,
-    )
+        version = create_document_version(
+            db=db,
+            document_id=document.id,
+            file_bytes=file_bytes,
+            set_as_current=True,
+            commit=False,
+        )
 
-    version = create_document_version(
-        db=db,
-        document_id=document.id,
-        file_bytes=file_bytes,
-        set_as_current=True,
-    )
-
-    process_document(db=db, version_id=version.id, file_bytes=file_bytes)
+        process_document(
+            db=db,
+            version_id=version.id,
+            file_bytes=file_bytes,
+            commit=False,
+        )
 
     return DocumentResponse(
         id=document.id,
@@ -259,6 +327,7 @@ def get_document_versions(
             processing_status=version.processing_status,
             classification=version.classification,
             confidence=version.confidence,
+            tags=version.tags or [],
             created_at=version.created_at,
             size_bytes=len(version.content) if version.content else 0,
         )
@@ -277,28 +346,36 @@ async def create_new_document_version(
     db: Session = Depends(get_db),
     _=Depends(require_permission(Permissions.DOCUMENT_VERSION_CREATE)),
 ):
-    document = get_document_by_id(db=db, document_id=document_id)
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
-
     file_bytes = await file.read()
     if not file_bytes:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
+    _validate_supported_upload(file, file_bytes)
 
-    version = create_document_version(
-        db=db,
-        document_id=document_id,
-        file_bytes=file_bytes,
-        set_as_current=True,
-    )
+    with db.begin():
+        document = get_document_by_id(db=db, document_id=document_id)
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
 
-    # Keep canonical display name aligned with latest uploaded version.
-    if file.filename:
-        document.filename = file.filename
-        db.commit()
-        db.refresh(document)
+        version = create_document_version(
+            db=db,
+            document_id=document_id,
+            file_bytes=file_bytes,
+            set_as_current=True,
+            commit=False,
+        )
 
-    process_document(db=db, version_id=version.id, file_bytes=file_bytes)
+        # Keep canonical display name aligned with latest uploaded version.
+        if file.filename:
+            document.filename = file.filename
+            db.flush()
+
+        process_document(
+            db=db,
+            version_id=version.id,
+            file_bytes=file_bytes,
+            commit=False,
+        )
+
     return version
 
 
@@ -367,4 +444,94 @@ def preview_document_version(
         io.BytesIO(version.content),
         media_type=mime_type,
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
+@router.get(
+    "/{document_id}/versions/{version_id}/tags",
+    response_model=DocumentVersionTagsResponse,
+)
+def get_document_version_tags(
+    document_id: UUID,
+    version_id: UUID,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permissions.DOCUMENT_TAG_READ)),
+):
+    version = get_document_version_by_id(db=db, version_id=version_id)
+    if not version or version.document_id != document_id:
+        raise HTTPException(status_code=404, detail="Document version not found")
+
+    return DocumentVersionTagsResponse(
+        document_id=document_id,
+        version_id=version_id,
+        tags=version.tags or [],
+    )
+
+
+@router.put(
+    "/{document_id}/versions/{version_id}/tags",
+    response_model=DocumentVersionTagsResponse,
+)
+def replace_tags_on_document_version(
+    document_id: UUID,
+    version_id: UUID,
+    payload: TagUpdateRequest,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permissions.DOCUMENT_TAG_EDIT)),
+):
+    version = get_document_version_by_id(db=db, version_id=version_id)
+    if not version or version.document_id != document_id:
+        raise HTTPException(status_code=404, detail="Document version not found")
+
+    tags = replace_document_version_tags(db=db, version=version, tags=payload.tags)
+    return DocumentVersionTagsResponse(
+        document_id=document_id,
+        version_id=version_id,
+        tags=tags,
+    )
+
+
+@router.post(
+    "/{document_id}/versions/{version_id}/tags/add",
+    response_model=DocumentVersionTagsResponse,
+)
+def add_tags_to_document_version(
+    document_id: UUID,
+    version_id: UUID,
+    payload: TagUpdateRequest,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permissions.DOCUMENT_TAG_EDIT)),
+):
+    version = get_document_version_by_id(db=db, version_id=version_id)
+    if not version or version.document_id != document_id:
+        raise HTTPException(status_code=404, detail="Document version not found")
+
+    tags = add_document_version_tags(db=db, version=version, tags=payload.tags)
+    return DocumentVersionTagsResponse(
+        document_id=document_id,
+        version_id=version_id,
+        tags=tags,
+    )
+
+
+@router.post(
+    "/{document_id}/versions/{version_id}/tags/remove",
+    response_model=DocumentVersionTagsResponse,
+)
+def remove_tags_from_document_version(
+    document_id: UUID,
+    version_id: UUID,
+    payload: TagUpdateRequest,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permissions.DOCUMENT_TAG_EDIT)),
+):
+    version = get_document_version_by_id(db=db, version_id=version_id)
+    if not version or version.document_id != document_id:
+        raise HTTPException(status_code=404, detail="Document version not found")
+
+    tags = remove_document_version_tags(db=db, version=version, tags=payload.tags)
+    return DocumentVersionTagsResponse(
+        document_id=document_id,
+        version_id=version_id,
+        tags=tags,
     )

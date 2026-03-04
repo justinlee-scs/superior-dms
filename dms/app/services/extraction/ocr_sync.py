@@ -1,6 +1,11 @@
 from typing import Tuple
+from pathlib import Path
 from app.services.extraction.pdf import pdf_to_images
 from app.services.extraction.ocr import run_tesseract
+from app.services.extraction.office import (
+    OFFICE_EXTENSIONS,
+    extract_text_from_office_file,
+)
 
 
 def extract_text_from_file(
@@ -12,7 +17,13 @@ def extract_text_from_file(
     Returns (text, confidence).
     """
 
-    if filename.lower().endswith(".pdf"):
+    suffix = Path(filename or "").suffix.lower()
+
+    if suffix in OFFICE_EXTENSIONS:
+        text = extract_text_from_office_file(file_bytes, filename)
+        return text or "", 1.0
+
+    if suffix == ".pdf":
         images = pdf_to_images(file_bytes)
     else:
         from PIL import Image

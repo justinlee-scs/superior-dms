@@ -5,12 +5,15 @@ from uuid import UUID
 
 from app.db.models import Document, DocumentVersion
 from app.db.models.enums import ProcessingStatus
+from app.services.extraction.tags import normalize_tag
 
 
 def create_document(
     db: Session,
     filename: str,
     content_hash: str,
+    *,
+    commit: bool = True,
 ) -> Document:
     document = Document(
         id=uuid.uuid4(),
@@ -18,8 +21,11 @@ def create_document(
         content_hash=content_hash,
     )
     db.add(document)
-    db.commit()
-    db.refresh(document)
+    if commit:
+        db.commit()
+        db.refresh(document)
+    else:
+        db.flush()
     return document
 
 
@@ -28,6 +34,8 @@ def create_document_version(
     document_id: UUID,
     file_bytes: bytes,
     set_as_current: bool = False,
+    *,
+    commit: bool = True,
 ) -> DocumentVersion:
     version = DocumentVersion(
         id=uuid.uuid4(),
@@ -36,14 +44,20 @@ def create_document_version(
         processing_status=ProcessingStatus.uploaded,
     )
     db.add(version)
-    db.commit()
-    db.refresh(version)
+    if commit:
+        db.commit()
+        db.refresh(version)
+    else:
+        db.flush()
     
     document = db.get(Document, document_id)
     if document and (set_as_current or not document.current_version_id):
         document.current_version_id = version.id
-        db.commit()
-        db.refresh(document)
+        if commit:
+            db.commit()
+            db.refresh(document)
+        else:
+            db.flush()
         
     return version
 
@@ -66,6 +80,7 @@ def update_processing_results(
     extracted_text: str,
     classification,
     confidence: float,
+    tags: list[str] | None = None,
 ):
     version = db.get(DocumentVersion, version_id)
 
@@ -75,6 +90,7 @@ def update_processing_results(
     version.extracted_text = extracted_text
     version.classification = classification
     version.confidence = confidence
+    version.tags = tags or []
     version.processing_status = ProcessingStatus.uploaded
 
     db.commit()
@@ -180,6 +196,63 @@ def get_document_version_by_id(
     version_id: UUID,
 ) -> DocumentVersion | None:
     return db.get(DocumentVersion, version_id)
+
+
+def list_existing_tags(
+    db: Session,
+) -> list[str]:
+    rows = db.query(DocumentVersion.tags).filter(DocumentVersion.tags.isnot(None)).all()
+    values: set[str] = set()
+    for (tags,) in rows:
+        if not tags:
+            continue
+        for tag in tags:
+            if isinstance(tag, str):
+                normalized = normalize_tag(tag)
+                if normalized:
+                    values.add(normalized)
+    return sorted(values)
+
+
+def replace_document_version_tags(
+    db: Session,
+    version: DocumentVersion,
+    tags: list[str],
+) -> list[str]:
+    normalized = sorted({t for t in (normalize_tag(tag) for tag in tags) if t})
+    version.tags = normalized
+    db.commit()
+    db.refresh(version)
+    return version.tags or []
+
+
+def add_document_version_tags(
+    db: Session,
+    version: DocumentVersion,
+    tags: list[str],
+) -> list[str]:
+    existing = set(version.tags or [])
+    for tag in tags:
+        normalized = normalize_tag(tag)
+        if normalized:
+            existing.add(normalized)
+    version.tags = sorted(existing)
+    db.commit()
+    db.refresh(version)
+    return version.tags or []
+
+
+def remove_document_version_tags(
+    db: Session,
+    version: DocumentVersion,
+    tags: list[str],
+) -> list[str]:
+    remove = {t for t in (normalize_tag(tag) for tag in tags) if t}
+    current = set(version.tags or [])
+    version.tags = sorted(current - remove)
+    db.commit()
+    db.refresh(version)
+    return version.tags or []
 
 
 def list_document_versions(

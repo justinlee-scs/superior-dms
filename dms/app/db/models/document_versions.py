@@ -1,11 +1,5 @@
-import uuid
-from uuid import uuid4
-
-import enum
-
 import sqlalchemy as sa
-from sqlalchemy import Column, ForeignKey, String, Text, Float, LargeBinary
-from sqlalchemy import Column, Enum as SQLEnum, DateTime
+from sqlalchemy import Column, ForeignKey, Text, Float, LargeBinary
 from datetime import datetime
 from app.db.models.enums import DocumentClass, ProcessingStatus
 from sqlalchemy.dialects.postgresql import UUID
@@ -39,6 +33,8 @@ class DocumentVersion(Base):
     )
 
     confidence = Column(Float, nullable=True)
+
+    tags = Column(sa.JSON, nullable=False, default=list)
     
     created_at = Column(sa.DateTime, nullable=False, default=datetime.utcnow)
 

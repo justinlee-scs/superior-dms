@@ -1,6 +1,6 @@
 from datetime import datetime
 from uuid import UUID
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from app.db.models.enums import ProcessingStatus
 
 
@@ -11,6 +11,7 @@ class DocumentVersionResponse(BaseModel):
     extracted_text: str | None
     classification: str | None
     confidence: float | None
+    tags: list[str] = Field(default_factory=list)
     created_at: datetime
 
     class Config:
@@ -25,6 +26,7 @@ class DocumentVersionListItem(BaseModel):
     processing_status: ProcessingStatus
     classification: str | None
     confidence: float | None
+    tags: list[str] = Field(default_factory=list)
     created_at: datetime
     size_bytes: int
 

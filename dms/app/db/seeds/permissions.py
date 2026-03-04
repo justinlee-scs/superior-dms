@@ -15,6 +15,8 @@ ALL_PERMISSIONS = [
     Permissions.DOCUMENT_VERSION_PREVIEW,
     Permissions.DOCUMENT_VERSION_DOWNLOAD,
     Permissions.DOCUMENT_VERSION_SET_CURRENT,
+    Permissions.DOCUMENT_TAG_READ,
+    Permissions.DOCUMENT_TAG_EDIT,
     Permissions.WORKFLOW_ASSIGN,
     Permissions.WORKFLOW_ADVANCE,
     Permissions.ADMIN_USERS,
