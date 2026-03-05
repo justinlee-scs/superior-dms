@@ -8,6 +8,24 @@ from sqlalchemy.orm import relationship
 from app.db.session import Base
 
 class DocumentVersion(Base):
+    """Represent the document version database model.
+
+    Parameters:
+        id: Primary identifier for this record.
+        document_id: Identifier of the parent document.
+        content: Binary file content for the stored document version.
+        extracted_text: Extracted plain text generated from OCR/parsing.
+        classification: Predicted document class label.
+        confidence: Model confidence score for the classification/output.
+        ocr_raw_confidence: Raw OCR confidence score from the extraction engine.
+        ocr_engine: Name of the OCR engine used for extraction.
+        ocr_model_version: Version string of the OCR model used.
+        ocr_latency_ms: OCR processing latency in milliseconds.
+        tags: Normalized tags associated with the document/version.
+        created_at: Timestamp indicating when the record was created.
+        processing_status: Current processing state for this document version.
+        document: Document value used by this model/schema.
+    """
     __tablename__ = "document_versions"
 
     id = Column(UUID(as_uuid=True), primary_key=True)

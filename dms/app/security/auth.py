@@ -6,10 +6,10 @@ from app.db.models.user import User
 
 
 def get_current_user(db: Session = Depends(get_db)) -> User:
-    """
-    TEMPORARY AUTH STUB.
-    Returns the first user in the database.
-    Replace with real auth later.
+    """TEMPORARY AUTH STUB.
+
+    Parameters:
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
     """
     user = db.query(User).first()
 

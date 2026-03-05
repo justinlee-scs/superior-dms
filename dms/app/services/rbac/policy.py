@@ -1,4 +1,26 @@
 class Permissions:
+    """Define the permissions type.
+    
+    Parameters:
+        DOCUMENT_READ: Parameter.
+        DOCUMENT_DELETE: Parameter.
+        DOCUMENT_UPLOAD: Parameter.
+        DOCUMENT_DOWNLOAD: Parameter.
+        DOCUMENT_PREVIEW: Parameter.
+        DOCUMENT_MOVE: Parameter.
+        DOCUMENT_UPDATE: Parameter.
+        DOCUMENT_VERSION_READ: Parameter.
+        DOCUMENT_VERSION_CREATE: Parameter.
+        DOCUMENT_VERSION_PREVIEW: Parameter.
+        DOCUMENT_VERSION_DOWNLOAD: Parameter.
+        DOCUMENT_VERSION_SET_CURRENT: Parameter.
+        DOCUMENT_TAG_READ: Parameter.
+        DOCUMENT_TAG_EDIT: Parameter.
+        WORKFLOW_ASSIGN: Parameter.
+        WORKFLOW_ADVANCE: Parameter.
+        ADMIN_USERS: Parameter.
+        ADMIN_ROLES: Parameter.
+    """
     DOCUMENT_READ = "document.read"
     DOCUMENT_DELETE = "document.delete"
     DOCUMENT_UPLOAD = "document.upload"

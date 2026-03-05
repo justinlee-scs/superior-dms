@@ -18,6 +18,14 @@ def process_document(
     *,
     commit: bool = True,
 ) -> None:
+    """Process document.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        version_id (type=str): Identifier used to locate the target record.
+        file_bytes (type=bytes): Raw file content used for validation or processing.
+        commit (type=bool, default=True): Flag controlling whether to commit the transaction.
+    """
     version = (
         db.query(DocumentVersion)
         .filter(DocumentVersion.id == version_id)

@@ -7,6 +7,12 @@ from app.db.repositories.access import (
 
 
 def resolve_permissions(db: Session, user: User) -> set[str]:
+    """Handle resolve permissions.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        user (type=User): Authenticated user context for authorization and ownership checks.
+    """
     permissions = get_role_permissions(db, user)
     overrides = get_user_overrides(db, user)
 

@@ -9,6 +9,19 @@ from app.db.base import Base
 
 
 class DocumentType(enum.Enum):
+    """Business document-type taxonomy persisted on `Document` records.
+
+    Parameters:
+        document: Document value used by this model/schema.
+        statement: Statement value used by this model/schema.
+        outgoing_invoice: Outgoing invoice value used by this model/schema.
+        incoming_invoice: Incoming invoice value used by this model/schema.
+        contract: Contract value used by this model/schema.
+        payroll: Payroll value used by this model/schema.
+        manual: Manual value used by this model/schema.
+        receipt: Receipt value used by this model/schema.
+        other: Other value used by this model/schema.
+    """
     document = "document"
     statement = "statement"
     outgoing_invoice = "outgoing_invoice"
@@ -21,6 +34,18 @@ class DocumentType(enum.Enum):
 
 
 class Document(Base):
+    """Top-level document entity that owns versions and the active version pointer.
+
+    Parameters:
+        id: Primary identifier for this record.
+        filename: Original filename for the uploaded document.
+        created_at: Timestamp indicating when the record was created.
+        content_hash: Deterministic hash used for duplicate-content detection.
+        document_type: Document type/category assigned to the record.
+        current_version_id: Identifier of the currently active version.
+        versions: Versions value used by this model/schema.
+        current_version: Current version value used by this model/schema.
+    """
     __tablename__ = "documents"
 
     id = Column(UUID(as_uuid=True), primary_key=True)

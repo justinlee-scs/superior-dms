@@ -5,17 +5,29 @@ from app.services.extraction.tesseract_provider import TesseractProvider
 
 
 class TrOCRProvider(OCRProvider):
-    """
-    Phase-1 scaffold for TrOCR integration.
-    Intentionally not active by default.
+    """Phase-1 scaffold for TrOCR integration.
+    
+    Parameters:
+        None.
     """
 
     def __init__(self, model_name_or_path: str):
+        """Initialize the instance state.
+
+        Parameters:
+            model_name_or_path (type=str): Function argument used by this operation.
+        """
         self.model_name_or_path = model_name_or_path
         self._fallback = TesseractProvider()
 
     def extract(self, file_bytes: bytes, filename: str) -> ExtractionResult:
         # MVP behavior: route through tesseract while preserving intent metadata.
+        """Handle extract for this instance.
+
+        Parameters:
+            file_bytes (type=bytes): Raw file content used for validation or processing.
+            filename (type=str): File or entity name used for storage and display.
+        """
         result = self._fallback.extract(file_bytes=file_bytes, filename=filename)
         merged_metadata = dict(result.metadata)
         merged_metadata["requested_provider"] = "trocr"

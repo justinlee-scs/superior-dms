@@ -205,15 +205,22 @@ def test_hash_query_update_type_list_versions_and_delete(patched_models):
     db.query_map[_FakeDocumentVersion] = _Query(all_result=[v1, v2])
     assert repo.list_document_versions(db, doc_id) == [v1, v2]
 
-    rows = [(doc, ProcessingStatus.uploaded, "invoice", 0.9)]
-    db.query_map[(_FakeDocument, _FakeDocumentVersion.processing_status, _FakeDocumentVersion.classification, _FakeDocumentVersion.confidence)] = _Query(all_result=rows)
+    rows = [(doc, ProcessingStatus.uploaded, "invoice", 0.9, ["invoice"])]
+    db.query_map[(
+        _FakeDocument,
+        _FakeDocumentVersion.processing_status,
+        _FakeDocumentVersion.classification,
+        _FakeDocumentVersion.confidence,
+        _FakeDocumentVersion.tags,
+    )] = _Query(all_result=rows)
     db.query_map[(_FakeDocumentVersion.document_id, _FakeDocumentVersion.id)] = _Query(
         all_result=[(doc_id, v1.id), (doc_id, v2.id)]
     )
     doc.current_version_id = v2.id
     listed = repo.list_documents(db)
-    assert listed[0][4] == 2
+    assert listed[0][4] == ["invoice"]
     assert listed[0][5] == 2
+    assert listed[0][6] == 2
 
     repo.set_current_document_version(db, doc, v2)
     assert doc.current_version_id == v2.id

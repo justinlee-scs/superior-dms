@@ -13,8 +13,11 @@ def process_document(
     document_id: str,
     db: Session = Depends(get_db),
 ):
-    """
-    Trigger processing for an existing document.
+    """Trigger processing for an existing document.
+
+    Parameters:
+        document_id (type=str): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
     """
 
     document = repositories.get_document(db, document_id)
@@ -35,8 +38,11 @@ def reprocess_document(
     document_id: str,
     db: Session = Depends(get_db),
 ):
-    """
-    Force reprocessing (new OCR run, same document version).
+    """Force reprocessing (new OCR run, same document version).
+
+    Parameters:
+        document_id (type=str): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
     """
 
     document = repositories.get_document(db, document_id)

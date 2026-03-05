@@ -1,4 +1,5 @@
-import { Search, Calendar, User, Tag, X, ToggleLeft, ToggleRight } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Search, Calendar, User, Tag, X, ToggleLeft, ToggleRight, Plus } from "lucide-react";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import { Badge } from "@/app/components/ui/badge";
@@ -29,6 +30,7 @@ interface SearchFiltersProps {
   onFiltersChange: (filters: FilterState) => void;
   availableTags: string[];
   availableAuthors: string[];
+  onCreateTag?: (tag: string) => Promise<void> | void;
   darkMode?: boolean; // New: dark mode prop
 }
 
@@ -37,11 +39,21 @@ export function SearchFilters({
   onFiltersChange,
   availableTags,
   availableAuthors,
+  onCreateTag,
   darkMode,
 }: SearchFiltersProps) {
+  const [tagSearchText, setTagSearchText] = useState("");
+  const [newTagText, setNewTagText] = useState("");
+
   const updateFilter = (key: keyof FilterState, value: any) => {
     onFiltersChange({ ...filters, [key]: value });
   };
+
+  const filteredAvailableTags = useMemo(() => {
+    if (!tagSearchText.trim()) return availableTags;
+    const q = tagSearchText.trim().toLowerCase();
+    return availableTags.filter((tag) => tag.toLowerCase().includes(q));
+  }, [availableTags, tagSearchText]);
 
   const toggleTag = (tag: string) => {
     const newTags = filters.selectedTags.includes(tag)
@@ -69,6 +81,13 @@ export function SearchFilters({
     filters.dateRange ||
     filters.startDate ||
     filters.endDate;
+
+  const handleCreateTag = async () => {
+    const nextTag = newTagText.trim();
+    if (!nextTag || !onCreateTag) return;
+    await onCreateTag(nextTag);
+    setNewTagText("");
+  };
 
   return (
     <div className={`w-80 border-r p-6 space-y-6 ${darkMode ? "bg-gray-900 border-gray-700" : "bg-gray-50"}`}>
@@ -107,7 +126,7 @@ export function SearchFilters({
           Tags
         </Label>
         <div className="flex flex-wrap gap-2">
-          {availableTags.map((tag) => {
+          {filteredAvailableTags.map((tag) => {
             const isSelected = filters.selectedTags.includes(tag);
             return (
               <Badge
@@ -127,6 +146,34 @@ export function SearchFilters({
               </Badge>
             );
           })}
+        </div>
+        <Input
+          type="text"
+          placeholder="Search tags..."
+          value={tagSearchText}
+          onChange={(e) => setTagSearchText(e.target.value)}
+          className={darkMode ? "bg-gray-800 border-gray-700 text-gray-100 placeholder:text-gray-500" : ""}
+        />
+        <div className="flex gap-2">
+          <Input
+            type="text"
+            placeholder="Create new tag..."
+            value={newTagText}
+            onChange={(e) => setNewTagText(e.target.value)}
+            className={darkMode ? "bg-gray-800 border-gray-700 text-gray-100 placeholder:text-gray-500" : ""}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              void handleCreateTag();
+            }}
+            disabled={!newTagText.trim()}
+          >
+            <Plus className="w-4 h-4 mr-1" />
+            Create
+          </Button>
         </div>
         <div className="flex items-center gap-2">
           <Label className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>Match:</Label>
@@ -228,16 +275,7 @@ export function SearchFilters({
                     onSelect={(date) => updateFilter("startDate", date)}
                     fromYear={1970}
                     toYear={new Date().getFullYear()}
-                    captionLayout="dropdown-buttons"
-                    formatters={{
-                      formatMonthCaption: (date) => format(date, "MM"),
-                      formatYearCaption: (date) => format(date, "yyyy"),
-                    }}
-                    classNames={{
-                      months: darkMode ? "text-gray-200" : "",
-                      caption_label: darkMode ? "text-gray-200" : "",
-                      day: darkMode ? "text-gray-300 hover:bg-gray-700" : "",
-                    }}
+                    captionLayout="dropdown"
                     initialFocus
                   />
                 </PopoverContent>
@@ -267,16 +305,7 @@ export function SearchFilters({
                     onSelect={(date) => updateFilter("endDate", date)}
                     fromYear={1970}
                     toYear={new Date().getFullYear()}
-                    captionLayout="dropdown-buttons"
-                    formatters={{
-                      formatMonthCaption: (date) => format(date, "MM"),
-                      formatYearCaption: (date) => format(date, "yyyy"),
-                    }}
-                    classNames={{
-                      months: darkMode ? "text-gray-200" : "",
-                      caption_label: darkMode ? "text-gray-200" : "",
-                      day: darkMode ? "text-gray-300 hover:bg-gray-700" : "",
-                    }}
+                    captionLayout="dropdown"
                     disabled={(date) =>
                       filters.startDate ? date < filters.startDate : false
                     }

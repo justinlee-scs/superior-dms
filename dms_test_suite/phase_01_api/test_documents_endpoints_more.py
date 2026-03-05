@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 
 from app.api import documents as docs_api
 from app.schemas.documents import DocumentTypeUpdate
-from app.schemas.tags import TagUpdateRequest
+from app.schemas.tags import TagPoolCreateRequest, TagUpdateRequest
 
 
 class _Begin:
@@ -119,7 +119,7 @@ def test_get_documents_and_get_document(monkeypatch: pytest.MonkeyPatch):
     v2 = _version(document_id=d.id)
     v2.id = uuid4()
     d.current_version_id = v2.id
-    rows = [(d, "uploaded", "invoice", 0.9, 2, 2)]
+    rows = [(d, "uploaded", "invoice", 0.9, ["invoice"], 2, 2)]
     monkeypatch.setattr(docs_api, "list_documents", lambda **_k: rows)
     docs = docs_api.get_documents(db=object())
     assert len(docs) == 1 and docs[0].version_count == 2
@@ -143,6 +143,8 @@ def test_type_output_delete_download_preview(monkeypatch: pytest.MonkeyPatch):
     with pytest.raises(HTTPException):
         docs_api.set_document_type(d.id, DocumentTypeUpdate(document_type="contract"), db=object())
     monkeypatch.setattr(docs_api, "update_document_type", lambda **_k: d)
+    monkeypatch.setattr(docs_api, "get_document_version", lambda **_k: v)
+    monkeypatch.setattr(docs_api, "list_document_versions", lambda **_k: [v])
     assert docs_api.set_document_type(d.id, DocumentTypeUpdate(document_type="contract"), db=object()).id == d.id
 
     monkeypatch.setattr(docs_api, "get_document_version", lambda **_k: None)
@@ -253,3 +255,27 @@ def test_versions_create_set_current_download_preview_tags(monkeypatch: pytest.M
 def test_validate_supported_upload_office_valid_returns(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(docs_api, "is_valid_office_file", lambda *_a, **_k: True)
     docs_api._validate_supported_upload(_upload("x.docx", b"zip"), b"zip")
+
+
+def test_tag_pool_endpoints(monkeypatch: pytest.MonkeyPatch):
+    captured = {"q": None}
+
+    def _list_tag_pool(**kwargs):
+        captured["q"] = kwargs.get("query")
+        return ["invoice", "project:alpha"]
+
+    monkeypatch.setattr(docs_api, "list_tag_pool", _list_tag_pool)
+    monkeypatch.setattr(docs_api, "list_existing_tags", lambda **_k: ["project:alpha", "vendor:acme"])
+
+    pool = docs_api.get_tag_pool(q="alpha", db=object())
+    assert captured["q"] == "alpha"
+    assert pool.tags == ["invoice", "project:alpha", "vendor:acme"]
+
+    monkeypatch.setattr(docs_api, "create_tag_pool_entry", lambda **_k: "project:apollo")
+    created = docs_api.create_tag_pool(TagPoolCreateRequest(tag="Project Apollo"), db=object())
+    assert created.tag == "project:apollo"
+
+    monkeypatch.setattr(docs_api, "create_tag_pool_entry", lambda **_k: (_ for _ in ()).throw(ValueError("Tag cannot be empty")))
+    with pytest.raises(HTTPException) as exc:
+        docs_api.create_tag_pool(TagPoolCreateRequest(tag="   "), db=object())
+    assert exc.value.status_code == 400

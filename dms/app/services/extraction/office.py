@@ -11,6 +11,12 @@ OFFICE_EXTENSIONS = {".docx", ".xlsx", ".pptx"}
 
 
 def is_valid_office_file(file_bytes: bytes, filename: str) -> bool:
+    """Return whether valid office file.
+
+    Parameters:
+        file_bytes (type=bytes): Raw file content used for validation or processing.
+        filename (type=str): File or entity name used for storage and display.
+    """
     suffix = Path(filename or "").suffix.lower()
     if suffix not in OFFICE_EXTENSIONS:
         return False
@@ -35,6 +41,12 @@ def is_valid_office_file(file_bytes: bytes, filename: str) -> bool:
 
 
 def extract_text_from_office_file(file_bytes: bytes, filename: str) -> str:
+    """Extract text from office file.
+
+    Parameters:
+        file_bytes (type=bytes): Raw file content used for validation or processing.
+        filename (type=str): File or entity name used for storage and display.
+    """
     suffix = Path(filename or "").suffix.lower()
 
     if not is_valid_office_file(file_bytes, filename):
@@ -53,6 +65,12 @@ def extract_text_from_office_file(file_bytes: bytes, filename: str) -> str:
 
 
 def _extract_docx(zf: zipfile.ZipFile, names: list[str]) -> str:
+    """Handle extract docx.
+
+    Parameters:
+        zf (type=zipfile.ZipFile): Function argument used by this operation.
+        names (type=list[str]): Function argument used by this operation.
+    """
     xml_paths = ["word/document.xml"] + sorted(
         name
         for name in names
@@ -62,6 +80,12 @@ def _extract_docx(zf: zipfile.ZipFile, names: list[str]) -> str:
 
 
 def _extract_xlsx(zf: zipfile.ZipFile, names: list[str]) -> str:
+    """Handle extract xlsx.
+
+    Parameters:
+        zf (type=zipfile.ZipFile): Function argument used by this operation.
+        names (type=list[str]): Function argument used by this operation.
+    """
     parts: list[str] = []
     shared_strings = _load_xlsx_shared_strings(zf)
 
@@ -91,6 +115,11 @@ def _extract_xlsx(zf: zipfile.ZipFile, names: list[str]) -> str:
 
 
 def _load_xlsx_shared_strings(zf: zipfile.ZipFile) -> list[str]:
+    """Handle load xlsx shared strings.
+
+    Parameters:
+        zf (type=zipfile.ZipFile): Function argument used by this operation.
+    """
     try:
         xml_bytes = zf.read("xl/sharedStrings.xml")
     except KeyError:
@@ -110,6 +139,12 @@ def _load_xlsx_shared_strings(zf: zipfile.ZipFile) -> list[str]:
 
 
 def _extract_pptx(zf: zipfile.ZipFile, names: list[str]) -> str:
+    """Handle extract pptx.
+
+    Parameters:
+        zf (type=zipfile.ZipFile): Function argument used by this operation.
+        names (type=list[str]): Function argument used by this operation.
+    """
     slide_paths = sorted(
         (
             name
@@ -126,6 +161,13 @@ def _extract_text_from_xml_parts(
     paths: list[str],
     allowed_local_tags: set[str],
 ) -> str:
+    """Handle extract text from xml parts.
+
+    Parameters:
+        zf (type=zipfile.ZipFile): Function argument used by this operation.
+        paths (type=list[str]): Function argument used by this operation.
+        allowed_local_tags (type=set[str]): Function argument used by this operation.
+    """
     parts: list[str] = []
     for path in paths:
         try:
@@ -144,8 +186,18 @@ def _extract_text_from_xml_parts(
 
 
 def _local_name(tag: str) -> str:
+    """Handle local name.
+
+    Parameters:
+        tag (type=str): Function argument used by this operation.
+    """
     return tag.rsplit("}", 1)[-1]
 
 
 def _natural_sort_key(value: str) -> list[str | int]:
+    """Handle natural sort key.
+
+    Parameters:
+        value (type=str): Function argument used by this operation.
+    """
     return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", value)]

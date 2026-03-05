@@ -28,7 +28,9 @@ from app.db.repositories.documents import (
     list_document_versions,
     set_current_document_version,
     delete_document as delete_document_repo,
+    list_existing_tags,
 )
+from app.db.repositories.tags import create_tag_pool_entry, list_tag_pool
 
 from app.schemas.documents import DocumentResponse, DocumentTypeUpdate
 from app.schemas.document_versions import (
@@ -36,7 +38,13 @@ from app.schemas.document_versions import (
     DocumentVersionListItem,
     SetCurrentVersionResponse,
 )
-from app.schemas.tags import DocumentVersionTagsResponse, TagUpdateRequest
+from app.schemas.tags import (
+    DocumentVersionTagsResponse,
+    TagPoolCreateRequest,
+    TagPoolCreateResponse,
+    TagPoolResponse,
+    TagUpdateRequest,
+)
 from app.processing.pipeline import process_document
 from app.services.extraction.office import OFFICE_EXTENSIONS, is_valid_office_file
 
@@ -58,6 +66,12 @@ ALLOWED_FILE_EXTENSIONS = {
 
 
 def _validate_supported_upload(file: UploadFile, file_bytes: bytes) -> None:
+    """Handle validate supported upload.
+
+    Parameters:
+        file (type=UploadFile): Uploaded file object provided by the request.
+        file_bytes (type=bytes): Raw file content used for validation or processing.
+    """
     filename = file.filename or ""
     suffix = Path(filename).suffix.lower()
 
@@ -103,6 +117,13 @@ async def upload_document(
     #_=Depends(require_role("editor")),
     _=Depends(require_permission(Permissions.DOCUMENT_UPLOAD)),
 ):
+    """Asynchronously handle upload document.
+
+    Parameters:
+        file (type=UploadFile, default=File(...)): Uploaded file object provided by the request.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+        _ (default=Depends(require_permission(Permissions.DOCUMENT_UPLOAD))): Dependency-injection placeholder argument required by FastAPI.
+    """
     file_bytes = await file.read()
     if not file_bytes:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
@@ -150,6 +171,7 @@ async def upload_document(
         confidence=version.confidence,
         created_at=document.created_at,
         current_version_id=version.id,
+        tags=version.tags or [],
     )
 
 
@@ -159,6 +181,12 @@ def get_documents(
     #_=Depends(require_role("viewer")), #what if we comment out the viewing thing real quick one time
     _=Depends(require_permission(Permissions.DOCUMENT_READ)),
 ):
+    """Return documents.
+
+    Parameters:
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+        _ (default=Depends(require_permission(Permissions.DOCUMENT_READ))): Dependency-injection placeholder argument required by FastAPI.
+    """
     rows = list_documents(db=db)
 
     return [
@@ -172,9 +200,49 @@ def get_documents(
             current_version_id=doc.current_version_id,
             version_count=version_count or 1,
             current_version_number=current_version_number or 1,
+            tags=tags or [],
         )
-        for doc, processing_status, CLASSIFICATION, confidence, version_count, current_version_number in rows
+        for doc, processing_status, CLASSIFICATION, confidence, tags, version_count, current_version_number in rows
     ]
+
+
+@router.get("/tag-pool", response_model=TagPoolResponse)
+def get_tag_pool(
+    q: str | None = None,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permissions.DOCUMENT_TAG_READ)),
+):
+    """Return tag pool.
+
+    Parameters:
+        q (type=str | None, default=None): Function argument used by this operation.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+        _ (default=Depends(require_permission(Permissions.DOCUMENT_TAG_READ))): Dependency-injection placeholder argument required by FastAPI.
+    """
+    pool = set(list_tag_pool(db=db, query=q))
+    # Include tags already present on document versions as part of selectable pool.
+    pool.update(list_existing_tags(db=db))
+    return TagPoolResponse(tags=sorted(pool))
+
+
+@router.post("/tag-pool", response_model=TagPoolCreateResponse, status_code=status.HTTP_201_CREATED)
+def create_tag_pool(
+    payload: TagPoolCreateRequest,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permissions.DOCUMENT_TAG_EDIT)),
+):
+    """Create tag pool.
+
+    Parameters:
+        payload (type=TagPoolCreateRequest): Request payload containing client-provided input values.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+        _ (default=Depends(require_permission(Permissions.DOCUMENT_TAG_EDIT))): Dependency-injection placeholder argument required by FastAPI.
+    """
+    try:
+        created = create_tag_pool_entry(db=db, tag=payload.tag)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return TagPoolCreateResponse(tag=created)
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
@@ -184,6 +252,13 @@ def get_document(
     #_=Depends(require_role("viewer")),
     _=Depends(require_permission(Permissions.DOCUMENT_READ)),
 ):
+    """Return document.
+
+    Parameters:
+        document_id (type=UUID): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+        _ (default=Depends(require_permission(Permissions.DOCUMENT_READ))): Dependency-injection placeholder argument required by FastAPI.
+    """
     document = get_document_by_id(db=db, document_id=document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -207,6 +282,7 @@ def get_document(
         current_version_id=document.current_version_id,
         version_count=len(versions) or 1,
         current_version_number=current_version_number or 1,
+        tags=(current_version.tags if current_version else []) or [],
     )
 
 
@@ -218,6 +294,14 @@ def set_document_type(
     #_=Depends(require_role("editor")),
     _=Depends(require_permission(Permissions.DOCUMENT_UPDATE)),
 ):
+    """Set document type.
+
+    Parameters:
+        document_id (type=UUID): Identifier used to locate the target record.
+        payload (type=DocumentTypeUpdate): Request payload containing client-provided input values.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+        _ (default=Depends(require_permission(Permissions.DOCUMENT_UPDATE))): Dependency-injection placeholder argument required by FastAPI.
+    """
     document = update_document_type(
         db=db,
         document_id=document_id,
@@ -227,14 +311,19 @@ def set_document_type(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
+    current_version = get_document_version(db=db, document_id=document_id)
+    versions = list_document_versions(db=db, document_id=document_id)
+
     return DocumentResponse(
         id=document.id,
         filename=document.filename,
-        status=document.status,
+        status=current_version.processing_status if current_version else None,
         document_type=document.document_type,
-        confidence=document.confidence,
+        confidence=current_version.confidence if current_version else None,
         created_at=document.created_at,
         current_version_id=document.current_version_id,
+        version_count=len(versions) or 1,
+        tags=(current_version.tags if current_version else []) or [],
     )
 
 
@@ -245,6 +334,13 @@ def get_document_output(
     #_=Depends(require_role("viewer")),
     _=Depends(require_permission(Permissions.DOCUMENT_READ)),
 ):
+    """Return document output.
+
+    Parameters:
+        document_id (type=UUID): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+        _ (default=Depends(require_permission(Permissions.DOCUMENT_READ))): Dependency-injection placeholder argument required by FastAPI.
+    """
     version = get_document_version(db=db, document_id=document_id)
     if not version:
         raise HTTPException(status_code=404, detail="No processed version available")
@@ -258,6 +354,13 @@ def delete_document(
     #_=Depends(require_role("admin")),
     _=Depends(require_permission(Permissions.DOCUMENT_DELETE)),
 ):
+    """Delete document.
+
+    Parameters:
+        document_id (type=UUID): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+        _ (default=Depends(require_permission(Permissions.DOCUMENT_DELETE))): Dependency-injection placeholder argument required by FastAPI.
+    """
     document = get_document_by_id(db=db, document_id=document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -272,6 +375,13 @@ def download_document(
     #_=Depends(require_role("viewer")),
     _=Depends(require_permission(Permissions.DOCUMENT_DOWNLOAD)),
 ):
+    """Handle download document.
+
+    Parameters:
+        document_id (type=UUID): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+        _ (default=Depends(require_permission(Permissions.DOCUMENT_DOWNLOAD))): Dependency-injection placeholder argument required by FastAPI.
+    """
     version = get_document_version(db=db, document_id=document_id)
     if not version:
         raise HTTPException(status_code=404, detail="File not found")
@@ -292,6 +402,13 @@ def preview_document(
     #_=Depends(require_role("viewer")),
     _=Depends(require_permission(Permissions.DOCUMENT_PREVIEW)),
 ):
+    """Handle preview document.
+
+    Parameters:
+        document_id (type=UUID): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+        _ (default=Depends(require_permission(Permissions.DOCUMENT_PREVIEW))): Dependency-injection placeholder argument required by FastAPI.
+    """
     version = get_document_version(db=db, document_id=document_id)
     if not version:
         raise HTTPException(status_code=404, detail="File not found")
@@ -313,6 +430,13 @@ def get_document_versions(
     db: Session = Depends(get_db),
     _=Depends(require_permission(Permissions.DOCUMENT_VERSION_READ)),
 ):
+    """Return document versions.
+
+    Parameters:
+        document_id (type=UUID): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+        _ (default=Depends(require_permission(Permissions.DOCUMENT_VERSION_READ))): Dependency-injection placeholder argument required by FastAPI.
+    """
     document = get_document_by_id(db=db, document_id=document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -348,6 +472,14 @@ async def create_new_document_version(
     db: Session = Depends(get_db),
     _=Depends(require_permission(Permissions.DOCUMENT_VERSION_CREATE)),
 ):
+    """Create new document version.
+
+    Parameters:
+        document_id (type=UUID): Identifier used to locate the target record.
+        file (type=UploadFile, default=File(...)): Uploaded file object provided by the request.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+        _ (default=Depends(require_permission(Permissions.DOCUMENT_VERSION_CREATE))): Dependency-injection placeholder argument required by FastAPI.
+    """
     file_bytes = await file.read()
     if not file_bytes:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
@@ -391,6 +523,14 @@ def set_current_version(
     db: Session = Depends(get_db),
     _=Depends(require_permission(Permissions.DOCUMENT_VERSION_SET_CURRENT)),
 ):
+    """Set current version.
+
+    Parameters:
+        document_id (type=UUID): Identifier used to locate the target record.
+        version_id (type=UUID): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+        _ (default=Depends(require_permission(Permissions.DOCUMENT_VERSION_SET_CURRENT))): Dependency-injection placeholder argument required by FastAPI.
+    """
     document = get_document_by_id(db=db, document_id=document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -414,6 +554,14 @@ def download_document_version(
     db: Session = Depends(get_db),
     _=Depends(require_permission(Permissions.DOCUMENT_VERSION_DOWNLOAD)),
 ):
+    """Handle download document version.
+
+    Parameters:
+        document_id (type=UUID): Identifier used to locate the target record.
+        version_id (type=UUID): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+        _ (default=Depends(require_permission(Permissions.DOCUMENT_VERSION_DOWNLOAD))): Dependency-injection placeholder argument required by FastAPI.
+    """
     version = get_document_version_by_id(db=db, version_id=version_id)
     if not version or version.document_id != document_id:
         raise HTTPException(status_code=404, detail="File version not found")
@@ -434,6 +582,14 @@ def preview_document_version(
     db: Session = Depends(get_db),
     _=Depends(require_permission(Permissions.DOCUMENT_VERSION_PREVIEW)),
 ):
+    """Handle preview document version.
+
+    Parameters:
+        document_id (type=UUID): Identifier used to locate the target record.
+        version_id (type=UUID): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+        _ (default=Depends(require_permission(Permissions.DOCUMENT_VERSION_PREVIEW))): Dependency-injection placeholder argument required by FastAPI.
+    """
     version = get_document_version_by_id(db=db, version_id=version_id)
     if not version or version.document_id != document_id:
         raise HTTPException(status_code=404, detail="File version not found")
@@ -459,6 +615,14 @@ def get_document_version_tags(
     db: Session = Depends(get_db),
     _=Depends(require_permission(Permissions.DOCUMENT_TAG_READ)),
 ):
+    """Return document version tags.
+
+    Parameters:
+        document_id (type=UUID): Identifier used to locate the target record.
+        version_id (type=UUID): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+        _ (default=Depends(require_permission(Permissions.DOCUMENT_TAG_READ))): Dependency-injection placeholder argument required by FastAPI.
+    """
     version = get_document_version_by_id(db=db, version_id=version_id)
     if not version or version.document_id != document_id:
         raise HTTPException(status_code=404, detail="Document version not found")
@@ -481,6 +645,15 @@ def replace_tags_on_document_version(
     db: Session = Depends(get_db),
     _=Depends(require_permission(Permissions.DOCUMENT_TAG_EDIT)),
 ):
+    """Handle replace tags on document version.
+
+    Parameters:
+        document_id (type=UUID): Identifier used to locate the target record.
+        version_id (type=UUID): Identifier used to locate the target record.
+        payload (type=TagUpdateRequest): Request payload containing client-provided input values.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+        _ (default=Depends(require_permission(Permissions.DOCUMENT_TAG_EDIT))): Dependency-injection placeholder argument required by FastAPI.
+    """
     version = get_document_version_by_id(db=db, version_id=version_id)
     if not version or version.document_id != document_id:
         raise HTTPException(status_code=404, detail="Document version not found")
@@ -504,6 +677,15 @@ def add_tags_to_document_version(
     db: Session = Depends(get_db),
     _=Depends(require_permission(Permissions.DOCUMENT_TAG_EDIT)),
 ):
+    """Add tags to document version.
+
+    Parameters:
+        document_id (type=UUID): Identifier used to locate the target record.
+        version_id (type=UUID): Identifier used to locate the target record.
+        payload (type=TagUpdateRequest): Request payload containing client-provided input values.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+        _ (default=Depends(require_permission(Permissions.DOCUMENT_TAG_EDIT))): Dependency-injection placeholder argument required by FastAPI.
+    """
     version = get_document_version_by_id(db=db, version_id=version_id)
     if not version or version.document_id != document_id:
         raise HTTPException(status_code=404, detail="Document version not found")
@@ -527,6 +709,15 @@ def remove_tags_from_document_version(
     db: Session = Depends(get_db),
     _=Depends(require_permission(Permissions.DOCUMENT_TAG_EDIT)),
 ):
+    """Remove tags from document version.
+
+    Parameters:
+        document_id (type=UUID): Identifier used to locate the target record.
+        version_id (type=UUID): Identifier used to locate the target record.
+        payload (type=TagUpdateRequest): Request payload containing client-provided input values.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+        _ (default=Depends(require_permission(Permissions.DOCUMENT_TAG_EDIT))): Dependency-injection placeholder argument required by FastAPI.
+    """
     version = get_document_version_by_id(db=db, version_id=version_id)
     if not version or version.document_id != document_id:
         raise HTTPException(status_code=404, detail="Document version not found")

@@ -14,6 +14,12 @@ def get_my_access(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Return my access.
+
+    Parameters:
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+        current_user (type=User, default=Depends(get_current_user)): Authenticated user context for authorization and ownership checks.
+    """
     permissions = resolve_permissions(db, current_user)
 
     return {

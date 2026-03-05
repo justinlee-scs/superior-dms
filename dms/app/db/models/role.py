@@ -8,6 +8,17 @@ from app.db.models.role_hierarchy import role_hierarchy
 
 
 class Role(Base):
+    """Represent the role database model.
+
+    Parameters:
+        id: Primary identifier for this record.
+        name: Human-readable name for this entity.
+        description: Optional human-readable description.
+        users: Users value used by this model/schema.
+        permissions: Permissions associated with the role or response.
+        managed_roles: Roles that this role is allowed to manage.
+        manager_roles: Roles that are allowed to manage this role.
+    """
     __tablename__ = "roles"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

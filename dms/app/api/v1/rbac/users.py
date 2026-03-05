@@ -41,11 +41,22 @@ DEFAULT_UNASSIGNED_ROLE = "unassigned"
 
 @router.get("/", response_model=list[UserResponse])
 def list_users(db: Session = Depends(get_db)):
+    """Return users.
+
+    Parameters:
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
     return db.query(User).order_by(User.email.asc()).all()
 
 
 @router.post("/", response_model=UserResponse, status_code=201)
 def create_user(payload: UserCreate, db: Session = Depends(get_db)):
+    """Create user.
+
+    Parameters:
+        payload (type=UserCreate): Request payload containing client-provided input values.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
     existing_email = db.query(User).filter(User.email == payload.email).first()
     if existing_email:
         raise HTTPException(status_code=409, detail="Email already exists")
@@ -76,6 +87,12 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db)):
 
 @router.get("/{user_id}", response_model=UserResponse)
 def get_user(user_id: UUID, db: Session = Depends(get_db)):
+    """Return user.
+
+    Parameters:
+        user_id (type=UUID): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(404, "User not found")
@@ -84,6 +101,13 @@ def get_user(user_id: UUID, db: Session = Depends(get_db)):
 
 @router.post("/{user_id}/roles/{role_id}")
 def add_role(user_id: UUID, role_id: UUID, db: Session = Depends(get_db)):
+    """Add role.
+
+    Parameters:
+        user_id (type=UUID): Identifier used to locate the target record.
+        role_id (type=UUID): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
     user = db.get(User, user_id)
     role = db.get(Role, role_id)
 
@@ -96,6 +120,13 @@ def add_role(user_id: UUID, role_id: UUID, db: Session = Depends(get_db)):
 
 @router.put("/{user_id}/roles")
 def set_user_roles(user_id: UUID, payload: UserRoleSet, db: Session = Depends(get_db)):
+    """Set user roles.
+
+    Parameters:
+        user_id (type=UUID): Identifier used to locate the target record.
+        payload (type=UserRoleSet): Request payload containing client-provided input values.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(404, "User not found")
@@ -117,6 +148,13 @@ def set_user_roles(user_id: UUID, payload: UserRoleSet, db: Session = Depends(ge
 
 @router.delete("/{user_id}/roles/{role_id}")
 def remove_role_from_user(user_id: UUID, role_id: UUID, db: Session = Depends(get_db)):
+    """Remove role from user.
+
+    Parameters:
+        user_id (type=UUID): Identifier used to locate the target record.
+        role_id (type=UUID): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
     user = db.get(User, user_id)
     role = db.get(Role, role_id)
 
@@ -134,6 +172,14 @@ def set_override(
     effect: PermissionEffect,
     db: Session = Depends(get_db),
 ):
+    """Set override.
+
+    Parameters:
+        user_id (type=UUID): Identifier used to locate the target record.
+        permission_key (type=str): Function argument used by this operation.
+        effect (type=PermissionEffect): Function argument used by this operation.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
     user = db.get(User, user_id)
     perm = get_permission_by_key(db, permission_key)
 
@@ -150,6 +196,13 @@ def set_overrides_bulk(
     payload: UserOverrideSet,
     db: Session = Depends(get_db),
 ):
+    """Set overrides bulk.
+
+    Parameters:
+        user_id (type=UUID): Identifier used to locate the target record.
+        payload (type=UserOverrideSet): Request payload containing client-provided input values.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(404, "User not found")
@@ -171,6 +224,12 @@ def set_overrides_bulk(
 
 @router.get("/{user_id}/permissions/default")
 def get_default_permissions(user_id: UUID, db: Session = Depends(get_db)):
+    """Return default permissions.
+
+    Parameters:
+        user_id (type=UUID): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(404, "User not found")
@@ -181,6 +240,12 @@ def get_default_permissions(user_id: UUID, db: Session = Depends(get_db)):
 
 @router.get("/{user_id}/permissions")
 def get_user_permissions(user_id: UUID, db: Session = Depends(get_db)):
+    """Return user permissions.
+
+    Parameters:
+        user_id (type=UUID): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(404, "User not found")
@@ -198,6 +263,12 @@ def get_user_permissions(user_id: UUID, db: Session = Depends(get_db)):
 
 @router.post("/{user_id}/permissions/reset-default")
 def reset_permissions_to_default(user_id: UUID, db: Session = Depends(get_db)):
+    """Handle reset permissions to default.
+
+    Parameters:
+        user_id (type=UUID): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(404, "User not found")

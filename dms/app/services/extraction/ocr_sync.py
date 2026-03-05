@@ -30,6 +30,12 @@ SUPPORTED_IMAGE_EXTENSIONS = {
 
 
 def validate_input_file(file_bytes: bytes, filename: str) -> str:
+    """Validate input file.
+
+    Parameters:
+        file_bytes (type=bytes): Raw file content used for validation or processing.
+        filename (type=str): File or entity name used for storage and display.
+    """
     if not file_bytes:
         raise ValueError("Input file is empty.")
 
@@ -45,6 +51,12 @@ def validate_input_file(file_bytes: bytes, filename: str) -> str:
 
 
 def _to_images(file_bytes: bytes, suffix: str) -> list[Image.Image]:
+    """Handle to images.
+
+    Parameters:
+        file_bytes (type=bytes): Raw file content used for validation or processing.
+        suffix (type=str): Function argument used by this operation.
+    """
     if suffix == ".pdf":
         return pdf_to_images(file_bytes)
     return [Image.open(io.BytesIO(file_bytes))]
@@ -52,6 +64,11 @@ def _to_images(file_bytes: bytes, suffix: str) -> list[Image.Image]:
 
 @lru_cache(maxsize=1)
 def _build_ocr_provider() -> OCRProvider:
+    """Handle build ocr provider.
+
+    Parameters:
+        None.
+    """
     provider = os.getenv("OCR_PROVIDER", "tesseract").strip().lower()
 
     if provider == "trocr":
@@ -65,10 +82,20 @@ def _build_ocr_provider() -> OCRProvider:
 
 
 def get_ocr_provider() -> OCRProvider:
+    """Return ocr provider.
+
+    Parameters:
+        None.
+    """
     return _build_ocr_provider()
 
 
 def get_ocr_provider_safe() -> OCRProvider:
+    """Return ocr provider safe.
+
+    Parameters:
+        None.
+    """
     try:
         return _build_ocr_provider()
     except Exception as exc:
@@ -80,9 +107,11 @@ def extract_text_from_file(
     file_bytes: bytes,
     filename: str,
 ) -> Tuple[str, float]:
-    """
-    Synchronous OCR entry point.
-    Returns (text, confidence).
+    """Synchronous OCR entry point.
+
+    Parameters:
+        file_bytes (type=bytes): Raw file content used for validation or processing.
+        filename (type=str): File or entity name used for storage and display.
     """
 
     result = extract_text_with_metadata(file_bytes=file_bytes, filename=filename)
@@ -93,6 +122,12 @@ def extract_text_with_metadata(
     file_bytes: bytes,
     filename: str,
 ) -> ExtractionResult:
+    """Extract text with metadata.
+
+    Parameters:
+        file_bytes (type=bytes): Raw file content used for validation or processing.
+        filename (type=str): File or entity name used for storage and display.
+    """
     return extract_with_fallback(file_bytes=file_bytes, filename=filename)
 
 
@@ -102,6 +137,13 @@ def extract_with_fallback(
     *,
     min_confidence: float | None = None,
 ) -> ExtractionResult:
+    """Extract with fallback.
+
+    Parameters:
+        file_bytes (type=bytes): Raw file content used for validation or processing.
+        filename (type=str): File or entity name used for storage and display.
+        min_confidence (type=float | None, default=None): Function argument used by this operation.
+    """
     suffix = validate_input_file(file_bytes=file_bytes, filename=filename)
     threshold = min_confidence if min_confidence is not None else float(
         os.getenv("OCR_MIN_CONFIDENCE", "0.60")

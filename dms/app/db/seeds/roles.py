@@ -36,6 +36,11 @@ ROLE_PERMISSION_MAP = {
 def seed_roles(db: Session):
 
     # Fetch all permissions once
+    """Seed roles.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+    """
     all_permissions = db.query(Permission).all()
     permission_lookup = {p.key: p for p in all_permissions}
 

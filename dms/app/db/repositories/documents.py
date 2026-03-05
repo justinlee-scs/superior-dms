@@ -15,6 +15,14 @@ def create_document(
     *,
     commit: bool = True,
 ) -> Document:
+    """Create document.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        filename (type=str): File or entity name used for storage and display.
+        content_hash (type=str): Function argument used by this operation.
+        commit (type=bool, default=True): Flag controlling whether to commit the transaction.
+    """
     document = Document(
         id=uuid.uuid4(),
         filename=filename,
@@ -37,6 +45,15 @@ def create_document_version(
     *,
     commit: bool = True,
 ) -> DocumentVersion:
+    """Create document version.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        document_id (type=UUID): Identifier used to locate the target record.
+        file_bytes (type=bytes): Raw file content used for validation or processing.
+        set_as_current (type=bool, default=False): Function argument used by this operation.
+        commit (type=bool, default=True): Flag controlling whether to commit the transaction.
+    """
     version = DocumentVersion(
         id=uuid.uuid4(),
         document_id=document_id,
@@ -66,6 +83,12 @@ def load_document_version_bytes(
     db: Session,
     version_id: UUID,
 ) -> bytes:
+    """Handle load document version bytes.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        version_id (type=UUID): Identifier used to locate the target record.
+    """
     version = db.get(DocumentVersion, version_id)
 
     if not version:
@@ -86,6 +109,20 @@ def update_processing_results(
     ocr_model_version: str | None = None,
     ocr_latency_ms: int | None = None,
 ):
+    """Update processing results.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        version_id (type=UUID): Identifier used to locate the target record.
+        extracted_text (type=str): Function argument used by this operation.
+        classification: Function argument used by this operation.
+        confidence (type=float): Function argument used by this operation.
+        tags (type=list[str] | None, default=None): Function argument used by this operation.
+        ocr_raw_confidence (type=float | None, default=None): Function argument used by this operation.
+        ocr_engine (type=str | None, default=None): Function argument used by this operation.
+        ocr_model_version (type=str | None, default=None): Function argument used by this operation.
+        ocr_latency_ms (type=int | None, default=None): Function argument used by this operation.
+    """
     version = db.get(DocumentVersion, version_id)
 
     if not version:
@@ -108,6 +145,12 @@ def get_document_by_hash(
     db: Session,
     content_hash: str,
 ) -> Document | None:
+    """Return document by hash.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        content_hash (type=str): Function argument used by this operation.
+    """
     return (
         db.query(Document)
         .filter(Document.content_hash == content_hash)
@@ -119,16 +162,28 @@ def get_document_by_id(
     db: Session,
     document_id: UUID,
 ) -> Document | None:
+    """Return document by id.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        document_id (type=UUID): Identifier used to locate the target record.
+    """
     return db.get(Document, document_id)
 
 
 def list_documents(db: Session):
+    """Return documents.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+    """
     rows = (
         db.query(
             Document,
             DocumentVersion.processing_status,
             DocumentVersion.classification,
             DocumentVersion.confidence,
+            DocumentVersion.tags,
         )
         .outerjoin(
             DocumentVersion,
@@ -159,6 +214,7 @@ def list_documents(db: Session):
             processing_status,
             classification,
             confidence,
+            tags,
             len(version_ids_by_document.get(doc.id, [])),
             (
                 version_ids_by_document.get(doc.id, []).index(doc.current_version_id) + 1
@@ -166,7 +222,7 @@ def list_documents(db: Session):
                 else None
             ),
         )
-        for doc, processing_status, classification, confidence in rows
+        for doc, processing_status, classification, confidence, tags in rows
     ]
 
 
@@ -175,6 +231,13 @@ def update_document_type(
     document_id: UUID,
     document_type: str,
 ) -> Document | None:
+    """Update document type.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        document_id (type=UUID): Identifier used to locate the target record.
+        document_type (type=str): Function argument used by this operation.
+    """
     document = db.get(Document, document_id)
 
     if not document:
@@ -191,6 +254,12 @@ def get_document_version(
     db: Session,
     document_id: UUID,
 ) -> DocumentVersion | None:
+    """Return document version.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        document_id (type=UUID): Identifier used to locate the target record.
+    """
     document = db.get(Document, document_id)
 
     if not document or not document.current_version_id:
@@ -203,12 +272,23 @@ def get_document_version_by_id(
     db: Session,
     version_id: UUID,
 ) -> DocumentVersion | None:
+    """Return document version by id.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        version_id (type=UUID): Identifier used to locate the target record.
+    """
     return db.get(DocumentVersion, version_id)
 
 
 def list_existing_tags(
     db: Session,
 ) -> list[str]:
+    """Return existing tags.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+    """
     rows = db.query(DocumentVersion.tags).filter(DocumentVersion.tags.isnot(None)).all()
     values: set[str] = set()
     for (tags,) in rows:
@@ -227,6 +307,13 @@ def replace_document_version_tags(
     version: DocumentVersion,
     tags: list[str],
 ) -> list[str]:
+    """Handle replace document version tags.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        version (type=DocumentVersion): Function argument used by this operation.
+        tags (type=list[str]): Function argument used by this operation.
+    """
     normalized = sorted({t for t in (normalize_tag(tag) for tag in tags) if t})
     version.tags = normalized
     db.commit()
@@ -239,6 +326,13 @@ def add_document_version_tags(
     version: DocumentVersion,
     tags: list[str],
 ) -> list[str]:
+    """Add document version tags.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        version (type=DocumentVersion): Function argument used by this operation.
+        tags (type=list[str]): Function argument used by this operation.
+    """
     existing = set(version.tags or [])
     for tag in tags:
         normalized = normalize_tag(tag)
@@ -255,6 +349,13 @@ def remove_document_version_tags(
     version: DocumentVersion,
     tags: list[str],
 ) -> list[str]:
+    """Remove document version tags.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        version (type=DocumentVersion): Function argument used by this operation.
+        tags (type=list[str]): Function argument used by this operation.
+    """
     remove = {t for t in (normalize_tag(tag) for tag in tags) if t}
     current = set(version.tags or [])
     version.tags = sorted(current - remove)
@@ -267,6 +368,12 @@ def list_document_versions(
     db: Session,
     document_id: UUID,
 ) -> list[DocumentVersion]:
+    """Return document versions.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        document_id (type=UUID): Identifier used to locate the target record.
+    """
     return (
         db.query(DocumentVersion)
         .filter(DocumentVersion.document_id == document_id)
@@ -280,6 +387,13 @@ def set_current_document_version(
     document: Document,
     version: DocumentVersion,
 ) -> None:
+    """Set current document version.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        document (type=Document): Function argument used by this operation.
+        version (type=DocumentVersion): Function argument used by this operation.
+    """
     document.current_version_id = version.id
     db.commit()
     db.refresh(document)
@@ -289,9 +403,11 @@ def delete_document(
     db: Session,
     document_id: UUID,
 ) -> None:
-    """
-    Deletes a document and all its versions.
-    Raises ValueError if document does not exist.
+    """Deletes a document and all its versions.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        document_id (type=UUID): Identifier used to locate the target record.
     """
     document = db.get(Document, document_id)
     if not document:

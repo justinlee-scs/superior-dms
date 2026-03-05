@@ -8,11 +8,27 @@ from app.db.base import Base
 
 
 class PermissionEffect(enum.Enum):
+    """Define the permission effect enumeration values.
+
+    Parameters:
+        ALLOW: Enumeration member representing an allowed constant value.
+        DENY: Enumeration member representing an allowed constant value.
+    """
     ALLOW = "ALLOW"
     DENY = "DENY"
 
 
 class UserPermissionOverride(Base):
+    """Represent the user permission override database model.
+
+    Parameters:
+        id: Primary identifier for this record.
+        user_id: Identifier of the user this record belongs to.
+        permission_id: Identifier of the referenced permission.
+        effect: Override effect determining whether access is allowed or denied.
+        user: User value used by this model/schema.
+        permission: Permission value used by this model/schema.
+    """
     __tablename__ = "user_permission_overrides"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

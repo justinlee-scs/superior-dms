@@ -11,6 +11,7 @@ import { WorkflowEditor } from "@/app/components/workflow-editor";
 import { BulkActionBar } from "@/app/components/bulk-action-bar";
 import { VersionHistoryModal } from "@/app/components/version-history-modal";
 import { ProfileDialog } from "@/app/components/profile-dialog";
+import { TagEditorDialog } from "@/app/components/tag-editor-dialog";
 
 import { SelectionProvider, useSelection } from "@/app/selection/selection-context";
 
@@ -34,7 +35,14 @@ import {
 } from "lucide-react";
 
 import { toast } from "sonner";
-import { listDocuments, uploadDocument, deleteDocument } from "@/lib/dms";
+import {
+  createTagPool,
+  deleteDocument,
+  listDocuments,
+  listTagPool,
+  replaceDocumentVersionTags,
+  uploadDocument,
+} from "@/lib/dms";
 import { API_BASE_URL } from "@/lib/api";
 import { getMyAccess } from "@/lib/rbac";
 import RolesPage from "@/admin/roles-page";
@@ -86,6 +94,8 @@ function AppInner() {
   const [versionModalDoc, setVersionModalDoc] = useState<Document | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"documents" | "upload" | "admin">("documents");
+  const [tagPool, setTagPool] = useState<string[]>([]);
+  const [editingTagsDoc, setEditingTagsDoc] = useState<Document | null>(null);
 
   const selection = useSelection();
 
@@ -98,10 +108,16 @@ function AppInner() {
     setDocuments(baseDocs);
   };
 
+  const refreshTagPool = async () => {
+    const data = await listTagPool();
+    setTagPool(data.tags ?? []);
+  };
+
   useEffect(() => {
     refreshDocuments().catch(() =>
       toast.error("Failed to load documents")
     );
+    refreshTagPool().catch(() => toast.error("Failed to load tags"));
   }, []);
 
   useEffect(() => {
@@ -118,6 +134,7 @@ function AppInner() {
 
   useEffect(() => {
     refreshDocuments().catch(() => toast.error("Failed to load documents"));
+    refreshTagPool().catch(() => toast.error("Failed to load tags"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -127,8 +144,9 @@ function AppInner() {
   const availableTags = useMemo(() => {
     const tags = new Set<string>();
     documents.forEach((d) => d.tags.forEach((t) => tags.add(t)));
-    return Array.from(tags);
-  }, [documents]);
+    tagPool.forEach((t) => tags.add(t));
+    return Array.from(tags).sort();
+  }, [documents, tagPool]);
 
   const availableAuthors = useMemo(() => {
     return Array.from(new Set(documents.map((d) => d.author)));
@@ -323,6 +341,35 @@ function AppInner() {
     setWorkflowEditorOpen(true);
   };
 
+  const handleCreateStandaloneTag = async (rawTag: string) => {
+    const result = await createTagPool(rawTag);
+    setTagPool((prev) => Array.from(new Set([...prev, result.tag])).sort());
+    toast.success(`Tag created: ${result.tag}`);
+  };
+
+  const handleSaveDocumentTags = async (nextTags: string[]) => {
+    if (!editingTagsDoc) return;
+    if (!editingTagsDoc.currentVersionId) {
+      toast.error("Document has no current version to tag");
+      return;
+    }
+    const createCalls = nextTags.map((tag) => createTagPool(tag).catch(() => null));
+    await Promise.all(createCalls);
+    const response = await replaceDocumentVersionTags(
+      editingTagsDoc.id,
+      editingTagsDoc.currentVersionId,
+      nextTags,
+    );
+
+    setDocuments((prev) =>
+      prev.map((doc) =>
+        doc.id === editingTagsDoc.id ? { ...doc, tags: response.tags ?? [] } : doc,
+      ),
+    );
+    await refreshTagPool();
+    toast.success("Document tags updated");
+  };
+
   return (
     <DndProvider backend={HTML5Backend}>
       <div className={`flex h-screen ${darkMode ? "bg-gray-900 text-white" : ""}`}>
@@ -331,6 +378,7 @@ function AppInner() {
           onFiltersChange={setFilters}
           availableTags={availableTags}
           availableAuthors={availableAuthors}
+          onCreateTag={handleCreateStandaloneTag}
           darkMode={darkMode}
         />
 
@@ -431,6 +479,7 @@ function AppInner() {
                     onDownload={handleDownload}
                     onDelete={handleDelete}
                     onEditWorkflow={handleEditWorkflow}
+                    onEditTags={(doc) => setEditingTagsDoc(doc)}
                     onOpenVersions={(doc) => setVersionModalDoc(doc)}
                     darkMode={darkMode}
                   />
@@ -441,6 +490,7 @@ function AppInner() {
                     onDownload={handleDownload}
                     onDelete={handleDelete}
                     onEditWorkflow={handleEditWorkflow}
+                    onEditTags={(doc) => setEditingTagsDoc(doc)}
                   />
                 ) : (
                   <div className="grid gap-4">
@@ -452,6 +502,7 @@ function AppInner() {
                         onDownload={() => handleDownload(doc)}
                         onDelete={() => handleDelete(doc)}
                         onEditWorkflow={() => handleEditWorkflow(doc)}
+                        onEditTags={() => setEditingTagsDoc(doc)}
                       />
                     ))}
                   </div>
@@ -491,6 +542,15 @@ function AppInner() {
           />
 
           <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
+          <TagEditorDialog
+            open={editingTagsDoc !== null}
+            document={editingTagsDoc}
+            availableTags={availableTags}
+            onOpenChange={(open) => {
+              if (!open) setEditingTagsDoc(null);
+            }}
+            onSave={handleSaveDocumentTags}
+          />
 
           <Toaster />
         </div>

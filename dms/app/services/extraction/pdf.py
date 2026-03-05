@@ -5,8 +5,10 @@ from PIL import Image
 
 
 def pdf_to_images(file_bytes: bytes) -> List[Image.Image]:
-    """
-    Convert a PDF into a flat list of PIL Images (one per page).
+    """Convert a PDF into a flat list of PIL Images (one per page).
+
+    Parameters:
+        file_bytes (type=bytes): Raw file content used for validation or processing.
     """
 
     images = convert_from_bytes(file_bytes)

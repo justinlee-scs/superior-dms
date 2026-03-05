@@ -28,20 +28,40 @@ app.include_router(rbac_router, prefix="/rbac")
 
 @app.get("/")
 def root():
+    """Handle root.
+
+    Parameters:
+        None.
+    """
     return {"message": "DMS API running"}
 
 @app.get("/documents")
 def list_docs(user: User = Depends(get_current_user)):
+    """Return docs.
+
+    Parameters:
+        user (type=User, default=Depends(get_current_user)): Authenticated user context for authorization and ownership checks.
+    """
     return {"msg": f"Hello {user.email}"}
 
 @app.get("/health")
 def health():
+    """Handle health.
+
+    Parameters:
+        None.
+    """
     return {"status": "ok"}
 
 from app.db.session import Base, engine
 
 @app.on_event("startup")
 def create_tables():
+    """Create tables.
+
+    Parameters:
+        None.
+    """
     Base.metadata.create_all(bind=engine)
     # Lightweight compatibility migration for older local DBs.
     with engine.begin() as conn:

@@ -14,6 +14,12 @@ def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
+    """Return current user.
+
+    Parameters:
+        token (type=str, default=Depends(oauth2_scheme)): Security token used for authentication/authorization flows.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id_str = payload.get("sub")

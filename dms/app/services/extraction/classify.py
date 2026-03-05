@@ -2,9 +2,10 @@ from app.db.models.enums import DocumentClass
 
 
 def classify_document(text: str) -> DocumentClass:
-    """
-    Very simple heuristic classifier.
-    Replace with ML later.
+    """Very simple heuristic classifier.
+
+    Parameters:
+        text (type=str): Function argument used by this operation.
     """
 
     lowered = text.lower()

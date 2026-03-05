@@ -16,6 +16,11 @@ from app.db.models.document_version import DocumentVersion
 
 def init_db():
     #print("Registered tables:", list(Base.metadata.tables.keys()))
+    """Handle init db.
+
+    Parameters:
+        None.
+    """
     Base.metadata.create_all(bind=engine)
 
 

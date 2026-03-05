@@ -17,9 +17,11 @@ from app.db.models.document_versions import DocumentVersion
 
 
 def process_document_version(db: Session, version_id: str) -> None:
-    """
-    Synchronous processor for a DocumentVersion.
-    Runs OCR/ICR, classifies, and updates the version.
+    """Synchronous processor for a DocumentVersion.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        version_id (type=str): Identifier used to locate the target record.
     """
 
     try:

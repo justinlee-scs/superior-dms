@@ -6,6 +6,7 @@ from .enums import DocumentClass
 from app.db.models.permission import Permission
 from app.db.models.role import Role
 from app.db.models.user import User
+from app.db.models.tag_catalog import TagCatalog
 
 # join tables (must be imported)
 from app.db.models.user_role import user_roles

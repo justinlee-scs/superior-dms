@@ -13,7 +13,18 @@ from app.services.extraction.providers import ExtractionResult, OCRProvider
 
 
 class TesseractProvider(OCRProvider):
+    """Define the tesseract provider type.
+    
+    Parameters:
+        None.
+    """
     def extract(self, file_bytes: bytes, filename: str) -> ExtractionResult:
+        """Handle extract for this instance.
+
+        Parameters:
+            file_bytes (type=bytes): Raw file content used for validation or processing.
+            filename (type=str): File or entity name used for storage and display.
+        """
         start = time.perf_counter()
         suffix = Path(filename or "").suffix.lower()
 

@@ -41,6 +41,11 @@ RESERVED_TAG_PREFIXES = (
 
 
 def _as_string(value: str | Enum | None) -> str | None:
+    """Handle as string.
+
+    Parameters:
+        value (type=str | Enum | None): Function argument used by this operation.
+    """
     if value is None:
         return None
     if isinstance(value, Enum):
@@ -49,6 +54,12 @@ def _as_string(value: str | Enum | None) -> str | None:
 
 
 def _derive_project_tag(text: str, filename: str | None) -> str:
+    """Handle derive project tag.
+
+    Parameters:
+        text (type=str): Function argument used by this operation.
+        filename (type=str | None): File or entity name used for storage and display.
+    """
     patterns = (
         r"\bproject[\s:#-]+([A-Za-z0-9][A-Za-z0-9_-]{1,63})\b",
         r"\bproj[\s:#-]+([A-Za-z0-9][A-Za-z0-9_-]{1,63})\b",
@@ -76,6 +87,12 @@ def _derive_document_type_tag(
     document_type: str | Enum | None,
     classification: DocumentClass | str | None,
 ) -> str:
+    """Handle derive document type tag.
+
+    Parameters:
+        document_type (type=str | Enum | None): Function argument used by this operation.
+        classification (type=DocumentClass | str | None): Function argument used by this operation.
+    """
     explicit = _as_string(document_type)
     if explicit:
         return f"document_type:{explicit}"
@@ -92,6 +109,13 @@ def _derive_security_clearance_tag(
     document_type: str | Enum | None,
     classification: DocumentClass | str | None,
 ) -> str:
+    """Handle derive security clearance tag.
+
+    Parameters:
+        text (type=str): Function argument used by this operation.
+        document_type (type=str | Enum | None): Function argument used by this operation.
+        classification (type=DocumentClass | str | None): Function argument used by this operation.
+    """
     lowered = text.lower()
     doc_type = (_as_string(document_type) or "").lower()
     doc_class = (_as_string(classification) or "").lower()
@@ -106,6 +130,11 @@ def _derive_security_clearance_tag(
 
 
 def normalize_tag(raw_tag: str) -> str:
+    """Handle normalize tag.
+
+    Parameters:
+        raw_tag (type=str): Function argument used by this operation.
+    """
     tag = re.sub(r"\s+", " ", (raw_tag or "").strip().lower())
     if not tag:
         return ""
@@ -119,6 +148,12 @@ def _suggest_existing_tags(
     context_text: str,
     existing_tags: list[str] | None,
 ) -> set[str]:
+    """Handle suggest existing tags.
+
+    Parameters:
+        context_text (type=str): Function argument used by this operation.
+        existing_tags (type=list[str] | None): Function argument used by this operation.
+    """
     if not existing_tags:
         return set()
 
@@ -155,8 +190,14 @@ def derive_tags(
     filename: str | None = None,
     existing_tags: list[str] | None = None,
 ) -> list[str]:
-    """
-    Derive deterministic tags from extracted text and classification.
+    """Derive deterministic tags from extracted text and classification.
+
+    Parameters:
+        text (type=str): Function argument used by this operation.
+        classification (type=DocumentClass | str | None): Function argument used by this operation.
+        document_type (type=str | Enum | None, default=None): Function argument used by this operation.
+        filename (type=str | None, default=None): File or entity name used for storage and display.
+        existing_tags (type=list[str] | None, default=None): Function argument used by this operation.
     """
     tags: set[str] = set()
     normalized = (text or "").lower()

@@ -13,16 +13,35 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 class LoginRequest(BaseModel):
+    """Define the schema for login request.
+    
+    Parameters:
+        email (type=EmailStr): Parameter.
+        password (type=str): Parameter.
+    """
     email: EmailStr
     password: str
 
 
 class TokenResponse(BaseModel):
+    """Define the schema for token response.
+    
+    Parameters:
+        access_token (type=str): Parameter.
+        token_type (type=str): Parameter.
+    """
     access_token: str
     token_type: str = "bearer"
 
 
 class ProfileUpdateRequest(BaseModel):
+    """Define the schema for profile update request.
+    
+    Parameters:
+        username (type=str | None): Parameter.
+        current_password (type=str | None): Parameter.
+        new_password (type=str | None): Parameter.
+    """
     username: str | None = None
     current_password: str | None = None
     new_password: str | None = None
@@ -30,6 +49,12 @@ class ProfileUpdateRequest(BaseModel):
 
 @router.post("/login", response_model=TokenResponse)
 def login(data: LoginRequest, db: Session = Depends(get_db)):
+    """Handle login.
+
+    Parameters:
+        data (type=LoginRequest): Request payload containing client-provided input values.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
     user = db.query(User).filter(User.email == data.email).first()
 
     if not user:
@@ -62,6 +87,12 @@ def me(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Handle me.
+
+    Parameters:
+        user (type=User, default=Depends(get_current_user)): Authenticated user context for authorization and ownership checks.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
     permissions = resolve_permissions(db, user)
 
     return {
@@ -79,6 +110,13 @@ def update_profile(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Update profile.
+
+    Parameters:
+        payload (type=ProfileUpdateRequest): Request payload containing client-provided input values.
+        user (type=User, default=Depends(get_current_user)): Authenticated user context for authorization and ownership checks.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
     updated = False
 
     if payload.username is not None:

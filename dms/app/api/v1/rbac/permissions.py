@@ -16,4 +16,9 @@ router = APIRouter(
 
 @router.get("/", response_model=list[PermissionResponse])
 def get_permissions(db: Session = Depends(get_db)):
+    """Return permissions.
+
+    Parameters:
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
     return list_permissions(db)

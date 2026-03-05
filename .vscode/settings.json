@@ -1,1 +1,11 @@
-{}
+{
+  "search.exclude": {
+    "**/.vscode-server/**": true
+  },
+  "files.exclude": {
+    "**/.vscode-server/**": true
+  },
+  "files.watcherExclude": {
+    "**/.vscode-server/**": true
+  }
+}

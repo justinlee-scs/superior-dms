@@ -13,12 +13,22 @@ ROLE_HIERARCHY: dict[str, int] = {
 
 
 def require_role(required_role: str):
+    """Enforce role.
+
+    Parameters:
+        required_role (type=str): Function argument used by this operation.
+    """
     if required_role not in ROLE_HIERARCHY:
         raise RuntimeError(f"Unknown required role: {required_role}")
 
     required_level = ROLE_HIERARCHY[required_role]
 
     def dependency(user: User = Depends(get_current_user)) -> User:
+        """Handle dependency.
+
+        Parameters:
+            user (type=User, default=Depends(get_current_user)): Authenticated user context for authorization and ownership checks.
+        """
         if not user.roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

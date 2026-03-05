@@ -4,9 +4,10 @@ import pytesseract
 
 
 def run_tesseract(images: List[Image.Image]) -> tuple[str, float]:
-    """
-    Runs OCR on a list of PIL Images.
-    Returns (extracted_text, confidence)
+    """Runs OCR on a list of PIL Images.
+
+    Parameters:
+        images (type=List[Image.Image]): Function argument used by this operation.
     """
 
     texts = []

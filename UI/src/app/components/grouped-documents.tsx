@@ -8,6 +8,7 @@ interface GroupedDocumentsProps {
   onDownload: (doc: Document) => void;
   onDelete: (doc: Document) => void;
   onEditWorkflow: (doc: Document) => void;
+  onEditTags?: (doc: Document) => void;
 }
 
 const getDocumentTypeLabel = (type: string) => {
@@ -40,6 +41,7 @@ export function GroupedDocuments({
   onDownload,
   onDelete,
   onEditWorkflow,
+  onEditTags,
 }: GroupedDocumentsProps) {
   // Group documents by type
   const groupedByType = documents.reduce((acc, doc) => {
@@ -105,6 +107,7 @@ export function GroupedDocuments({
                   onDownload={() => onDownload(doc)}
                   onDelete={async () => onDelete(doc)}
                   onEditWorkflow={() => onEditWorkflow(doc)}
+                  onEditTags={() => onEditTags?.(doc)}
                 />
               ))}
             </div>

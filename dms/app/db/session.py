@@ -19,6 +19,11 @@ SessionLocal = sessionmaker(
 )
 
 def get_db():
+    """Return db.
+
+    Parameters:
+        None.
+    """
     db = SessionLocal()
     try:
         yield db

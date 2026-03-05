@@ -30,6 +30,7 @@ interface CompactProjectViewProps {
   onDownload: (doc: Document) => void;
   onDelete: (doc: Document) => void;
   onEditWorkflow: (doc: Document) => void;
+  onEditTags?: (doc: Document) => void;
   onOpenVersions?: (doc: Document) => void;
   darkMode?: boolean;
 }
@@ -81,6 +82,7 @@ export function CompactProjectView({
   onDownload,
   onDelete,
   onEditWorkflow,
+  onEditTags,
   onOpenVersions,
   darkMode,
 }: CompactProjectViewProps) {
@@ -358,6 +360,11 @@ export function CompactProjectView({
                                     onClick={() => onEditWorkflow(doc)}
                                   >
                                     Edit Workflow
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => onEditTags?.(doc)}
+                                  >
+                                    Edit Tags
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>

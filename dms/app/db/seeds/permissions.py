@@ -25,6 +25,11 @@ ALL_PERMISSIONS = [
 
 
 def seed_permissions(db: Session):
+    """Seed permissions.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+    """
     for key in ALL_PERMISSIONS:
         exists = db.query(Permission).filter_by(key=key).first()
         if not exists:

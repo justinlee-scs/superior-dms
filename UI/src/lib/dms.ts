@@ -85,6 +85,35 @@ export function deleteDocument(id: string) {
   return apiFetch(`/documents/${id}`, { method: "DELETE" });
 }
 
+export function listTagPool(query?: string) {
+  const q = query?.trim();
+  const suffix = q ? `?q=${encodeURIComponent(q)}` : "";
+  return apiFetch<{ tags: string[] }>(`/documents/tag-pool${suffix}`);
+}
+
+export function createTagPool(tag: string) {
+  return apiFetch<{ tag: string }>("/documents/tag-pool", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tag }),
+  });
+}
+
+export function replaceDocumentVersionTags(
+  documentId: string,
+  versionId: string,
+  tags: string[],
+) {
+  return apiFetch<{ document_id: string; version_id: string; tags: string[] }>(
+    `/documents/${documentId}/versions/${versionId}/tags`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tags }),
+    },
+  );
+}
+
 export async function uploadDocument(file: File) {
   const form = new FormData();
   form.append("file", file);
