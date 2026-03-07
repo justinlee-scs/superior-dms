@@ -53,6 +53,12 @@ class Document(Base):
     created_at = Column(sa.DateTime, nullable=False, default=datetime.utcnow)
 
     content_hash = Column(sa.String(64), index=True, nullable=False)
+    uploaded_by_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     document_type = Column(
         sa.Enum(
@@ -83,4 +89,10 @@ class Document(Base):
         "DocumentVersion",
         foreign_keys=[current_version_id],
         post_update=True,
+    )
+
+    uploaded_by_user = relationship(
+        "User",
+        foreign_keys=[uploaded_by_user_id],
+        lazy="selectin",
     )

@@ -26,6 +26,7 @@ class DocumentResponse(BaseModel):
     """
     id: UUID
     filename: str
+    author: str | None = None
     status: str | None = None
     document_type: str | None = None
     confidence: float | None = None

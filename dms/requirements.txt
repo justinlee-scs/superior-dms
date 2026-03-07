@@ -10,6 +10,7 @@ pytesseract
 uvicorn
 fastapi
 sqlalchemy
+alembic
 
 passlib[argon2]
 python-jose[cryptography]

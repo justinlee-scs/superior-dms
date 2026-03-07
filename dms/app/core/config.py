@@ -1,0 +1,71 @@
+import os
+from dataclasses import dataclass
+
+
+def _parse_csv(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _parse_bool(value: str, default: bool) -> bool:
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
+@dataclass(frozen=True)
+class Settings:
+    app_env: str
+    database_url: str
+    jwt_secret: str
+    jwt_algorithm: str
+    access_token_expire_minutes: int
+    cors_allow_origins: list[str]
+    cors_allow_credentials: bool
+
+
+def _build_settings() -> Settings:
+    app_env = os.getenv("APP_ENV", "development").strip().lower()
+
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        if app_env == "production":
+            raise RuntimeError("DATABASE_URL is required when APP_ENV=production")
+        database_url = "postgresql+psycopg://dms_user:dms_password@localhost:5432/dms"
+
+    jwt_secret = os.getenv("JWT_SECRET")
+    if not jwt_secret:
+        if app_env == "production":
+            raise RuntimeError("JWT_SECRET is required when APP_ENV=production")
+        jwt_secret = "dev-only-jwt-secret-change-me"
+
+    jwt_algorithm = os.getenv("JWT_ALGORITHM", "HS256").strip()
+    access_token_expire_minutes = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
+
+    cors_raw = os.getenv(
+        "CORS_ALLOW_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    )
+    cors_allow_origins = _parse_csv(cors_raw)
+    if not cors_allow_origins:
+        cors_allow_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+    cors_allow_credentials = _parse_bool(
+        os.getenv("CORS_ALLOW_CREDENTIALS", "true"),
+        default=True,
+    )
+
+    return Settings(
+        app_env=app_env,
+        database_url=database_url,
+        jwt_secret=jwt_secret,
+        jwt_algorithm=jwt_algorithm,
+        access_token_expire_minutes=access_token_expire_minutes,
+        cors_allow_origins=cors_allow_origins,
+        cors_allow_credentials=cors_allow_credentials,
+    )
+
+
+settings = _build_settings()

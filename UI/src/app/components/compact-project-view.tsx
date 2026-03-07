@@ -49,6 +49,18 @@ const getWorkflowColor = (workflow: string, darkMode?: boolean) => {
     "border text-xs font-medium rounded-md px-2 py-0.5 whitespace-nowrap";
 
   switch (workflow.toLowerCase()) {
+    case "failed":
+      return `${base} ${
+        darkMode
+          ? "bg-red-950/50 text-red-300 border-red-700"
+          : "bg-red-100 text-red-800 border-red-300"
+      }`;
+    case "uploaded":
+      return `${base} ${
+        darkMode
+          ? "bg-sky-900/35 text-sky-300 border-sky-700"
+          : "bg-sky-100 text-sky-800 border-sky-300"
+      }`;
     case "approved":
     case "published":
       return `${base} ${darkMode

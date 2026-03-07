@@ -4,9 +4,11 @@ from uuid import UUID
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 
-SECRET_KEY = "C-Kret-Ki, fOurThEmOmEnT"   # move to env later
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
+from app.core.config import settings
+
+SECRET_KEY = settings.jwt_secret
+ALGORITHM = settings.jwt_algorithm
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.access_token_expire_minutes
 
 pwd_context = CryptContext(
     schemes=["argon2"],

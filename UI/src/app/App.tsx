@@ -22,8 +22,6 @@ import { Toaster } from "@/app/components/ui/sonner";
 import {
   FileText,
   Upload as UploadIcon,
-  Grid3x3,
-  List,
   Layers,
   AlignJustify,
   Moon,
@@ -51,10 +49,11 @@ import RolesPage from "@/admin/roles-page";
  * Maps backend document → UI Document
  */
 function mapApiDocument(doc: any): Document {
+  const extension = (doc.filename?.split(".").pop() ?? "file").toLowerCase();
   return {
     id: doc.id,
     name: doc.filename,
-    type: doc.filename?.split(".").pop() ?? "file",
+    type: extension,
     size: doc.size ?? "—",
     author: doc.author ?? "System",
     date: doc.created_at?.slice(0, 10) ?? "",
@@ -87,8 +86,7 @@ function AppInner() {
 
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const [workflowEditorOpen, setWorkflowEditorOpen] = useState(false);
-  const [viewMode, setViewMode] =
-    useState<"compact" | "grid" | "list" | "grouped">("compact");
+  const [viewMode, setViewMode] = useState<"compact" | "grouped">("compact");
   const [darkMode, setDarkMode] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [versionModalDoc, setVersionModalDoc] = useState<Document | null>(null);
@@ -396,34 +394,12 @@ function AppInner() {
                 </div>
               </div>
 
-              <div className="flex gap-2">
-                {isAdmin && (
-                  <Button variant="outline" onClick={() => setActiveTab("admin")}>
-                    <Shield className="mr-2 h-4 w-4" />
-                    Admin
-                  </Button>
-                )}
-                <Button variant="outline" onClick={() => setProfileOpen(true)}>
-                  <UserCircle2 className="mr-2 h-4 w-4" />
-                  Profile
-                </Button>
+              <div className="flex items-center gap-2">
                 <Button
                   variant={viewMode === "compact" ? "default" : "outline"}
                   onClick={() => setViewMode("compact")}
                 >
                   <AlignJustify className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant={viewMode === "grid" ? "default" : "outline"}
-                  onClick={() => setViewMode("grid")}
-                >
-                  <Grid3x3 className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant={viewMode === "list" ? "default" : "outline"}
-                  onClick={() => setViewMode("list")}
-                >
-                  <List className="w-4 h-4" />
                 </Button>
                 <Button
                   variant={viewMode === "grouped" ? "default" : "outline"}
@@ -433,6 +409,17 @@ function AppInner() {
                 </Button>
                 <Button variant="outline" onClick={() => setDarkMode(!darkMode)}>
                   {darkMode ? <Sun /> : <Moon />}
+                </Button>
+                <div className={`mx-1 h-5 w-px ${darkMode ? "bg-gray-600" : "bg-gray-300"}`} />
+                {isAdmin && (
+                  <Button variant="outline" onClick={() => setActiveTab("admin")}>
+                    <Shield className="mr-2 h-4 w-4" />
+                    Admin
+                  </Button>
+                )}
+                <Button variant="outline" onClick={() => setProfileOpen(true)}>
+                  <UserCircle2 className="mr-2 h-4 w-4" />
+                  Profile
                 </Button>
               </div>
             </div>
@@ -491,6 +478,7 @@ function AppInner() {
                     onDelete={handleDelete}
                     onEditWorkflow={handleEditWorkflow}
                     onEditTags={(doc) => setEditingTagsDoc(doc)}
+                    darkMode={darkMode}
                   />
                 ) : (
                   <div className="grid gap-4">

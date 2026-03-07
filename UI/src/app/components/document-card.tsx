@@ -46,6 +46,10 @@ const getFileIcon = (type: string) => {
 
 const getWorkflowColor = (workflow: string) => {
   switch (workflow.toLowerCase()) {
+    case "failed":
+      return "bg-red-100 text-red-800 border-red-300";
+    case "uploaded":
+      return "bg-sky-100 text-sky-800 border-sky-300";
     case "approved":
     case "published":
       return "bg-green-100 text-green-800 border-green-200";

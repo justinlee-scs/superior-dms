@@ -268,7 +268,10 @@ export function SearchFilters({
                     )}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className={`w-auto p-0 ${darkMode ? "bg-gray-800 border-gray-700" : ""}`} align="start">
+                <PopoverContent
+                  className={`w-auto p-0 ${darkMode ? "border-gray-700 bg-gray-800 text-gray-100" : ""}`}
+                  align="start"
+                >
                   <CalendarComponent
                     mode="single"
                     selected={filters.startDate}
@@ -276,6 +279,19 @@ export function SearchFilters({
                     fromYear={1970}
                     toYear={new Date().getFullYear()}
                     captionLayout="dropdown"
+                    className={darkMode ? "text-gray-100" : ""}
+                    classNames={
+                      darkMode
+                        ? {
+                            day: "size-8 p-0 font-normal text-gray-100 aria-selected:opacity-100",
+                            day_outside: "day-outside text-gray-500 aria-selected:text-gray-500",
+                            day_disabled: "text-gray-500 opacity-50",
+                            head_cell: "rounded-md w-8 font-normal text-[0.8rem] text-gray-400",
+                            dropdown: "h-8 rounded-md border border-gray-600 bg-gray-900 px-2 text-sm text-gray-100",
+                            nav_button: "size-7 border border-gray-600 bg-transparent p-0 text-gray-200 opacity-70 hover:opacity-100",
+                          }
+                        : undefined
+                    }
                     initialFocus
                   />
                 </PopoverContent>
@@ -298,7 +314,10 @@ export function SearchFilters({
                     )}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className={`w-auto p-0 ${darkMode ? "bg-gray-800 border-gray-700" : ""}`} align="start">
+                <PopoverContent
+                  className={`w-auto p-0 ${darkMode ? "border-gray-700 bg-gray-800 text-gray-100" : ""}`}
+                  align="start"
+                >
                   <CalendarComponent
                     mode="single"
                     selected={filters.endDate}
@@ -306,6 +325,19 @@ export function SearchFilters({
                     fromYear={1970}
                     toYear={new Date().getFullYear()}
                     captionLayout="dropdown"
+                    className={darkMode ? "text-gray-100" : ""}
+                    classNames={
+                      darkMode
+                        ? {
+                            day: "size-8 p-0 font-normal text-gray-100 aria-selected:opacity-100",
+                            day_outside: "day-outside text-gray-500 aria-selected:text-gray-500",
+                            day_disabled: "text-gray-500 opacity-50",
+                            head_cell: "rounded-md w-8 font-normal text-[0.8rem] text-gray-400",
+                            dropdown: "h-8 rounded-md border border-gray-600 bg-gray-900 px-2 text-sm text-gray-100",
+                            nav_button: "size-7 border border-gray-600 bg-transparent p-0 text-gray-200 opacity-70 hover:opacity-100",
+                          }
+                        : undefined
+                    }
                     disabled={(date) =>
                       filters.startDate ? date < filters.startDate : false
                     }

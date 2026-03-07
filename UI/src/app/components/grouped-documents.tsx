@@ -9,6 +9,7 @@ interface GroupedDocumentsProps {
   onDelete: (doc: Document) => void;
   onEditWorkflow: (doc: Document) => void;
   onEditTags?: (doc: Document) => void;
+  darkMode?: boolean;
 }
 
 const getDocumentTypeLabel = (type: string) => {
@@ -42,6 +43,7 @@ export function GroupedDocuments({
   onDelete,
   onEditWorkflow,
   onEditTags,
+  darkMode,
 }: GroupedDocumentsProps) {
   // Group documents by type
   const groupedByType = documents.reduce((acc, doc) => {
@@ -59,8 +61,8 @@ export function GroupedDocuments({
   if (documents.length === 0) {
     return (
       <div className="text-center py-12">
-        <FileText className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-        <p className="text-gray-500">No documents found</p>
+        <FileText className={`w-16 h-16 mx-auto mb-4 ${darkMode ? "text-gray-500" : "text-gray-300"}`} />
+        <p className={darkMode ? "text-gray-400" : "text-gray-500"}>No documents found</p>
       </div>
     );
   }
@@ -69,15 +71,19 @@ export function GroupedDocuments({
     <div className="space-y-8">
       {/* Project Summary */}
       {projects.length > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h3 className="font-medium mb-2">
+        <div className={`rounded-lg border p-4 ${darkMode ? "border-gray-700 bg-gray-800" : "border-blue-200 bg-blue-50"}`}>
+          <h3 className={`mb-2 font-medium ${darkMode ? "text-gray-100" : ""}`}>
             {projects.length === 1 ? "Project" : "Projects"} Found
           </h3>
           <div className="flex flex-wrap gap-2">
             {projects.map((project) => {
               const count = documents.filter((doc) => doc.project === project).length;
               return (
-                <Badge key={project} variant="secondary" className="text-sm">
+                <Badge
+                  key={project}
+                  variant="secondary"
+                  className={`text-sm ${darkMode ? "bg-gray-700 text-gray-100" : ""}`}
+                >
                   {project} ({count} {count === 1 ? "file" : "files"})
                 </Badge>
               );
@@ -93,10 +99,10 @@ export function GroupedDocuments({
 
         return (
           <div key={typeKey} className="space-y-4">
-            <div className="flex items-center gap-3 pb-2 border-b">
-              <TypeIcon className="w-5 h-5 text-gray-600" />
-              <h2 className="font-semibold text-lg">{typeLabel}</h2>
-              <Badge variant="outline">{docs.length}</Badge>
+            <div className={`flex items-center gap-3 border-b pb-2 ${darkMode ? "border-gray-700" : ""}`}>
+              <TypeIcon className={`w-5 h-5 ${darkMode ? "text-gray-300" : "text-gray-600"}`} />
+              <h2 className={`text-lg font-semibold ${darkMode ? "text-gray-100" : ""}`}>{typeLabel}</h2>
+              <Badge variant="outline" className={darkMode ? "border-gray-600 text-gray-200" : ""}>{docs.length}</Badge>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {docs.map((doc) => (
@@ -108,6 +114,7 @@ export function GroupedDocuments({
                   onDelete={async () => onDelete(doc)}
                   onEditWorkflow={() => onEditWorkflow(doc)}
                   onEditTags={() => onEditTags?.(doc)}
+                  darkMode={darkMode}
                 />
               ))}
             </div>

@@ -1,8 +1,9 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
+from uuid import UUID
 
 from app.db.session import get_db
-from app.db import repositories
+from app.db.repositories.documents import get_document, reset_processing_state
 from app.workers.processor import enqueue_processing
 
 router = APIRouter(prefix="/processing", tags=["processing"])
@@ -10,7 +11,7 @@ router = APIRouter(prefix="/processing", tags=["processing"])
 
 @router.post("/documents/{document_id}/process", status_code=202)
 def process_document(
-    document_id: str,
+    document_id: UUID,
     db: Session = Depends(get_db),
 ):
     """Trigger processing for an existing document.
@@ -20,12 +21,14 @@ def process_document(
         db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
     """
 
-    document = repositories.get_document(db, document_id)
+    document = get_document(db, document_id)
 
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
+    if not document.current_version_id:
+        raise HTTPException(status_code=409, detail="Document has no current version")
 
-    enqueue_processing(document.current_version_id)
+    enqueue_processing(str(document.current_version_id))
 
     return {
         "document_id": document_id,
@@ -35,7 +38,7 @@ def process_document(
 
 @router.post("/documents/{document_id}/reprocess", status_code=202)
 def reprocess_document(
-    document_id: str,
+    document_id: UUID,
     db: Session = Depends(get_db),
 ):
     """Force reprocessing (new OCR run, same document version).
@@ -45,13 +48,15 @@ def reprocess_document(
         db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
     """
 
-    document = repositories.get_document(db, document_id)
+    document = get_document(db, document_id)
 
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
+    if not document.current_version_id:
+        raise HTTPException(status_code=409, detail="Document has no current version")
 
-    repositories.reset_processing_state(db, document.current_version_id)
-    enqueue_processing(document.current_version_id)
+    reset_processing_state(db, document.current_version_id)
+    enqueue_processing(str(document.current_version_id))
 
     return {
         "document_id": document_id,

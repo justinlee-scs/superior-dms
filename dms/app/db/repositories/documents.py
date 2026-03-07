@@ -4,6 +4,7 @@ import uuid
 from uuid import UUID
 
 from app.db.models import Document, DocumentVersion
+from app.db.models.user import User
 from app.db.models.enums import ProcessingStatus
 from app.services.extraction.tags import normalize_tag
 
@@ -12,6 +13,7 @@ def create_document(
     db: Session,
     filename: str,
     content_hash: str,
+    uploaded_by_user_id: UUID | None = None,
     *,
     commit: bool = True,
 ) -> Document:
@@ -27,6 +29,7 @@ def create_document(
         id=uuid.uuid4(),
         filename=filename,
         content_hash=content_hash,
+        uploaded_by_user_id=uploaded_by_user_id,
     )
     db.add(document)
     if commit:
@@ -171,6 +174,19 @@ def get_document_by_id(
     return db.get(Document, document_id)
 
 
+def get_document(
+    db: Session,
+    document_id: UUID,
+) -> Document | None:
+    """Return document.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        document_id (type=UUID): Identifier used to locate the target record.
+    """
+    return get_document_by_id(db, document_id)
+
+
 def list_documents(db: Session):
     """Return documents.
 
@@ -184,10 +200,15 @@ def list_documents(db: Session):
             DocumentVersion.classification,
             DocumentVersion.confidence,
             DocumentVersion.tags,
+            User.username,
         )
         .outerjoin(
             DocumentVersion,
             Document.current_version_id == DocumentVersion.id,
+        )
+        .outerjoin(
+            User,
+            Document.uploaded_by_user_id == User.id,
         )
         .order_by(Document.created_at.desc())
         .all()
@@ -215,6 +236,7 @@ def list_documents(db: Session):
             classification,
             confidence,
             tags,
+            uploader_username,
             len(version_ids_by_document.get(doc.id, [])),
             (
                 version_ids_by_document.get(doc.id, []).index(doc.current_version_id) + 1
@@ -222,7 +244,7 @@ def list_documents(db: Session):
                 else None
             ),
         )
-        for doc, processing_status, classification, confidence, tags in rows
+        for doc, processing_status, classification, confidence, tags, uploader_username in rows
     ]
 
 
@@ -279,6 +301,34 @@ def get_document_version_by_id(
         version_id (type=UUID): Identifier used to locate the target record.
     """
     return db.get(DocumentVersion, version_id)
+
+
+def reset_processing_state(
+    db: Session,
+    version_id: UUID,
+) -> DocumentVersion | None:
+    """Reset processing fields for a version before reprocessing.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        version_id (type=UUID): Identifier used to locate the target record.
+    """
+    version = db.get(DocumentVersion, version_id)
+    if not version:
+        return None
+
+    version.extracted_text = None
+    version.classification = None
+    version.confidence = None
+    version.ocr_raw_confidence = None
+    version.ocr_engine = None
+    version.ocr_model_version = None
+    version.ocr_latency_ms = None
+    version.tags = []
+    version.processing_status = ProcessingStatus.pending
+    db.commit()
+    db.refresh(version)
+    return version
 
 
 def list_existing_tags(

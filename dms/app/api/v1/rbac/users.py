@@ -99,6 +99,42 @@ def get_user(user_id: UUID, db: Session = Depends(get_db)):
     return user
 
 
+@router.post("/{user_id}/deactivate", response_model=UserResponse)
+def deactivate_user(user_id: UUID, db: Session = Depends(get_db)):
+    """Deactivate user.
+
+    Parameters:
+        user_id (type=UUID): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    user.is_active = False
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@router.post("/{user_id}/activate", response_model=UserResponse)
+def activate_user(user_id: UUID, db: Session = Depends(get_db)):
+    """Activate user.
+
+    Parameters:
+        user_id (type=UUID): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    user.is_active = True
+    db.commit()
+    db.refresh(user)
+    return user
+
+
 @router.post("/{user_id}/roles/{role_id}")
 def add_role(user_id: UUID, role_id: UUID, db: Session = Depends(get_db)):
     """Add role.

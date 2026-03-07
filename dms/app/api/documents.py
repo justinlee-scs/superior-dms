@@ -9,6 +9,8 @@ from pathlib import Path
 from PIL import Image, UnidentifiedImageError
 
 from app.db.session import get_db
+from app.auth.deps import get_current_user
+from app.db.models.user import User
 
 from app.services.rbac.permission_checker import require_permission
 from app.services.rbac.policy import Permissions
@@ -114,6 +116,7 @@ def _validate_supported_upload(file: UploadFile, file_bytes: bytes) -> None:
 async def upload_document(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     #_=Depends(require_role("editor")),
     _=Depends(require_permission(Permissions.DOCUMENT_UPLOAD)),
 ):
@@ -133,7 +136,7 @@ async def upload_document(
     from app.services.hash import compute_content_hash
     content_hash = compute_content_hash(file_bytes)
 
-    with db.begin():
+    try:
         existing = get_document_by_hash(db=db, content_hash=content_hash)
         if existing:
             raise HTTPException(
@@ -145,6 +148,7 @@ async def upload_document(
             db=db,
             filename=file.filename,
             content_hash=content_hash,
+            uploaded_by_user_id=current_user.id,
             commit=False,
         )
 
@@ -162,10 +166,15 @@ async def upload_document(
             file_bytes=file_bytes,
             commit=False,
         )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
     return DocumentResponse(
         id=document.id,
         filename=document.filename,
+        author=current_user.username,
         status=version.processing_status,
         document_type=document.document_type,
         confidence=version.confidence,
@@ -193,6 +202,7 @@ def get_documents(
         DocumentResponse(
             id=doc.id,
             filename=doc.filename,
+            author=uploader_username or "System",
             status=processing_status,
             document_type=doc.document_type or CLASSIFICATION,
             confidence=confidence,
@@ -202,7 +212,7 @@ def get_documents(
             current_version_number=current_version_number or 1,
             tags=tags or [],
         )
-        for doc, processing_status, CLASSIFICATION, confidence, tags, version_count, current_version_number in rows
+        for doc, processing_status, CLASSIFICATION, confidence, tags, uploader_username, version_count, current_version_number in rows
     ]
 
 
@@ -275,6 +285,7 @@ def get_document(
     return DocumentResponse(
         id=document.id,
         filename=document.filename,
+        author=(document.uploaded_by_user.username if document.uploaded_by_user else "System"),
         status=current_version.processing_status if current_version else None,
         document_type=document.document_type,
         confidence=current_version.confidence if current_version else None,
@@ -317,6 +328,7 @@ def set_document_type(
     return DocumentResponse(
         id=document.id,
         filename=document.filename,
+        author=(document.uploaded_by_user.username if document.uploaded_by_user else "System"),
         status=current_version.processing_status if current_version else None,
         document_type=document.document_type,
         confidence=current_version.confidence if current_version else None,

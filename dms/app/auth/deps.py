@@ -6,7 +6,8 @@ from uuid import UUID
 
 from app.db.session import get_db
 from app.db.models.user import User
-from app.auth.jwt import SECRET_KEY, ALGORITHM
+from app.auth.jwt import ALGORITHM
+from app.core.config import settings
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
@@ -21,7 +22,7 @@ def get_current_user(
         db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
     """
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITHM])
         user_id_str = payload.get("sub")
         if not user_id_str:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing subject in token")

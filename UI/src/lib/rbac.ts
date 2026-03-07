@@ -120,6 +120,18 @@ export function setUserRoles(userId: string, roleIds: string[]) {
   });
 }
 
+export function activateUser(userId: string) {
+  return apiFetch<User>(`/rbac/users/${userId}/activate`, {
+    method: "POST",
+  });
+}
+
+export function deactivateUser(userId: string) {
+  return apiFetch<User>(`/rbac/users/${userId}/deactivate`, {
+    method: "POST",
+  });
+}
+
 export function getUserPermissions(userId: string) {
   return apiFetch<UserPermissionsResponse>(`/rbac/users/${userId}/permissions`);
 }

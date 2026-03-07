@@ -1,4 +1,6 @@
 import time
+import threading
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
@@ -14,9 +16,10 @@ from app.services.extraction.classify import classify_document
 from app.services.extraction.tags import derive_tags
 from app.db.models.enums import DocumentClass, ProcessingStatus
 from app.db.models.document_versions import DocumentVersion
+from app.db.session import SessionLocal
 
 
-def process_document_version(db: Session, version_id: str) -> None:
+def process_document_version(db: Session, version_id: str | UUID) -> None:
     """Synchronous processor for a DocumentVersion.
 
     Parameters:
@@ -25,13 +28,16 @@ def process_document_version(db: Session, version_id: str) -> None:
     """
 
     try:
+        normalized_version_id = UUID(str(version_id))
         start = time.perf_counter()
-        version = db.get(DocumentVersion, version_id)
+        version = db.get(DocumentVersion, normalized_version_id)
         if not version:
             return
+        version.processing_status = ProcessingStatus.processing
+        db.commit()
 
         # Load raw bytes from repository
-        file_bytes = load_document_version_bytes(db, version_id)
+        file_bytes = load_document_version_bytes(db, normalized_version_id)
 
         # Convert PDF/images to PIL images
         images = pdf_to_images(file_bytes)
@@ -64,7 +70,7 @@ def process_document_version(db: Session, version_id: str) -> None:
         # 4. Persist results
         update_processing_results(
             db=db,
-            version_id=version_id,
+            version_id=normalized_version_id,
             extracted_text=text,
             classification=classification,
             confidence=confidence,
@@ -77,8 +83,26 @@ def process_document_version(db: Session, version_id: str) -> None:
 
     except Exception as exc:
         # If any error occurs, mark version as failed
-        version = db.get(DocumentVersion, version_id)
+        version = db.get(DocumentVersion, UUID(str(version_id)))
         if version:
             version.processing_status = ProcessingStatus.failed
             db.commit()
         raise
+
+
+def _process_in_background(version_id: str | UUID) -> None:
+    db = SessionLocal()
+    try:
+        process_document_version(db, version_id)
+    finally:
+        db.close()
+
+
+def enqueue_processing(version_id: str | UUID) -> None:
+    """Queue processing using an in-process background thread."""
+    thread = threading.Thread(
+        target=_process_in_background,
+        args=(version_id,),
+        daemon=True,
+    )
+    thread.start()

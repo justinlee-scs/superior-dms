@@ -44,7 +44,8 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
 
     if (username.trim()) payload.username = username.trim();
 
-    if (newPassword || currentPassword || confirmPassword) {
+    const wantsPasswordChange = Boolean(newPassword || confirmPassword);
+    if (wantsPasswordChange) {
       if (!currentPassword || !newPassword) {
         toast.error("Enter current and new password");
         return;
@@ -96,18 +97,21 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
               <Input
                 type="password"
                 placeholder="Current password"
+                autoComplete="current-password"
                 value={currentPassword}
                 onChange={(event) => setCurrentPassword(event.target.value)}
               />
               <Input
                 type="password"
                 placeholder="New password (min 8 chars)"
+                autoComplete="new-password"
                 value={newPassword}
                 onChange={(event) => setNewPassword(event.target.value)}
               />
               <Input
                 type="password"
                 placeholder="Confirm new password"
+                autoComplete="new-password"
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
               />

@@ -16,10 +16,12 @@ import { Button } from "@/app/components/ui/button";
 import { Checkbox } from "@/app/components/ui/checkbox";
 
 import {
+  activateUser,
   addManagedRole,
   copyRolePermissions,
   createRole,
   createUser,
+  deactivateUser,
   getRole,
   getUserPermissions,
   listManagedRoles,
@@ -359,6 +361,22 @@ export default function RolesPage({
     }
   };
 
+  const onToggleUserActive = async () => {
+    if (!selectedUser) return;
+    setLoading(true);
+    try {
+      const updatedUser = selectedUser.is_active
+        ? await deactivateUser(selectedUser.id)
+        : await activateUser(selectedUser.id);
+      setUsers((prev) => prev.map((user) => (user.id === updatedUser.id ? updatedUser : user)));
+      toast.success(updatedUser.is_active ? "User activated" : "User deactivated");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update user status");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const onToggleUserRole = async (roleId: string, checked: boolean) => {
     if (!selectedUserId || !selectedUser) return;
 
@@ -589,6 +607,17 @@ export default function RolesPage({
                 >
                   <div className="text-lg font-semibold">{user.username}</div>
                   <div className={`mt-1 text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>{user.email}</div>
+                  <div className="mt-2">
+                    <span
+                      className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${
+                        user.is_active
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-amber-100 text-amber-700"
+                      }`}
+                    >
+                      {user.is_active ? "Active" : "Inactive"}
+                    </span>
+                  </div>
                   <div className={`mt-1 text-sm ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
                     {user.roles.length} role(s), {userPermissionCounts[user.id] ?? 0} permission(s)
                   </div>
@@ -684,8 +713,31 @@ export default function RolesPage({
           {section === "users" && selectedUser && (
             <>
               <div className={`border-b px-3 py-2 ${darkMode ? "border-gray-700" : "border-gray-200"}`}>
-                <div className="text-2xl font-semibold">{selectedUser.username}</div>
-                <div className={`mt-1 text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>{selectedUser.email}</div>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-2xl font-semibold">{selectedUser.username}</div>
+                    <div className={`mt-1 text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>{selectedUser.email}</div>
+                    <div className="mt-2">
+                      <span
+                        className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${
+                          selectedUser.is_active
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-amber-100 text-amber-700"
+                        }`}
+                      >
+                        {selectedUser.is_active ? "Active" : "Inactive"}
+                      </span>
+                    </div>
+                  </div>
+                  <Button
+                    variant={selectedUser.is_active ? "outline" : "default"}
+                    className="rounded-xl"
+                    onClick={onToggleUserActive}
+                    disabled={loading}
+                  >
+                    {selectedUser.is_active ? "Deactivate user" : "Activate user"}
+                  </Button>
+                </div>
               </div>
 
               <div className={`border-b px-6 ${darkMode ? "border-gray-700" : "border-gray-200"}`}>
