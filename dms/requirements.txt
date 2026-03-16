@@ -17,3 +17,11 @@ python-jose[cryptography]
 pydantic[email]
 
 python-multipart
+
+# Optional integrations (disabled until code paths are uncommented):
+# boto3
+# botocore
+# minio
+# opencv-python-headless
+# numpy
+# requests

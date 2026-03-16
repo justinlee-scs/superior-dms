@@ -4,6 +4,9 @@ from uuid import UUID
 from fastapi.responses import StreamingResponse
 import io
 import mimetypes
+import tempfile
+import zipfile
+from datetime import datetime
 from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
@@ -34,7 +37,7 @@ from app.db.repositories.documents import (
 )
 from app.db.repositories.tags import create_tag_pool_entry, list_tag_pool
 
-from app.schemas.documents import DocumentResponse, DocumentTypeUpdate
+from app.schemas.documents import BulkDownloadRequest, DocumentResponse, DocumentTypeUpdate
 from app.schemas.document_versions import (
     DocumentVersionResponse,
     DocumentVersionListItem,
@@ -49,6 +52,9 @@ from app.schemas.tags import (
 )
 from app.processing.pipeline import process_document
 from app.services.extraction.office import OFFICE_EXTENSIONS, is_valid_office_file
+# Optional (disabled): object storage and label studio.
+# from app.storage.backends import build_object_storage_from_env
+# from app.services.labelstudio.client import LabelStudioClient, LabelStudioConfig
 
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -108,6 +114,22 @@ def _validate_supported_upload(file: UploadFile, file_bytes: bytes) -> None:
         )
 
 
+def _unique_zip_entry_name(raw_name: str, fallback: str, used_names: set[str]) -> str:
+    """Return a safe, unique filename for a ZIP entry."""
+    base_name = Path(raw_name or fallback).name or fallback
+    stem = Path(base_name).stem or fallback
+    suffix = Path(base_name).suffix
+    candidate = base_name
+    index = 2
+
+    while candidate in used_names:
+        candidate = f"{stem} ({index}){suffix}"
+        index += 1
+
+    used_names.add(candidate)
+    return candidate
+
+
 @router.post(
     "/upload",
     response_model=DocumentResponse,
@@ -132,6 +154,16 @@ async def upload_document(
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
     _validate_supported_upload(file, file_bytes)
+
+    # Optional (disabled): store raw bytes to S3/MinIO and persist object key instead of DB blob.
+    # storage = build_object_storage_from_env()
+    # object_key = f"documents/{uuid4()}/{file.filename or 'upload.bin'}"
+    # storage_ref = storage.put_bytes(
+    #     bucket=os.getenv("OBJECT_STORAGE_BUCKET", "dms"),
+    #     key=object_key,
+    #     data=file_bytes,
+    #     content_type=file.content_type or "application/octet-stream",
+    # )
 
     from app.services.hash import compute_content_hash
     content_hash = compute_content_hash(file_bytes)
@@ -253,6 +285,62 @@ def create_tag_pool(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return TagPoolCreateResponse(tag=created)
+
+
+@router.post("/bulk-download")
+def bulk_download_documents(
+    payload: BulkDownloadRequest,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permissions.DOCUMENT_DOWNLOAD)),
+):
+    """Download current versions of multiple documents as a single ZIP archive."""
+    unique_ids: list[UUID] = []
+    seen_ids: set[UUID] = set()
+    for document_id in payload.document_ids:
+        if document_id not in seen_ids:
+            seen_ids.add(document_id)
+            unique_ids.append(document_id)
+
+    items: list[tuple[str, bytes]] = []
+    for document_id in unique_ids:
+        document = get_document_by_id(db=db, document_id=document_id)
+        if not document:
+            raise HTTPException(status_code=404, detail=f"Document not found: {document_id}")
+
+        version = get_document_version(db=db, document_id=document_id)
+        if not version or version.content is None:
+            raise HTTPException(status_code=404, detail=f"File not found for document: {document_id}")
+        items.append((document.filename or str(document_id), version.content))
+
+    archive_file = tempfile.SpooledTemporaryFile(max_size=8 * 1024 * 1024, mode="w+b")
+    used_names: set[str] = set()
+    with zipfile.ZipFile(archive_file, mode="w", compression=zipfile.ZIP_DEFLATED) as zip_file:
+        for index, (filename, content) in enumerate(items, start=1):
+            entry_name = _unique_zip_entry_name(
+                raw_name=filename,
+                fallback=f"document-{index}.bin",
+                used_names=used_names,
+            )
+            zip_file.writestr(entry_name, content)
+
+    archive_file.seek(0)
+
+    def iter_archive():
+        try:
+            while True:
+                chunk = archive_file.read(1024 * 1024)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            archive_file.close()
+
+    archive_name = f"documents-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.zip"
+    return StreamingResponse(
+        iter_archive(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{archive_name}"'},
+    )
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
@@ -405,7 +493,6 @@ def download_document(
             "Content-Disposition": f'attachment; filename="{version.document.filename}"'
         },
     )
-
 
 @router.get("/{document_id}/preview")
 def preview_document(

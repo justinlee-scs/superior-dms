@@ -90,7 +90,7 @@ export function SearchFilters({
   };
 
   return (
-    <div className={`w-80 border-r p-6 space-y-6 ${darkMode ? "bg-gray-900 border-gray-700" : "bg-gray-50"}`}>
+    <div className={`w-80 h-screen overflow-y-auto border-r p-6 space-y-6 ${darkMode ? "bg-gray-900 border-gray-700" : "bg-gray-50"}`}>
       <div className="flex items-center justify-between">
         <h2 className={`font-semibold ${darkMode ? "text-gray-100" : ""}`}>Filters</h2>
         {hasActiveFilters && (
@@ -120,7 +120,7 @@ export function SearchFilters({
       </div>
 
       {/* Filter by Tags */}
-      <div className={`space-y-3 rounded-xl border p-4 ${darkMode ? "border-gray-700 bg-gray-800/70" : "border-gray-200 bg-white"}`}>
+      <div className={`space-y-3 rounded-xl border p-4 max-h-[50vh] overflow-y-auto ${darkMode ? "border-gray-700 bg-gray-800/70" : "border-gray-200 bg-white"}`}>
         <Label className={`flex items-center gap-2 ${darkMode ? "text-gray-200" : ""}`}>
           <Tag className="w-4 h-4" />
           Tags

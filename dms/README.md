@@ -239,6 +239,25 @@ alembic current
 
 Rollback one revision:
 
+## 15. Optional Integrations (Disabled by Default)
+
+The repository now includes scaffold code for:
+- S3/MinIO object storage backend (`app/storage/backends.py`)
+- OpenCV preprocessing (`app/services/extraction/opencv_preprocess.py`)
+- HuggingFace TrOCR provider (`app/services/extraction/trocr_hf_provider.py`)
+- Label Studio API client + sync script (`app/services/labelstudio/client.py`, `scripts/labelstudio_sync.py`)
+
+Runtime status:
+- MinIO/S3, TrOCR HF, OpenCV, and Label Studio wiring are all placeholders only (commented/disabled).
+- Enable them after review by uncommenting the noted blocks.
+- `app/services/extraction/ocr_sync.py`
+- `app/api/documents.py` (Label Studio hooks only)
+
+To activate after review:
+1. Install optional dependencies from `requirements.txt` (currently commented).
+2. Configure optional env vars from `.env.example`.
+3. Uncomment the marked "Optional (disabled)" blocks in the files above.
+
 ```bash
 alembic downgrade -1
 ```

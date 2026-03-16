@@ -14,6 +14,9 @@ from app.services.extraction.providers import ExtractionResult, OCRProvider
 from app.services.extraction.pdf import pdf_to_images
 from app.services.extraction.tesseract_provider import TesseractProvider
 from app.services.extraction.trocr_provider import TrOCRProvider
+# Optional (disabled): production TrOCR provider + OpenCV preprocessing.
+# from app.services.extraction.trocr_hf_provider import TrOCRHFProvider
+# from app.services.extraction.opencv_preprocess import preprocess_image_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +73,11 @@ def _build_ocr_provider() -> OCRProvider:
         None.
     """
     provider = os.getenv("OCR_PROVIDER", "tesseract").strip().lower()
+
+    # Optional (disabled):
+    # if provider == "trocr_hf":
+    #     model = os.getenv("TROCR_MODEL_PATH", "microsoft/trocr-base-handwritten")
+    #     return TrOCRHFProvider(model_name_or_path=model)
 
     if provider == "trocr":
         model = os.getenv("TROCR_MODEL_PATH", "microsoft/trocr-base-handwritten")
@@ -148,6 +156,13 @@ def extract_with_fallback(
     threshold = min_confidence if min_confidence is not None else float(
         os.getenv("OCR_MIN_CONFIDENCE", "0.60")
     )
+
+    # Optional (disabled): preprocess image bytes with OpenCV before OCR provider.
+    # if suffix in SUPPORTED_IMAGE_EXTENSIONS:
+    #     try:
+    #         file_bytes = preprocess_image_bytes(file_bytes)
+    #     except Exception as exc:
+    #         logger.warning("OpenCV preprocess failed; using original bytes: %s", exc)
 
     primary = get_ocr_provider_safe()
     try:

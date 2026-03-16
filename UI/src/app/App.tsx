@@ -34,6 +34,7 @@ import {
 
 import { toast } from "sonner";
 import {
+  bulkDownloadDocuments,
   createTagPool,
   deleteDocument,
   listDocuments,
@@ -334,6 +335,25 @@ function AppInner() {
     window.URL.revokeObjectURL(url);
   };
 
+  const handleBulkDownload = async () => {
+    const selectedDocs = Array.from(selection.selected.values());
+    if (!selectedDocs.length) return;
+
+    try {
+      const blob = await bulkDownloadDocuments(selectedDocs.map((doc) => doc.id));
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `documents-${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Bulk download failed");
+    }
+  };
+
   const handleEditWorkflow = (doc: Document) => {
     setSelectedDocument(doc);
     setWorkflowEditorOpen(true);
@@ -445,10 +465,8 @@ function AppInner() {
               <BulkActionBar
                 count={selection.selected.size}
                 darkMode={darkMode}
-                onDownload={async () => {
-                  for (const doc of selection.selected.values()) {
-                    await handleDownload(doc);
-                  }
+                onDownload={() => {
+                  void handleBulkDownload();
                 } }
                 onDelete={async () => {
                   for (const doc of selection.selected.values()) {

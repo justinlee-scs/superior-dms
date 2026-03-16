@@ -103,3 +103,9 @@ class DocumentTypeUpdate(BaseModel):
         document_type (type=DocumentTypeEnum): Document type/category assigned to the record.
     """
     document_type: DocumentTypeEnum
+
+
+class BulkDownloadRequest(BaseModel):
+    """Request payload for downloading multiple current document versions as a ZIP."""
+
+    document_ids: list[UUID] = Field(min_length=1, max_length=100)

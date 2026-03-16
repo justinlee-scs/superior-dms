@@ -139,3 +139,28 @@ export async function uploadDocument(file: File) {
 
   return res.json();
 }
+
+export async function bulkDownloadDocuments(documentIds: string[]) {
+  const token = sessionStorage.getItem("access_token");
+  const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/documents/bulk-download`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ document_ids: documentIds }),
+  });
+
+  if (res.status === 401) {
+    sessionStorage.removeItem("access_token");
+    window.location.reload();
+    throw new Error("Unauthorized");
+  }
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || "Bulk download failed");
+  }
+
+  return res.blob();
+}
