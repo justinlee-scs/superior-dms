@@ -45,6 +45,7 @@ class DocumentTypeEnum(str, Enum):
 
     Parameters:
         statement: Statement value used by this model/schema.
+        invoice: Invoice value used by this model/schema.
         outgoing_invoice: Outgoing invoice value used by this model/schema.
         incoming_invoice: Incoming invoice value used by this model/schema.
         contract: Contract value used by this model/schema.
@@ -54,6 +55,7 @@ class DocumentTypeEnum(str, Enum):
         other: Other value used by this model/schema.
     """
     statement = "statement"
+    invoice = "invoice"
     outgoing_invoice = "outgoing_invoice"
     incoming_invoice = "incoming_invoice"
     contract = "contract"

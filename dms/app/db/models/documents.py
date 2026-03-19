@@ -13,6 +13,7 @@ class DocumentType(enum.Enum):
 
     Parameters:
         document: Document value used by this model/schema.
+        invoice: Invoice value used by this model/schema.
         statement: Statement value used by this model/schema.
         outgoing_invoice: Outgoing invoice value used by this model/schema.
         incoming_invoice: Incoming invoice value used by this model/schema.
@@ -23,6 +24,7 @@ class DocumentType(enum.Enum):
         other: Other value used by this model/schema.
     """
     document = "document"
+    invoice = "invoice"
     statement = "statement"
     outgoing_invoice = "outgoing_invoice"
     incoming_invoice = "incoming_invoice"

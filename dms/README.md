@@ -248,8 +248,9 @@ The repository now includes scaffold code for:
 - Label Studio API client + sync script (`app/services/labelstudio/client.py`, `scripts/labelstudio_sync.py`)
 
 Runtime status:
-- MinIO/S3, TrOCR HF, OpenCV, and Label Studio wiring are all placeholders only (commented/disabled).
-- Enable them after review by uncommenting the noted blocks.
+- TrOCR HF + OpenCV preprocessing are now active in the OCR pipeline.
+- Label Studio export is active only when `LABEL_STUDIO_ENABLED=true`.
+- MinIO/S3 wiring remains placeholder-only.
 - `app/services/extraction/ocr_sync.py`
 - `app/api/documents.py` (Label Studio hooks only)
 

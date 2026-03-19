@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import os
 import re
 from enum import Enum
+from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from app.db.models.enums import DocumentClass
 
@@ -27,7 +30,9 @@ SENSITIVE_PATTERNS: tuple[str, ...] = (
 )
 
 CLASSIFICATION_TO_DOC_TYPE: dict[str, str] = {
-    "invoice": "incoming_invoice",
+    "incoming_invoice": "incoming_invoice",
+    "outgoing_invoice": "outgoing_invoice",
+    "invoice": "invoice",
     "receipt": "receipt",
     "contract": "contract",
     "unknown": "document",
@@ -37,7 +42,20 @@ RESERVED_TAG_PREFIXES = (
     "project:",
     "document_type:",
     "security_clearance:",
+    "company:",
 )
+
+
+@lru_cache(maxsize=1)
+def _load_tagger_model() -> dict[str, Any] | None:
+    path = os.getenv("TAGGER_MODEL_PATH", "").strip()
+    if not path:
+        return None
+    try:
+        import joblib
+    except Exception:
+        return None
+    return joblib.load(path)
 
 
 def _as_string(value: str | Enum | None) -> str | None:
@@ -81,6 +99,57 @@ def _derive_project_tag(text: str, filename: str | None) -> str:
             return f"project:{match.group(1)}"
 
     return "project:unassigned"
+
+
+def _derive_company_tag(
+    text: str,
+    filename: str | None,
+    existing_tags: list[str] | None,
+) -> str:
+    """Handle derive company tag.
+
+    Parameters:
+        text (type=str): Function argument used by this operation.
+        filename (type=str | None): File or entity name used for storage and display.
+        existing_tags (type=list[str] | None): Known tag catalog used for matching.
+    """
+    patterns = (
+        r"\bcompany[\s:#-]+([A-Za-z0-9][A-Za-z0-9_.-]{1,63})\b",
+        r"\bvendor[\s:#-]+([A-Za-z0-9][A-Za-z0-9_.-]{1,63})\b",
+        r"\bcustomer[\s:#-]+([A-Za-z0-9][A-Za-z0-9_.-]{1,63})\b",
+    )
+    lowered = text.lower()
+    for pattern in patterns:
+        match = re.search(pattern, lowered)
+        if match:
+            return f"company:{match.group(1)}"
+
+    if filename:
+        # Accept explicit file naming conventions like company_acme_invoice.pdf
+        base = filename.rsplit("/", 1)[-1].rsplit("\\", 1)[-1].lower()
+        match = re.search(
+            r"(?:^|[_\-.])company[_\-.]?([a-z0-9][a-z0-9_.-]{1,63})(?:[_\-.]|$)",
+            base,
+        )
+        if match:
+            return f"company:{match.group(1)}"
+
+    if existing_tags:
+        normalized_text = re.sub(r"[^a-z0-9]+", " ", lowered)
+        words = set(normalized_text.split())
+        for raw in existing_tags:
+            candidate = normalize_tag(raw)
+            if not candidate or not candidate.startswith("company:"):
+                continue
+            base = candidate.split(":", 1)[1]
+            phrase = re.sub(r"[_-]+", " ", base).strip()
+            if len(phrase) >= 3 and phrase in normalized_text:
+                return candidate
+            parts = [p for p in phrase.split() if len(p) >= 3]
+            if parts and all(part in words for part in parts):
+                return candidate
+
+    return ""
 
 
 def _derive_document_type_tag(
@@ -182,6 +251,35 @@ def _suggest_existing_tags(
     return suggested
 
 
+def _predict_model_tags(text: str) -> set[str]:
+    model_bundle = _load_tagger_model()
+    if not model_bundle:
+        return set()
+    vectorizer = model_bundle.get("vectorizer")
+    model = model_bundle.get("model")
+    labels = model_bundle.get("labels") or []
+    if vectorizer is None or model is None or not labels:
+        return set()
+    features = vectorizer.transform([text or ""])
+    threshold = float(os.getenv("TAGGER_THRESHOLD", "0.5"))
+    predicted: set[str] = set()
+    if hasattr(model, "predict_proba"):
+        probs = model.predict_proba(features)
+        if isinstance(probs, list):
+            probs = probs[0]
+        for label, prob in zip(labels, probs):
+            if prob >= threshold:
+                predicted.add(str(label))
+    else:
+        outputs = model.predict(features)
+        if outputs is not None and len(outputs):
+            row = outputs[0]
+            for label, value in zip(labels, row):
+                if value:
+                    predicted.add(str(label))
+    return predicted
+
+
 def derive_tags(
     text: str,
     classification: DocumentClass | str | None,
@@ -205,6 +303,9 @@ def derive_tags(
 
     # Mandatory tags on every document.
     tags.add(normalize_tag(_derive_project_tag(normalized, filename)))
+    company_tag = normalize_tag(_derive_company_tag(normalized, filename, existing_tags))
+    if company_tag:
+        tags.add(company_tag)
     tags.add(normalize_tag(_derive_document_type_tag(document_type, classification)))
     tags.add(
         normalize_tag(
@@ -223,6 +324,7 @@ def derive_tags(
 
     context = f"{normalized} {filename_base} {_as_string(classification) or ''} {_as_string(document_type) or ''}"
     tags.update(_suggest_existing_tags(context, existing_tags))
+    tags.update(_predict_model_tags(context))
 
     # Avoid low-quality fallback if a specific project was found.
     if "project:unassigned" in tags and any(

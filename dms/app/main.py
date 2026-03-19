@@ -5,6 +5,7 @@ from app.api.documents import router as documents_router
 from app.api.v1.rbac import api_router as rbac_router
 from app.api.auth import router as auth_router
 from app.api.processing import router as processing_router
+from app.api.labelstudio_ml import router as labelstudio_router
 
 import app.db.models
 
@@ -27,6 +28,7 @@ app.include_router(documents_router)
 app.include_router(auth_router)
 app.include_router(processing_router)
 app.include_router(rbac_router, prefix="/rbac")
+app.include_router(labelstudio_router)
 
 @app.get("/")
 def root():

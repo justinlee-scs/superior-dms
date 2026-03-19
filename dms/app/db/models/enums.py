@@ -10,6 +10,8 @@ class DocumentClass(str, Enum):
         RECEIPT: Enumeration member representing an allowed constant value.
         UNKNOWN: Enumeration member representing an allowed constant value.
     """
+    INCOMING_INVOICE = "incoming_invoice"
+    OUTGOING_INVOICE = "outgoing_invoice"
     INVOICE = "invoice"
     CONTRACT = "contract"
     RECEIPT = "receipt"
