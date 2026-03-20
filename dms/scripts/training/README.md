@@ -14,6 +14,12 @@ Environment variables:
 - `LABEL_STUDIO_API_TOKEN`
 - `LABEL_STUDIO_PROJECT_ID`
 
+Optional: sync project/company tags into Label Studio choices:
+
+```bash
+python scripts/labelstudio_sync_tags.py
+```
+
 ## 2) Prepare datasets
 
 ```bash
@@ -27,6 +33,34 @@ Outputs:
 - `output/training/tags.csv` (text,tags)
 - `output/training/handwriting.csv` (image_path,label)
 - `output/training/trocr.jsonl` (image_path,text)
+
+If you label illegible regions, enter `[illegible]` in the transcription.
+Those rows are automatically excluded from TrOCR training/evaluation.
+
+Optional: export PDFs to page images for handwritten OCR labeling:
+
+```bash
+python scripts/training/export_pdf_images.py \
+  --input-dir /abs/path/to/pdfs \
+  --output-dir output/training/ocr_images \
+  --tasks output/training/ocr_tasks.json
+```
+
+## 2b) Generate ready-to-import Label Studio tasks (recommended)
+
+```bash
+bash scripts/training/generate_labelstudio_tasks.sh /abs/path/to/pdfs
+```
+
+This creates:
+- `output/training/text_tasks.json` (Project A import)
+- `output/training/ocr_tasks.json` (Project B import, HTTP URLs)
+
+Start the OCR image server before importing OCR tasks:
+
+```bash
+bash scripts/training/run_ocr_server.sh
+```
 
 ## 3) Train models (CPU)
 
@@ -79,6 +113,16 @@ export OCR_PROVIDER=trocr_hf
 export TROCR_MODEL_PATH=/abs/path/output/models/trocr
 ```
 
+## 6) How training works
+
+Label Studio does not train models by itself. You export labeled data and run the training scripts:
+- `train_doc_classifier.py` for document type
+- `train_tagger.py` for tags
+- `train_handwriting.py` for handwriting detection
+- `train_trocr.py` for OCR (handwriting)
+
+These scripts produce model files in `output/models/`. You then point the app at them with env vars.
+
 ## 5) Evaluate models
 
 ```bash
@@ -89,6 +133,11 @@ python scripts/training/eval_doc_classifier.py \
 python scripts/training/eval_tagger.py \
   --input output/training/tags.csv \
   --model output/models/tagger.joblib
+
+python scripts/training/eval_tagger_thresholds.py \
+  --input output/training/tags.csv \
+  --model output/models/tagger.joblib \
+  --output output/training/tag_thresholds.csv
 
 python scripts/training/eval_handwriting.py \
   --input output/training/handwriting.csv \

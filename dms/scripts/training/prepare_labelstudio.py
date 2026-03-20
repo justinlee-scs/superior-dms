@@ -35,8 +35,15 @@ def _extract_transcriptions(results: list[dict[str, Any]]) -> list[str]:
         value = item.get("value", {})
         if "text" in value and isinstance(value["text"], list):
             for entry in value["text"]:
-                if isinstance(entry, str) and entry.strip():
-                    texts.append(entry.strip())
+                if not isinstance(entry, str):
+                    continue
+                cleaned = entry.strip()
+                if not cleaned:
+                    continue
+                lowered = cleaned.lower()
+                if lowered in {"[illegible]", "illegible", "[unreadable]", "unreadable"}:
+                    continue
+                texts.append(cleaned)
     return texts
 
 

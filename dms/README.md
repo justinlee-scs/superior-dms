@@ -14,6 +14,11 @@ Use this guide to:
 - Poppler utilities (`pdftoppm`) for `pdf2image`
 - Reverse proxy (Nginx) for HTTPS and stable public endpoint
 
+Optional (needed for training/evaluation and ML features):
+- `scikit-learn` (training + evaluation for doc classifier/tagger)
+- `torch` + `transformers` (TrOCR / handwriting model)
+- Label Studio (separate service) if you want labeling UI
+
 ## 2. Copy Project to a New Machine
 
 ```bash
@@ -25,6 +30,12 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
+If you need training/evaluation scripts:
+
+```bash
+pip install scikit-learn
+```
+
 ## 3. Install OS Dependencies (Ubuntu/Debian)
 
 ```bash
@@ -34,6 +45,12 @@ sudo apt install -y \
   tesseract-ocr \
   poppler-utils \
   nginx
+```
+
+Label Studio (optional, for labeling UI):
+
+```bash
+pip install label-studio
 ```
 
 ## 4. Create PostgreSQL Database and User

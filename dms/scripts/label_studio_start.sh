@@ -3,6 +3,24 @@ set -euo pipefail
 cd /home/justinlee/.LINUXPRACTICE/dms
 
 PORT=8800
+export LOCAL_FILES_SERVING_ENABLED=true
+export LOCAL_FILES_DOCUMENT_ROOT=/home/justinlee/.LINUXPRACTICE/dms
+
+LS_ENV_FILE="/home/justinlee/.local/share/label-studio/.env"
+mkdir -p "$(dirname "${LS_ENV_FILE}")"
+touch "${LS_ENV_FILE}"
+
+if grep -q "^LOCAL_FILES_SERVING_ENABLED=" "${LS_ENV_FILE}"; then
+  sed -i "s/^LOCAL_FILES_SERVING_ENABLED=.*/LOCAL_FILES_SERVING_ENABLED=true/" "${LS_ENV_FILE}"
+else
+  echo "LOCAL_FILES_SERVING_ENABLED=true" >> "${LS_ENV_FILE}"
+fi
+
+if grep -q "^LOCAL_FILES_DOCUMENT_ROOT=" "${LS_ENV_FILE}"; then
+  sed -i "s|^LOCAL_FILES_DOCUMENT_ROOT=.*|LOCAL_FILES_DOCUMENT_ROOT=/home/justinlee/.LINUXPRACTICE/dms|" "${LS_ENV_FILE}"
+else
+  echo "LOCAL_FILES_DOCUMENT_ROOT=/home/justinlee/.LINUXPRACTICE/dms" >> "${LS_ENV_FILE}"
+fi
 
 python3 - <<'PY'
 import socket

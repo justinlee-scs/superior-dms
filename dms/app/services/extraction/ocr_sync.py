@@ -7,7 +7,7 @@ from typing import Tuple
 
 from PIL import Image
 
-from app.services.extraction.handwriting import is_handwritten
+from app.services.extraction.handwriting import is_handwritten, handwriting_confidence
 from app.services.extraction.icr import run_icr_model
 from app.services.extraction.office import OFFICE_EXTENSIONS
 from app.services.extraction.providers import ExtractionResult, OCRProvider
@@ -178,6 +178,7 @@ def extract_with_fallback(
         return result
 
     images = _to_images(file_bytes=file_bytes, suffix=suffix)
+    hw_conf = handwriting_confidence(images)
     if is_handwritten(images):
         icr_text, icr_confidence = run_icr_model(images)
         if icr_confidence >= result.confidence:
@@ -188,12 +189,18 @@ def extract_with_fallback(
                 engine=f"{result.engine}+icr_fallback",
                 model_version=result.model_version,
                 latency_ms=result.latency_ms,
-                metadata={**result.metadata, "fallback_reason": "low_confidence_handwriting"},
+                metadata={
+                    **result.metadata,
+                    "fallback_reason": "low_confidence_handwriting",
+                    "handwriting_confidence": hw_conf,
+                },
             )
 
     if result.engine == "tesseract":
+        result.metadata["handwriting_confidence"] = hw_conf
         return result
 
     fallback = TesseractProvider().extract(file_bytes=file_bytes, filename=filename)
     fallback.metadata["fallback_reason"] = "low_confidence"
+    fallback.metadata["handwriting_confidence"] = hw_conf
     return fallback

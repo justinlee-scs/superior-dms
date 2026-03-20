@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -20,9 +21,10 @@ class LabelStudioClient:
     def __init__(self, config: LabelStudioConfig):
         self._config = config
         self._session = requests.Session()
+        auth_scheme = os.getenv("LABEL_STUDIO_AUTH_SCHEME", "Token").strip() or "Token"
         self._session.headers.update(
             {
-                "Authorization": f"Token {config.api_token}",
+                "Authorization": f"{auth_scheme} {config.api_token}",
                 "Content-Type": "application/json",
             }
         )
@@ -60,4 +62,3 @@ class LabelStudioClient:
             }
         ]
         return self.import_tasks(payload)
-

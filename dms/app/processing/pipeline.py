@@ -84,6 +84,17 @@ def process_document(
             filename=version.document.filename,
             existing_tags=existing_tags,
         )
+        handwriting_conf = extraction.metadata.get("handwriting_confidence")
+        needs_review = False
+        if handwriting_conf is not None and handwriting_conf < 0.85:
+            needs_review = True
+        required_prefixes = ("company:", "project:", "document_type:")
+        for prefix in required_prefixes:
+            if not any(tag.startswith(prefix) for tag in tags):
+                needs_review = True
+                break
+        if needs_review:
+            tags.append("needs_review")
         for tag in tags:
             try:
                 create_tag_pool_entry(db=db, tag=tag)

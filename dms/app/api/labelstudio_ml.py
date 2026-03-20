@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.db.repositories.documents import list_existing_tags
@@ -130,7 +130,11 @@ def setup(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 @router.post("/predict")
-def predict(payload: Any, db: Session = Depends(get_db)) -> Any:
+async def predict(request: Request, db: Session = Depends(get_db)) -> Any:
+    try:
+        payload: Any = await request.json()
+    except Exception:
+        payload = []
     tasks, wrapped = _parse_tasks(payload)
     existing_tags = _build_existing_tag_pool(db)
     predictions = [_predict_for_task(task.get("data", {}), existing_tags=existing_tags) for task in tasks]

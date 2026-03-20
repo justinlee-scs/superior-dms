@@ -35,35 +35,40 @@ def _analyze_image(image: Image.Image) -> tuple[float, float, int]:
     return mean_conf, alpha_ratio, len(words)
 
 
-def is_handwritten(images: list[Image.Image]) -> bool:
+def handwriting_confidence(images: list[Image.Image]) -> float:
     """Detect whether document contains handwriting.
 
     Heuristic: handwriting tends to produce lower OCR confidence and a moderate
     amount of alphabetic content. We consider multiple pages and take a
-    majority vote.
+    normalized score in [0, 1].
 
     Parameters:
         images (type=list[Image.Image]): Function argument used by this operation.
     """
     if not images:
-        return False
+        return 0.0
 
     classifier = get_handwriting_classifier()
     if classifier is not None:
-        return classifier.is_handwritten(images)
+        scores = classifier.predict_scores(images)
+        if not scores:
+            return 0.0
+        return float(sum(scores) / len(scores))
 
-    votes = 0
-    checked = 0
+    scores: list[float] = []
     for image in images[:3]:
-        checked += 1
         mean_conf, alpha_ratio, word_count = _analyze_image(image)
-        if word_count >= 5 and mean_conf < 45:
-            votes += 1
+        if word_count == 0:
+            scores.append(0.0)
             continue
-        if word_count >= 5 and mean_conf < 55 and alpha_ratio > 0.30:
-            votes += 1
-            continue
-        if word_count >= 10 and mean_conf < 60 and alpha_ratio > 0.35:
-            votes += 1
+        base = max(0.0, min(1.0, (60.0 - mean_conf) / 30.0))
+        score = base * (0.5 + min(1.0, alpha_ratio))
+        scores.append(max(0.0, min(1.0, score)))
 
-    return votes >= max(1, checked // 2)
+    if not scores:
+        return 0.0
+    return float(sum(scores) / len(scores))
+
+
+def is_handwritten(images: list[Image.Image]) -> bool:
+    return handwriting_confidence(images) >= 0.5
