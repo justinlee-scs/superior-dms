@@ -13,6 +13,10 @@ from app.db.repositories.users import (
     set_roles,
     clear_permission_overrides,
     set_permission_overrides,
+    add_managed_role,
+    remove_managed_role,
+    add_managed_user,
+    remove_managed_user,
 )
 from app.db.repositories.permissions import get_permission_by_key
 from app.db.models.user_permission_override import PermissionEffect
@@ -28,6 +32,7 @@ from app.schemas.user import (
     UserRoleSet,
     UserOverrideSet,
 )
+from app.schemas.role import RoleResponse
 
 router = APIRouter(
     prefix="/users",
@@ -47,6 +52,34 @@ def list_users(db: Session = Depends(get_db)):
         db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
     """
     return db.query(User).order_by(User.email.asc()).all()
+
+
+@router.get("/{user_id}/managed-roles", response_model=list[RoleResponse])
+def list_user_managed_roles(user_id: UUID, db: Session = Depends(get_db)):
+    """Return managed roles for a user manager.
+
+    Parameters:
+        user_id (type=UUID): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(404, "User not found")
+    return sorted(user.managed_roles, key=lambda r: r.name)
+
+
+@router.get("/{user_id}/managed-users", response_model=list[UserResponse])
+def list_user_managed_users(user_id: UUID, db: Session = Depends(get_db)):
+    """Return managed users for a user manager.
+
+    Parameters:
+        user_id (type=UUID): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(404, "User not found")
+    return sorted(user.managed_users, key=lambda u: u.email)
 
 
 @router.post("/", response_model=UserResponse, status_code=201)
@@ -83,6 +116,80 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
     return user
+
+
+@router.post("/{user_id}/managed-roles/{managed_role_id}")
+def add_user_managed_role(user_id: UUID, managed_role_id: UUID, db: Session = Depends(get_db)):
+    """Add managed role for a user manager.
+
+    Parameters:
+        user_id (type=UUID): Identifier used to locate the manager user.
+        managed_role_id (type=UUID): Identifier used to locate the role.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
+    user = db.get(User, user_id)
+    role = db.get(Role, managed_role_id)
+    if not user or not role:
+        raise HTTPException(404, "User or role not found")
+
+    add_managed_role(db, user, role)
+    return {"status": "ok"}
+
+
+@router.delete("/{user_id}/managed-roles/{managed_role_id}")
+def remove_user_managed_role(user_id: UUID, managed_role_id: UUID, db: Session = Depends(get_db)):
+    """Remove managed role for a user manager.
+
+    Parameters:
+        user_id (type=UUID): Identifier used to locate the manager user.
+        managed_role_id (type=UUID): Identifier used to locate the role.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
+    user = db.get(User, user_id)
+    role = db.get(Role, managed_role_id)
+    if not user or not role:
+        raise HTTPException(404, "User or role not found")
+
+    remove_managed_role(db, user, role)
+    return {"status": "ok"}
+
+
+@router.post("/{user_id}/managed-users/{managed_user_id}")
+def add_user_managed_user(user_id: UUID, managed_user_id: UUID, db: Session = Depends(get_db)):
+    """Add managed user for a user manager.
+
+    Parameters:
+        user_id (type=UUID): Identifier used to locate the manager user.
+        managed_user_id (type=UUID): Identifier used to locate the managed user.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
+    user = db.get(User, user_id)
+    managed_user = db.get(User, managed_user_id)
+    if not user or not managed_user:
+        raise HTTPException(404, "User not found")
+    if user.id == managed_user.id:
+        raise HTTPException(400, "User cannot manage themselves")
+
+    add_managed_user(db, user, managed_user)
+    return {"status": "ok"}
+
+
+@router.delete("/{user_id}/managed-users/{managed_user_id}")
+def remove_user_managed_user(user_id: UUID, managed_user_id: UUID, db: Session = Depends(get_db)):
+    """Remove managed user for a user manager.
+
+    Parameters:
+        user_id (type=UUID): Identifier used to locate the manager user.
+        managed_user_id (type=UUID): Identifier used to locate the managed user.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
+    user = db.get(User, user_id)
+    managed_user = db.get(User, managed_user_id)
+    if not user or not managed_user:
+        raise HTTPException(404, "User not found")
+
+    remove_managed_user(db, user, managed_user)
+    return {"status": "ok"}
 
 
 @router.get("/{user_id}", response_model=UserResponse)

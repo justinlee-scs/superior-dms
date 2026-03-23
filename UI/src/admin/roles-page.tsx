@@ -18,6 +18,9 @@ import { Checkbox } from "@/app/components/ui/checkbox";
 import {
   activateUser,
   addManagedRole,
+  addManagedUser,
+  addUserManagedRole,
+  addUserManagedUser,
   copyRolePermissions,
   createRole,
   createUser,
@@ -25,10 +28,16 @@ import {
   getRole,
   getUserPermissions,
   listManagedRoles,
+  listManagedUsers,
   listPermissions,
   listRoles,
+  listUserManagedRoles,
+  listUserManagedUsers,
   listUsers,
   removeManagedRole,
+  removeManagedUser,
+  removeUserManagedRole,
+  removeUserManagedUser,
   resetUserPermissionsToDefault,
   setRolePermissions,
   updateRole,
@@ -43,6 +52,7 @@ import {
 
 type AdminSection = "roles" | "users" | "hierarchy";
 type UserTab = "roles" | "permissions";
+type HierarchyManagerType = "role" | "user";
 
 const PERMISSION_LABELS: Record<string, string> = {
   "document.read": "View Documents",
@@ -106,11 +116,21 @@ export default function RolesPage({
   const [userPermissionCounts, setUserPermissionCounts] = useState<Record<string, number>>({});
 
   const [managedRoleMap, setManagedRoleMap] = useState<Record<string, Role[]>>({});
+  const [managedUserMap, setManagedUserMap] = useState<Record<string, User[]>>({});
   const [managedByMap, setManagedByMap] = useState<Record<string, Role[]>>({});
+  const [managedByUserMap, setManagedByUserMap] = useState<Record<string, User[]>>({});
 
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
+  const [hierarchyManagerType, setHierarchyManagerType] = useState<HierarchyManagerType>("role");
+  const [hierarchyManagerRoleId, setHierarchyManagerRoleId] = useState<string | null>(null);
+  const [hierarchyManagerUserId, setHierarchyManagerUserId] = useState<string | null>(null);
   const [selectedPermissionKeys, setSelectedPermissionKeys] = useState<Set<string>>(new Set());
   const [managedRoleIds, setManagedRoleIds] = useState<Set<string>>(new Set());
+  const [managedUserIds, setManagedUserIds] = useState<Set<string>>(new Set());
+  const [managedRoleIdsByUser, setManagedRoleIdsByUser] = useState<Set<string>>(new Set());
+  const [managedUserIdsByUser, setManagedUserIdsByUser] = useState<Set<string>>(new Set());
+  const [expandedManagedRoles, setExpandedManagedRoles] = useState<Set<string>>(new Set());
+  const [expandedManagedUsers, setExpandedManagedUsers] = useState<Set<string>>(new Set());
   const [copySourceRoleId, setCopySourceRoleId] = useState<string>("");
 
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -130,8 +150,12 @@ export default function RolesPage({
     [users, selectedUserId],
   );
   const hierarchyManagerRole = useMemo(
-    () => roles.find((role) => role.id === selectedRoleId) ?? null,
-    [roles, selectedRoleId],
+    () => roles.find((role) => role.id === hierarchyManagerRoleId) ?? null,
+    [roles, hierarchyManagerRoleId],
+  );
+  const hierarchyManagerUser = useMemo(
+    () => users.find((user) => user.id === hierarchyManagerUserId) ?? null,
+    [users, hierarchyManagerUserId],
   );
 
   const groupedPermissions = useMemo(() => {
@@ -145,12 +169,23 @@ export default function RolesPage({
   }, [permissions]);
 
   const loadRoleDetails = async (roleId: string) => {
-    const [roleWithPermissions, managedRoles] = await Promise.all([
+    const [roleWithPermissions, managedRoles, managedUsers] = await Promise.all([
       getRole(roleId),
       listManagedRoles(roleId),
+      listManagedUsers(roleId),
     ]);
     setSelectedPermissionKeys(new Set(roleWithPermissions.permissions.map((permission) => permission.key)));
     setManagedRoleIds(new Set(managedRoles.map((role) => role.id)));
+    setManagedUserIds(new Set(managedUsers.map((user) => user.id)));
+  };
+
+  const loadUserManagerDetails = async (userId: string) => {
+    const [managedRoles, managedUsers] = await Promise.all([
+      listUserManagedRoles(userId),
+      listUserManagedUsers(userId),
+    ]);
+    setManagedRoleIdsByUser(new Set(managedRoles.map((role) => role.id)));
+    setManagedUserIdsByUser(new Set(managedUsers.map((user) => user.id)));
   };
 
   const hydrateUserState = (user: User, permissionState: UserPermissionsResponse) => {
@@ -164,16 +199,21 @@ export default function RolesPage({
     hydrateUserState(user, state);
   };
 
-  const loadHierarchyMaps = async (rolesData: Role[]) => {
-    const entries = await Promise.all(
-      rolesData.map(async (role) => [role.id, await listManagedRoles(role.id)] as const),
-    );
-    const canManage: Record<string, Role[]> = Object.fromEntries(entries);
+  const loadHierarchyMaps = async (rolesData: Role[], usersData: User[]) => {
+    const [roleEntries, userEntries, userManagedRoleEntries] = await Promise.all([
+      Promise.all(rolesData.map(async (role) => [role.id, await listManagedRoles(role.id)] as const)),
+      Promise.all(rolesData.map(async (role) => [role.id, await listManagedUsers(role.id)] as const)),
+      Promise.all(usersData.map(async (user) => [user.id, await listUserManagedRoles(user.id)] as const)),
+    ]);
+    const canManageRoles: Record<string, Role[]> = Object.fromEntries(roleEntries);
+    const canManageUsers: Record<string, User[]> = Object.fromEntries(userEntries);
     const managedBy: Record<string, Role[]> = {};
+    const managedByUsers: Record<string, User[]> = {};
 
     for (const role of rolesData) managedBy[role.id] = [];
+    for (const role of rolesData) managedByUsers[role.id] = [];
 
-    for (const [managerId, managedRoles] of entries) {
+    for (const [managerId, managedRoles] of roleEntries) {
       const manager = rolesData.find((role) => role.id === managerId);
       if (!manager) continue;
       for (const managedRole of managedRoles) {
@@ -182,8 +222,19 @@ export default function RolesPage({
       }
     }
 
-    setManagedRoleMap(canManage);
+    for (const [managerUserId, managedRoles] of userManagedRoleEntries) {
+      const managerUser = usersData.find((user) => user.id === managerUserId);
+      if (!managerUser) continue;
+      for (const managedRole of managedRoles) {
+        if (!managedByUsers[managedRole.id]) managedByUsers[managedRole.id] = [];
+        managedByUsers[managedRole.id].push(managerUser);
+      }
+    }
+
+    setManagedRoleMap(canManageRoles);
+    setManagedUserMap(canManageUsers);
     setManagedByMap(managedBy);
+    setManagedByUserMap(managedByUsers);
   };
 
   const loadBase = async () => {
@@ -203,8 +254,14 @@ export default function RolesPage({
     if (!selectedUserId && usersData.length > 0) {
       setSelectedUserId(usersData[0].id);
     }
+    if (!hierarchyManagerRoleId && rolesData.length > 0) {
+      setHierarchyManagerRoleId(rolesData[0].id);
+    }
+    if (!hierarchyManagerUserId && usersData.length > 0) {
+      setHierarchyManagerUserId(usersData[0].id);
+    }
 
-    await loadHierarchyMaps(rolesData);
+    await loadHierarchyMaps(rolesData, usersData);
 
     const roleCountsEntries = await Promise.all(
       rolesData.map(async (role) => {
@@ -232,6 +289,18 @@ export default function RolesPage({
     if (!selectedRoleId) return;
     loadRoleDetails(selectedRoleId).catch(() => toast.error("Failed to load role details"));
   }, [selectedRoleId]);
+
+  useEffect(() => {
+    if (!hierarchyManagerRoleId) return;
+    if (hierarchyManagerType !== "role") return;
+    loadRoleDetails(hierarchyManagerRoleId).catch(() => toast.error("Failed to load role manager details"));
+  }, [hierarchyManagerRoleId, hierarchyManagerType]);
+
+  useEffect(() => {
+    if (!hierarchyManagerUserId) return;
+    if (hierarchyManagerType !== "user") return;
+    loadUserManagerDetails(hierarchyManagerUserId).catch(() => toast.error("Failed to load user manager details"));
+  }, [hierarchyManagerUserId, hierarchyManagerType]);
 
   useEffect(() => {
     if (!selectedUser) return;
@@ -321,16 +390,46 @@ export default function RolesPage({
   };
 
   const onToggleManagedRole = async (managedRoleId: string, checked: boolean) => {
-    if (!selectedRoleId) return;
+    if (hierarchyManagerType === "role" && !hierarchyManagerRoleId) return;
+    if (hierarchyManagerType === "user" && !hierarchyManagerUserId) return;
     setLoading(true);
     try {
-      if (checked) await addManagedRole(selectedRoleId, managedRoleId);
-      else await removeManagedRole(selectedRoleId, managedRoleId);
+      if (hierarchyManagerType === "role" && hierarchyManagerRoleId) {
+        if (checked) await addManagedRole(hierarchyManagerRoleId, managedRoleId);
+        else await removeManagedRole(hierarchyManagerRoleId, managedRoleId);
+        await loadRoleDetails(hierarchyManagerRoleId);
+      } else if (hierarchyManagerType === "user" && hierarchyManagerUserId) {
+        if (checked) await addUserManagedRole(hierarchyManagerUserId, managedRoleId);
+        else await removeUserManagedRole(hierarchyManagerUserId, managedRoleId);
+        await loadUserManagerDetails(hierarchyManagerUserId);
+      }
 
-      await loadRoleDetails(selectedRoleId);
-      await loadHierarchyMaps(roles);
+      await loadHierarchyMaps(roles, users);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to update role hierarchy");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onToggleManagedUser = async (managedUserId: string, checked: boolean) => {
+    if (hierarchyManagerType === "role" && !hierarchyManagerRoleId) return;
+    if (hierarchyManagerType === "user" && !hierarchyManagerUserId) return;
+    setLoading(true);
+    try {
+      if (hierarchyManagerType === "role" && hierarchyManagerRoleId) {
+        if (checked) await addManagedUser(hierarchyManagerRoleId, managedUserId);
+        else await removeManagedUser(hierarchyManagerRoleId, managedUserId);
+        await loadRoleDetails(hierarchyManagerRoleId);
+      } else if (hierarchyManagerType === "user" && hierarchyManagerUserId) {
+        if (checked) await addUserManagedUser(hierarchyManagerUserId, managedUserId);
+        else await removeUserManagedUser(hierarchyManagerUserId, managedUserId);
+        await loadUserManagerDetails(hierarchyManagerUserId);
+      }
+
+      await loadHierarchyMaps(roles, users);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update role user management");
     } finally {
       setLoading(false);
     }
@@ -454,6 +553,29 @@ export default function RolesPage({
     } finally {
       setLoading(false);
     }
+  };
+
+  const activeManagedRoleIds = hierarchyManagerType === "role" ? managedRoleIds : managedRoleIdsByUser;
+  const activeManagedUserIds = hierarchyManagerType === "role" ? managedUserIds : managedUserIdsByUser;
+  const hierarchyManagerLabel =
+    hierarchyManagerType === "role" ? hierarchyManagerRole?.name : hierarchyManagerUser?.username;
+
+  const toggleExpandedManagedRoles = (roleId: string) => {
+    setExpandedManagedRoles((prev) => {
+      const next = new Set(prev);
+      if (next.has(roleId)) next.delete(roleId);
+      else next.add(roleId);
+      return next;
+    });
+  };
+
+  const toggleExpandedManagedUsers = (roleId: string) => {
+    setExpandedManagedUsers((prev) => {
+      const next = new Set(prev);
+      if (next.has(roleId)) next.delete(roleId);
+      else next.add(roleId);
+      return next;
+    });
   };
 
   return (
@@ -864,7 +986,7 @@ export default function RolesPage({
             <div className="px-3 py-2">
               <h2 className="text-2xl font-semibold">Role Hierarchy</h2>
               <p className={`mt-1 text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
-                Visual representation of which roles can manage other roles. Higher roles inherit management authority.
+                Visual representation of which roles can manage other roles and users. Management does not grant extra permissions.
               </p>
 
               <div
@@ -873,61 +995,149 @@ export default function RolesPage({
                 }`}
               >
                 <div className="mb-3 text-lg font-semibold">Edit Hierarchy</div>
-                <div className="mb-4 grid gap-2">
-                  <label className={`text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
-                    Manager Role
-                  </label>
-                  <select
-                    className="h-10 rounded-xl border border-gray-300 bg-white px-3 text-sm text-black"
-                    value={selectedRoleId ?? ""}
-                    onChange={(event) => setSelectedRoleId(event.target.value || null)}
-                    disabled={loading || roles.length === 0}
-                  >
-                    {roles.map((role) => (
-                      <option key={role.id} value={role.id}>
-                        {role.name}
-                      </option>
-                    ))}
-                  </select>
+                <div className="mb-4 grid gap-3">
+                  <div className="grid gap-2">
+                    <label className={`text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
+                      Manager Type
+                    </label>
+                    <div className="flex gap-2">
+                      <Button
+                        variant={hierarchyManagerType === "role" ? "default" : "outline"}
+                        onClick={() => setHierarchyManagerType("role")}
+                        disabled={loading}
+                      >
+                        Role
+                      </Button>
+                      <Button
+                        variant={hierarchyManagerType === "user" ? "default" : "outline"}
+                        onClick={() => setHierarchyManagerType("user")}
+                        disabled={loading}
+                      >
+                        User
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <label className={`text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
+                      {hierarchyManagerType === "role" ? "Manager Role" : "Manager User"}
+                    </label>
+                    {hierarchyManagerType === "role" ? (
+                      <select
+                        className="h-10 rounded-xl border border-gray-300 bg-white px-3 text-sm text-black"
+                        value={hierarchyManagerRoleId ?? ""}
+                        onChange={(event) => setHierarchyManagerRoleId(event.target.value || null)}
+                        disabled={loading || roles.length === 0}
+                      >
+                        {roles.map((role) => (
+                          <option key={role.id} value={role.id}>
+                            {role.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <select
+                        className="h-10 rounded-xl border border-gray-300 bg-white px-3 text-sm text-black"
+                        value={hierarchyManagerUserId ?? ""}
+                        onChange={(event) => setHierarchyManagerUserId(event.target.value || null)}
+                        disabled={loading || users.length === 0}
+                      >
+                        {users.map((user) => (
+                          <option key={user.id} value={user.id}>
+                            {user.username} ({user.email})
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
                 </div>
 
-                {!hierarchyManagerRole && (
+                {hierarchyManagerType === "role" && !hierarchyManagerRole && (
                   <div className={`text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
                     Select a role to edit which roles it can manage.
                   </div>
                 )}
 
-                {hierarchyManagerRole && (
-                  <div className="space-y-2">
-                    <div className={`text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
-                      Roles managed by <span className="font-semibold">{hierarchyManagerRole.name}</span>:
-                    </div>
-                    {roles
-                      .filter((role) => role.id !== hierarchyManagerRole.id)
-                      .map((role) => (
-                        <label key={role.id} className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2">
-                          <div>
-                            <div className="text-sm font-semibold">{role.name}</div>
-                            <div className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
-                              {role.description || "No description"}
+                {hierarchyManagerType === "user" && !hierarchyManagerUser && (
+                  <div className={`text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
+                    Select a user to edit which roles and users they can manage.
+                  </div>
+                )}
+
+                {hierarchyManagerLabel && (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <div className={`text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
+                        Roles managed by <span className="font-semibold">{hierarchyManagerLabel}</span>:
+                      </div>
+                      {roles
+                        .filter((role) =>
+                          hierarchyManagerType === "role" && hierarchyManagerRole
+                            ? role.id !== hierarchyManagerRole.id
+                            : true,
+                        )
+                        .map((role) => (
+                          <label key={role.id} className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2">
+                            <div>
+                              <div className="text-sm font-semibold">{role.name}</div>
+                              <div className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+                                {role.description || "No description"}
+                              </div>
                             </div>
-                          </div>
-                          <Checkbox
-                            checked={managedRoleIds.has(role.id)}
-                            onCheckedChange={(checked) =>
-                              void onToggleManagedRole(role.id, checked === true)
-                            }
-                          />
-                        </label>
-                      ))}
+                            <Checkbox
+                              checked={activeManagedRoleIds.has(role.id)}
+                              onCheckedChange={(checked) =>
+                                void onToggleManagedRole(role.id, checked === true)
+                              }
+                            />
+                          </label>
+                        ))}
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className={`text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
+                        Users managed by <span className="font-semibold">{hierarchyManagerLabel}</span>:
+                      </div>
+                      {users
+                        .filter((user) =>
+                          hierarchyManagerType === "user" && hierarchyManagerUser
+                            ? user.id !== hierarchyManagerUser.id
+                            : true,
+                        )
+                        .map((user) => (
+                          <label key={user.id} className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2">
+                            <div>
+                              <div className="text-sm font-semibold">{user.username}</div>
+                              <div className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+                                {user.email}
+                              </div>
+                            </div>
+                            <Checkbox
+                              checked={activeManagedUserIds.has(user.id)}
+                              onCheckedChange={(checked) =>
+                                void onToggleManagedUser(user.id, checked === true)
+                              }
+                            />
+                          </label>
+                        ))}
+                    </div>
                   </div>
                 )}
               </div>
 
               <div className="mt-5 space-y-3">
                 {roles.map((role) => {
-                  const manages = managedRoleMap[role.id] ?? [];
+                  const managesRoles = managedRoleMap[role.id] ?? [];
+                  const managesUsers = managedUserMap[role.id] ?? [];
                   const managedBy = managedByMap[role.id] ?? [];
+                  const managedByUsers = managedByUserMap[role.id] ?? [];
+                  const managedByParts: string[] = [];
+                  if (managedBy.length > 0) managedByParts.push(`Roles: ${managedBy.map((item) => item.name).join(", ")}`);
+                  if (managedByUsers.length > 0) managedByParts.push(`Users: ${managedByUsers.map((item) => item.username).join(", ")}`);
+                  const showAllManagedRoles = expandedManagedRoles.has(role.id);
+                  const showAllManagedUsers = expandedManagedUsers.has(role.id);
+                  const visibleManagedRoles = showAllManagedRoles ? managesRoles : managesRoles.slice(0, 5);
+                  const visibleManagedUsers = showAllManagedUsers ? managesUsers : managesUsers.slice(0, 5);
 
                   return (
                     <div
@@ -952,36 +1162,96 @@ export default function RolesPage({
                         </span>
                       </div>
 
-                      {manages.length > 0 && (
-                        <div className="mt-3 border-l-2 border-blue-200 pl-4">
-                          <div className={`mb-1 text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>Can manage:</div>
-                          <div className="space-y-1">
-                            {manages.map((managedRole) => (
-                              <label key={managedRole.id} className="flex items-center gap-2 text-sm">
-                                <span className="text-blue-500">›</span>
-                                <span className="inline-flex rounded bg-gray-100 px-2 py-0.5 font-medium">
-                                  {managedRole.name}
-                                </span>
-                                <span className="text-gray-400">
-                                  {rolePermissionCounts[managedRole.id] ?? 0} perms
-                                </span>
-                                {selectedRoleId === role.id && (
-                                  <Checkbox
-                                    checked={managedRoleIds.has(managedRole.id)}
-                                    onCheckedChange={(checked) =>
-                                      void onToggleManagedRole(managedRole.id, checked === true)
-                                    }
-                                  />
+                      {(managesRoles.length > 0 || managesUsers.length > 0) && (
+                        <div className={`mt-3 border-l-2 pl-4 ${darkMode ? "border-blue-400/40" : "border-blue-200"}`}>
+                          <div className={`mb-1 text-sm ${darkMode ? "text-gray-200" : "text-gray-600"}`}>Can manage:</div>
+                          <div className="space-y-2">
+                            {managesRoles.length > 0 && (
+                              <div className="space-y-1">
+                                <div className={`text-xs uppercase tracking-wide ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+                                  Roles
+                                </div>
+                                {visibleManagedRoles.map((managedRole) => (
+                                  <label key={managedRole.id} className="flex items-center gap-2 text-sm">
+                                    <span className={`${darkMode ? "text-blue-300" : "text-blue-500"}`}>›</span>
+                                    <span
+                                      className={`inline-flex rounded px-2 py-0.5 font-medium ${
+                                        darkMode ? "bg-gray-700 text-gray-100" : "bg-gray-100 text-gray-800"
+                                      }`}
+                                    >
+                                      {managedRole.name}
+                                    </span>
+                                    <span className={`${darkMode ? "text-gray-300" : "text-gray-400"}`}>
+                                      {rolePermissionCounts[managedRole.id] ?? 0} perms
+                                    </span>
+                                    {hierarchyManagerType === "role" && hierarchyManagerRoleId === role.id && (
+                                      <Checkbox
+                                        checked={managedRoleIds.has(managedRole.id)}
+                                        onCheckedChange={(checked) =>
+                                          void onToggleManagedRole(managedRole.id, checked === true)
+                                        }
+                                      />
+                                    )}
+                                  </label>
+                                ))}
+                                {managesRoles.length > 5 && (
+                                  <Button
+                                    variant="ghost"
+                                    className="h-7 px-2 text-xs"
+                                    onClick={() => toggleExpandedManagedRoles(role.id)}
+                                  >
+                                    {showAllManagedRoles ? "Show less" : `Show ${managesRoles.length - 5} more`}
+                                  </Button>
                                 )}
-                              </label>
-                            ))}
+                              </div>
+                            )}
+
+                            {managesUsers.length > 0 && (
+                              <div className="space-y-1">
+                                <div className={`text-xs uppercase tracking-wide ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+                                  Users
+                                </div>
+                                {visibleManagedUsers.map((managedUser) => (
+                                  <label key={managedUser.id} className="flex items-center gap-2 text-sm">
+                                    <span className={`${darkMode ? "text-blue-300" : "text-blue-500"}`}>›</span>
+                                    <span
+                                      className={`inline-flex rounded px-2 py-0.5 font-medium ${
+                                        darkMode ? "bg-gray-700 text-gray-100" : "bg-gray-100 text-gray-800"
+                                      }`}
+                                    >
+                                      {managedUser.username}
+                                    </span>
+                                    <span className={`${darkMode ? "text-gray-300" : "text-gray-400"}`}>
+                                      {managedUser.email}
+                                    </span>
+                                    {hierarchyManagerType === "role" && hierarchyManagerRoleId === role.id && (
+                                      <Checkbox
+                                        checked={managedUserIds.has(managedUser.id)}
+                                        onCheckedChange={(checked) =>
+                                          void onToggleManagedUser(managedUser.id, checked === true)
+                                        }
+                                      />
+                                    )}
+                                  </label>
+                                ))}
+                                {managesUsers.length > 5 && (
+                                  <Button
+                                    variant="ghost"
+                                    className="h-7 px-2 text-xs"
+                                    onClick={() => toggleExpandedManagedUsers(role.id)}
+                                  >
+                                    {showAllManagedUsers ? "Show less" : `Show ${managesUsers.length - 5} more`}
+                                  </Button>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}
 
                       <div className={`mt-3 text-sm ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
                         Managed by:{" "}
-                        {managedBy.length > 0 ? managedBy.map((item) => item.name).join(", ") : "No one"}
+                        {managedByParts.length > 0 ? managedByParts.join(" • ") : "No one"}
                       </div>
                     </div>
                   );

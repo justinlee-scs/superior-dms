@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 
 from app.db.models.role import Role
+from app.db.models.user import User
 from app.db.models.permission import Permission
 
 
@@ -77,4 +78,30 @@ def remove_managed_role(db: Session, manager_role: Role, managed_role: Role) -> 
     """
     if managed_role in manager_role.managed_roles:
         manager_role.managed_roles.remove(managed_role)
+        db.commit()
+
+
+def add_managed_user(db: Session, manager_role: Role, managed_user: User) -> None:
+    """Add managed user.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        manager_role (type=Role): Function argument used by this operation.
+        managed_user (type=User): Function argument used by this operation.
+    """
+    if managed_user not in manager_role.managed_users:
+        manager_role.managed_users.append(managed_user)
+        db.commit()
+
+
+def remove_managed_user(db: Session, manager_role: Role, managed_user: User) -> None:
+    """Remove managed user.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        manager_role (type=Role): Function argument used by this operation.
+        managed_user (type=User): Function argument used by this operation.
+    """
+    if managed_user in manager_role.managed_users:
+        manager_role.managed_users.remove(managed_user)
         db.commit()

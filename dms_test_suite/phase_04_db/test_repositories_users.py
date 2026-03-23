@@ -5,8 +5,12 @@ from app.db.models.user import User
 from app.db.models.role import Role
 from app.db.models.user_permission_override import PermissionEffect
 from app.db.repositories.users import (
+    add_managed_role,
+    add_managed_user,
     assign_role,
     clear_permission_overrides,
+    remove_managed_role,
+    remove_managed_user,
     remove_role,
     set_permission_override,
     set_permission_overrides,
@@ -129,3 +133,26 @@ def test_user_model_helpers_has_role_and_repr() -> None:
     assert user.has_role("editor") is True
     assert user.has_role("viewer") is False
     assert str(user.id) in repr(user)
+
+
+def test_user_management_mutators() -> None:
+    db = _FakeDB()
+    manager = SimpleNamespace(managed_roles=[], managed_users=[])
+    role = SimpleNamespace(name="editor")
+    user = SimpleNamespace(email="a@example.com")
+
+    add_managed_role(db, manager, role)
+    add_managed_role(db, manager, role)
+    assert manager.managed_roles == [role]
+
+    remove_managed_role(db, manager, role)
+    remove_managed_role(db, manager, role)
+    assert manager.managed_roles == []
+
+    add_managed_user(db, manager, user)
+    add_managed_user(db, manager, user)
+    assert manager.managed_users == [user]
+
+    remove_managed_user(db, manager, user)
+    remove_managed_user(db, manager, user)
+    assert manager.managed_users == []

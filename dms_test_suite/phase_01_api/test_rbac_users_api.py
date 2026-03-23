@@ -199,6 +199,42 @@ def test_users_api_not_found_and_list_paths(monkeypatch: pytest.MonkeyPatch) -> 
     empty = users_api.set_user_roles(user_id, UserRoleSet(role_ids=[]), db=db)
     assert empty == {"status": "ok", "role_ids": []}
 
+
+def test_activate_deactivate_and_management_endpoints(monkeypatch: pytest.MonkeyPatch) -> None:
+    db = _DB()
+    user_id = uuid4()
+    manager = SimpleNamespace(id=user_id, is_active=False, managed_roles=[], managed_users=[])
+    role_id = uuid4()
+    role = SimpleNamespace(id=role_id, name="manager")
+    managed_user_id = uuid4()
+    managed_user = SimpleNamespace(id=managed_user_id, email="u@example.com")
+
+    db.get_map[(users_api.User, user_id)] = manager
+    db.get_map[(users_api.Role, role_id)] = role
+    db.get_map[(users_api.User, managed_user_id)] = managed_user
+
+    activated = users_api.activate_user(user_id, db=db)
+    assert activated.is_active is True
+    deactivated = users_api.deactivate_user(user_id, db=db)
+    assert deactivated.is_active is False
+
+    monkeypatch.setattr(users_api, "add_managed_role", lambda *_a, **_k: None)
+    monkeypatch.setattr(users_api, "remove_managed_role", lambda *_a, **_k: None)
+    monkeypatch.setattr(users_api, "add_managed_user", lambda *_a, **_k: None)
+    monkeypatch.setattr(users_api, "remove_managed_user", lambda *_a, **_k: None)
+
+    assert users_api.add_user_managed_role(user_id, role_id, db=db) == {"status": "ok"}
+    assert users_api.remove_user_managed_role(user_id, role_id, db=db) == {"status": "ok"}
+    assert users_api.add_user_managed_user(user_id, managed_user_id, db=db) == {"status": "ok"}
+    assert users_api.remove_user_managed_user(user_id, managed_user_id, db=db) == {"status": "ok"}
+
+    manager.managed_roles = [SimpleNamespace(name="alpha"), SimpleNamespace(name="beta")]
+    manager.managed_users = [SimpleNamespace(email="b@example.com"), SimpleNamespace(email="a@example.com")]
+    roles = users_api.list_user_managed_roles(user_id, db=db)
+    users = users_api.list_user_managed_users(user_id, db=db)
+    assert [r.name for r in roles] == ["alpha", "beta"]
+    assert [u.email for u in users] == ["a@example.com", "b@example.com"]
+
     with pytest.raises(HTTPException):
         users_api.remove_role_from_user(user_id, role_id, db=db)
 

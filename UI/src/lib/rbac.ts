@@ -86,8 +86,18 @@ export function listManagedRoles(roleId: string) {
   return apiFetch<Role[]>(`/rbac/roles/${roleId}/managed-roles`);
 }
 
+export function listManagedUsers(roleId: string) {
+  return apiFetch<User[]>(`/rbac/roles/${roleId}/managed-users`);
+}
+
 export function addManagedRole(roleId: string, managedRoleId: string) {
   return apiFetch<{ status: string }>(`/rbac/roles/${roleId}/managed-roles/${managedRoleId}`, {
+    method: "POST",
+  });
+}
+
+export function addManagedUser(roleId: string, managedUserId: string) {
+  return apiFetch<{ status: string }>(`/rbac/roles/${roleId}/managed-users/${managedUserId}`, {
     method: "POST",
   });
 }
@@ -98,12 +108,26 @@ export function removeManagedRole(roleId: string, managedRoleId: string) {
   });
 }
 
+export function removeManagedUser(roleId: string, managedUserId: string) {
+  return apiFetch<{ status: string }>(`/rbac/roles/${roleId}/managed-users/${managedUserId}`, {
+    method: "DELETE",
+  });
+}
+
 export function listPermissions() {
   return apiFetch<Permission[]>("/rbac/permissions/");
 }
 
 export function listUsers() {
   return apiFetch<User[]>("/rbac/users/");
+}
+
+export function listUserManagedRoles(userId: string) {
+  return apiFetch<Role[]>(`/rbac/users/${userId}/managed-roles`);
+}
+
+export function listUserManagedUsers(userId: string) {
+  return apiFetch<User[]>(`/rbac/users/${userId}/managed-users`);
 }
 
 export function createUser(payload: { username: string; email: string; password: string; is_active?: boolean }) {
@@ -117,6 +141,30 @@ export function setUserRoles(userId: string, roleIds: string[]) {
   return apiFetch<{ status: string; role_ids: string[] }>(`/rbac/users/${userId}/roles`, {
     method: "PUT",
     body: JSON.stringify({ role_ids: roleIds }),
+  });
+}
+
+export function addUserManagedRole(userId: string, managedRoleId: string) {
+  return apiFetch<{ status: string }>(`/rbac/users/${userId}/managed-roles/${managedRoleId}`, {
+    method: "POST",
+  });
+}
+
+export function removeUserManagedRole(userId: string, managedRoleId: string) {
+  return apiFetch<{ status: string }>(`/rbac/users/${userId}/managed-roles/${managedRoleId}`, {
+    method: "DELETE",
+  });
+}
+
+export function addUserManagedUser(userId: string, managedUserId: string) {
+  return apiFetch<{ status: string }>(`/rbac/users/${userId}/managed-users/${managedUserId}`, {
+    method: "POST",
+  });
+}
+
+export function removeUserManagedUser(userId: string, managedUserId: string) {
+  return apiFetch<{ status: string }>(`/rbac/users/${userId}/managed-users/${managedUserId}`, {
+    method: "DELETE",
   });
 }
 

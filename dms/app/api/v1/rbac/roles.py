@@ -5,6 +5,7 @@ import uuid
 
 from app.db.session import get_db
 from app.db.models.role import Role
+from app.db.models.user import User
 from app.db.repositories.roles import (
     attach_permission,
     detach_permission,
@@ -12,10 +13,13 @@ from app.db.repositories.roles import (
     copy_permissions,
     add_managed_role,
     remove_managed_role,
+    add_managed_user,
+    remove_managed_user,
 )
 from app.db.repositories.permissions import get_permission_by_key
 from app.db.models.permission import Permission
 from app.schemas.role import RoleWithPermissions, RoleResponse, RoleCreate, RolePermissionSet, RoleUpdate
+from app.schemas.user import UserResponse
 from app.services.rbac.permission_checker import require_permission
 from app.services.rbac.policy import Permissions
 
@@ -153,6 +157,20 @@ def list_managed_roles(role_id: UUID, db: Session = Depends(get_db)):
     return sorted(role.managed_roles, key=lambda r: r.name)
 
 
+@router.get("/{role_id}/managed-users", response_model=list[UserResponse])
+def list_managed_users(role_id: UUID, db: Session = Depends(get_db)):
+    """Return managed users.
+
+    Parameters:
+        role_id (type=UUID): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
+    role = db.get(Role, role_id)
+    if not role:
+        raise HTTPException(404, "Role not found")
+    return sorted(role.managed_users, key=lambda u: u.email)
+
+
 @router.post("/{role_id}/managed-roles/{managed_role_id}")
 def add_role_hierarchy(role_id: UUID, managed_role_id: UUID, db: Session = Depends(get_db)):
     """Add role hierarchy.
@@ -173,6 +191,24 @@ def add_role_hierarchy(role_id: UUID, managed_role_id: UUID, db: Session = Depen
     return {"status": "ok"}
 
 
+@router.post("/{role_id}/managed-users/{managed_user_id}")
+def add_role_managed_user(role_id: UUID, managed_user_id: UUID, db: Session = Depends(get_db)):
+    """Add role-managed user.
+
+    Parameters:
+        role_id (type=UUID): Identifier used to locate the target record.
+        managed_user_id (type=UUID): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
+    role = db.get(Role, role_id)
+    managed_user = db.get(User, managed_user_id)
+    if not role or not managed_user:
+        raise HTTPException(404, "Role or user not found")
+
+    add_managed_user(db, role, managed_user)
+    return {"status": "ok"}
+
+
 @router.delete("/{role_id}/managed-roles/{managed_role_id}")
 def remove_role_hierarchy(role_id: UUID, managed_role_id: UUID, db: Session = Depends(get_db)):
     """Remove role hierarchy.
@@ -188,6 +224,24 @@ def remove_role_hierarchy(role_id: UUID, managed_role_id: UUID, db: Session = De
         raise HTTPException(404, "Role not found")
 
     remove_managed_role(db, role, managed_role)
+    return {"status": "ok"}
+
+
+@router.delete("/{role_id}/managed-users/{managed_user_id}")
+def remove_role_managed_user(role_id: UUID, managed_user_id: UUID, db: Session = Depends(get_db)):
+    """Remove role-managed user.
+
+    Parameters:
+        role_id (type=UUID): Identifier used to locate the target record.
+        managed_user_id (type=UUID): Identifier used to locate the target record.
+        db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+    """
+    role = db.get(Role, role_id)
+    managed_user = db.get(User, managed_user_id)
+    if not role or not managed_user:
+        raise HTTPException(404, "Role or user not found")
+
+    remove_managed_user(db, role, managed_user)
     return {"status": "ok"}
 
 

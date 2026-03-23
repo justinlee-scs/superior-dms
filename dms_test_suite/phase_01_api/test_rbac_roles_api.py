@@ -120,6 +120,28 @@ def test_set_role_permissions_empty_missing_and_success(monkeypatch: pytest.Monk
     assert ok == {"status": "ok", "permission_keys": ["document.read", "document.upload"]}
 
 
+def test_role_managed_users_endpoints(monkeypatch: pytest.MonkeyPatch) -> None:
+    role_id = uuid4()
+    user_id = uuid4()
+    role = SimpleNamespace(id=role_id, managed_users=[SimpleNamespace(email="b@example.com"), SimpleNamespace(email="a@example.com")])
+    user = SimpleNamespace(id=user_id)
+    db = _DB()
+    db.get_map[(roles_api.Role, role_id)] = role
+    db.get_map[(roles_api.User, user_id)] = user
+
+    managed = roles_api.list_managed_users(role_id, db=db)
+    assert [u.email for u in managed] == ["a@example.com", "b@example.com"]
+
+    called = {"add": False, "remove": False}
+    monkeypatch.setattr(roles_api, "add_managed_user", lambda *_a, **_k: called.__setitem__("add", True))
+    monkeypatch.setattr(roles_api, "remove_managed_user", lambda *_a, **_k: called.__setitem__("remove", True))
+
+    assert roles_api.add_role_managed_user(role_id, user_id, db=db) == {"status": "ok"}
+    assert roles_api.remove_role_managed_user(role_id, user_id, db=db) == {"status": "ok"}
+    assert called["add"] is True
+    assert called["remove"] is True
+
+
 def test_role_hierarchy_and_permission_attach_detach(monkeypatch: pytest.MonkeyPatch) -> None:
     role_id = uuid4()
     src_id = uuid4()

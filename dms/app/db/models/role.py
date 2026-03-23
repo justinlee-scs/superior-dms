@@ -5,6 +5,8 @@ import uuid
 
 from app.db.base import Base
 from app.db.models.role_hierarchy import role_hierarchy
+from app.db.models.role_user_management import role_user_management
+from app.db.models.user_role_management import user_role_management
 
 
 class Role(Base):
@@ -18,6 +20,8 @@ class Role(Base):
         permissions: Permissions associated with the role or response.
         managed_roles: Roles that this role is allowed to manage.
         manager_roles: Roles that are allowed to manage this role.
+        managed_users: Users that this role is allowed to manage.
+        manager_users: Users that are allowed to manage this role.
     """
     __tablename__ = "roles"
 
@@ -52,5 +56,21 @@ class Role(Base):
         secondary=role_hierarchy,
         primaryjoin=id == role_hierarchy.c.managed_role_id,
         secondaryjoin=id == role_hierarchy.c.manager_role_id,
+        lazy="selectin",
+    )
+
+    managed_users = relationship(
+        "User",
+        secondary=role_user_management,
+        primaryjoin=id == role_user_management.c.manager_role_id,
+        secondaryjoin="User.id == role_user_management.c.managed_user_id",
+        lazy="selectin",
+    )
+
+    manager_users = relationship(
+        "User",
+        secondary=user_role_management,
+        primaryjoin=id == user_role_management.c.managed_role_id,
+        secondaryjoin="User.id == user_role_management.c.manager_user_id",
         lazy="selectin",
     )

@@ -2,10 +2,12 @@ from types import SimpleNamespace
 
 from app.db.repositories.roles import (
     add_managed_role,
+    add_managed_user,
     attach_permission,
     copy_permissions,
     detach_permission,
     remove_managed_role,
+    remove_managed_user,
     set_permissions,
 )
 
@@ -61,3 +63,18 @@ def test_copy_permissions_and_role_hierarchy_mutators() -> None:
     assert [p.key for p in target.permissions] == ["x", "y"]
     assert target.managed_roles == []
     assert db.commits == 3
+
+
+def test_role_managed_users_mutators() -> None:
+    db = _FakeDB()
+    role = SimpleNamespace(managed_users=[])
+    user = SimpleNamespace(email="a@example.com")
+
+    add_managed_user(db, role, user)
+    add_managed_user(db, role, user)
+    assert role.managed_users == [user]
+
+    remove_managed_user(db, role, user)
+    remove_managed_user(db, role, user)
+    assert role.managed_users == []
+    assert db.commits == 2

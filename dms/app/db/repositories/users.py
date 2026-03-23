@@ -123,3 +123,55 @@ def set_permission_overrides(
         )
 
     db.commit()
+
+
+def add_managed_role(db: Session, manager_user: User, managed_role: Role) -> None:
+    """Add managed role for a user manager.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        manager_user (type=User): Function argument used by this operation.
+        managed_role (type=Role): Function argument used by this operation.
+    """
+    if managed_role not in manager_user.managed_roles:
+        manager_user.managed_roles.append(managed_role)
+        db.commit()
+
+
+def remove_managed_role(db: Session, manager_user: User, managed_role: Role) -> None:
+    """Remove managed role for a user manager.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        manager_user (type=User): Function argument used by this operation.
+        managed_role (type=Role): Function argument used by this operation.
+    """
+    if managed_role in manager_user.managed_roles:
+        manager_user.managed_roles.remove(managed_role)
+        db.commit()
+
+
+def add_managed_user(db: Session, manager_user: User, managed_user: User) -> None:
+    """Add managed user for a user manager.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        manager_user (type=User): Function argument used by this operation.
+        managed_user (type=User): Function argument used by this operation.
+    """
+    if managed_user not in manager_user.managed_users:
+        manager_user.managed_users.append(managed_user)
+        db.commit()
+
+
+def remove_managed_user(db: Session, manager_user: User, managed_user: User) -> None:
+    """Remove managed user for a user manager.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        manager_user (type=User): Function argument used by this operation.
+        managed_user (type=User): Function argument used by this operation.
+    """
+    if managed_user in manager_user.managed_users:
+        manager_user.managed_users.remove(managed_user)
+        db.commit()
