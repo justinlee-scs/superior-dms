@@ -15,8 +15,8 @@ def _zip_bytes(files: dict[str, str]) -> bytes:
 def test_extract_docx_private() -> None:
     data = _zip_bytes(
         {
-            "word/document.xml": "<w:t>Hello</w:t>",
-            "word/header1.xml": "<w:t>Header</w:t>",
+            "word/document.xml": "<w:document xmlns:w='w'><w:t>Hello</w:t></w:document>",
+            "word/header1.xml": "<w:hdr xmlns:w='w'><w:t>Header</w:t></w:hdr>",
         }
     )
     with zipfile.ZipFile(BytesIO(data), "r") as zf:
@@ -40,8 +40,8 @@ def test_extract_xlsx_private() -> None:
 def test_extract_pptx_private() -> None:
     data = _zip_bytes(
         {
-            "ppt/slides/slide1.xml": "<p:t>Slide</p:t>",
-            "ppt/slides/slide2.xml": "<p:t>Two</p:t>",
+            "ppt/slides/slide1.xml": "<p:sld xmlns:p='p'><p:t>Slide</p:t></p:sld>",
+            "ppt/slides/slide2.xml": "<p:sld xmlns:p='p'><p:t>Two</p:t></p:sld>",
         }
     )
     with zipfile.ZipFile(BytesIO(data), "r") as zf:

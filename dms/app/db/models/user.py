@@ -51,6 +51,7 @@ class User(Base):
         primaryjoin="User.id == role_user_management.c.managed_user_id",
         secondaryjoin="Role.id == role_user_management.c.manager_role_id",
         lazy="selectin",
+        overlaps="managed_users",
     )
 
     managed_roles = relationship(
@@ -59,6 +60,7 @@ class User(Base):
         primaryjoin="User.id == user_role_management.c.manager_user_id",
         secondaryjoin="Role.id == user_role_management.c.managed_role_id",
         lazy="selectin",
+        overlaps="manager_users",
     )
 
     managed_users = relationship(
@@ -67,6 +69,7 @@ class User(Base):
         primaryjoin="User.id == user_user_management.c.manager_user_id",
         secondaryjoin="User.id == user_user_management.c.managed_user_id",
         lazy="selectin",
+        overlaps="managed_by_users",
     )
 
     managed_by_users = relationship(
@@ -75,6 +78,7 @@ class User(Base):
         primaryjoin="User.id == user_user_management.c.managed_user_id",
         secondaryjoin="User.id == user_user_management.c.manager_user_id",
         lazy="selectin",
+        overlaps="managed_users",
     )
 
     def has_role(self, role_name: str) -> bool:

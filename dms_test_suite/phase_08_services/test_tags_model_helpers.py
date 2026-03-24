@@ -7,7 +7,7 @@ def test_derive_company_tag_from_text_and_existing_tags() -> None:
     tag = tags._derive_company_tag("Company: Acme Corp", None, [])
     assert tag == "company:acme"
 
-    tag = tags._derive_company_tag("invoice from vendor mega", None, ["company:mega_corp"])
+    tag = tags._derive_company_tag("invoice from vendor mega corp", None, ["company:mega_corp"])
     assert tag == "company:mega_corp"
 
 

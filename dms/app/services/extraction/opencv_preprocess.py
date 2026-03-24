@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import io
 
-import cv2
-import numpy as np
+try:
+    import cv2
+    import numpy as np
+except Exception:
+    cv2 = None
+    np = None
 from PIL import Image
 
 
 def preprocess_image_bytes(file_bytes: bytes) -> bytes:
     """Apply OpenCV preprocessing and return PNG bytes."""
+    if cv2 is None or np is None:
+        raise RuntimeError("OpenCV preprocessing is unavailable (cv2/numpy not installed).")
     image_array = np.frombuffer(file_bytes, dtype=np.uint8)
     image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
     if image is None:
@@ -23,6 +29,8 @@ def preprocess_image_bytes(file_bytes: bytes) -> bytes:
 
 def preprocess_bgr_image(image: np.ndarray) -> np.ndarray:
     """Deskew, denoise, and adaptive-threshold an image."""
+    if cv2 is None:
+        raise RuntimeError("OpenCV preprocessing is unavailable (cv2 not installed).")
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     denoised = cv2.fastNlMeansDenoising(gray, None, h=15, templateWindowSize=7, searchWindowSize=21)
     thresholded = cv2.adaptiveThreshold(
@@ -38,6 +46,8 @@ def preprocess_bgr_image(image: np.ndarray) -> np.ndarray:
 
 def preprocess_pil_image(image: Image.Image) -> Image.Image:
     """Preprocess a PIL image and return a PIL image."""
+    if cv2 is None or np is None:
+        raise RuntimeError("OpenCV preprocessing is unavailable (cv2/numpy not installed).")
     rgb = image.convert("RGB")
     bgr = cv2.cvtColor(np.array(rgb), cv2.COLOR_RGB2BGR)
     processed_bgr = preprocess_bgr_image(bgr)
@@ -47,6 +57,8 @@ def preprocess_pil_image(image: Image.Image) -> Image.Image:
 
 def _deskew_binary(binary: np.ndarray) -> np.ndarray:
     """Estimate skew angle from foreground pixels and rotate."""
+    if cv2 is None:
+        raise RuntimeError("OpenCV preprocessing is unavailable (cv2 not installed).")
     points = np.column_stack(np.where(binary < 250))
     if points.size == 0:
         return binary
@@ -74,4 +86,3 @@ def pil_to_png_bytes(image: Image.Image) -> bytes:
     buff = io.BytesIO()
     image.save(buff, format="PNG")
     return buff.getvalue()
-

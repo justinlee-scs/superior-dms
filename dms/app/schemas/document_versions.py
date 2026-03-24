@@ -1,6 +1,7 @@
 from datetime import datetime
 from uuid import UUID
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel, ConfigDict, Field
 from app.db.models.enums import ProcessingStatus
 
 
@@ -34,13 +35,7 @@ class DocumentVersionResponse(BaseModel):
     tags: list[str] = Field(default_factory=list)
     created_at: datetime
 
-    class Config:
-        """Configure model serialization and ORM behavior.
-
-        Parameters:
-            from_attributes: Enable model construction from ORM attributes.
-        """
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DocumentVersionListItem(BaseModel):

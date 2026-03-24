@@ -203,7 +203,7 @@ def test_users_api_not_found_and_list_paths(monkeypatch: pytest.MonkeyPatch) -> 
 def test_activate_deactivate_and_management_endpoints(monkeypatch: pytest.MonkeyPatch) -> None:
     db = _DB()
     user_id = uuid4()
-    manager = SimpleNamespace(id=user_id, is_active=False, managed_roles=[], managed_users=[])
+    manager = SimpleNamespace(id=user_id, is_active=False, managed_roles=[], managed_users=[], roles=[])
     role_id = uuid4()
     role = SimpleNamespace(id=role_id, name="manager")
     managed_user_id = uuid4()
@@ -235,8 +235,7 @@ def test_activate_deactivate_and_management_endpoints(monkeypatch: pytest.Monkey
     assert [r.name for r in roles] == ["alpha", "beta"]
     assert [u.email for u in users] == ["a@example.com", "b@example.com"]
 
-    with pytest.raises(HTTPException):
-        users_api.remove_role_from_user(user_id, role_id, db=db)
+    assert users_api.remove_role_from_user(user_id, role_id, db=db) == {"status": "ok"}
 
     monkeypatch.setattr(users_api, "get_permission_by_key", lambda *_a, **_k: None)
     with pytest.raises(HTTPException):

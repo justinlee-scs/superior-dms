@@ -19,7 +19,7 @@ def processing_module(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_process_document_not_found_raises(processing_module, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(processing_module.repositories, "get_document", lambda *_a, **_k: None, raising=False)
+    monkeypatch.setattr(processing_module, "get_document", lambda *_a, **_k: None)
 
     with pytest.raises(HTTPException) as exc:
         processing_module.process_document("doc-1", db=object())
@@ -29,7 +29,7 @@ def test_process_document_not_found_raises(processing_module, monkeypatch: pytes
 def test_process_document_enqueues_current_version(processing_module, monkeypatch: pytest.MonkeyPatch):
     doc = SimpleNamespace(current_version_id="v-1")
     called = {"enqueued": None}
-    monkeypatch.setattr(processing_module.repositories, "get_document", lambda *_a, **_k: doc, raising=False)
+    monkeypatch.setattr(processing_module, "get_document", lambda *_a, **_k: doc)
     monkeypatch.setattr(processing_module, "enqueue_processing", lambda vid: called.update(enqueued=vid))
 
     result = processing_module.process_document("doc-1", db=object())
@@ -41,13 +41,8 @@ def test_process_document_enqueues_current_version(processing_module, monkeypatc
 def test_reprocess_document_resets_state_and_enqueues(processing_module, monkeypatch: pytest.MonkeyPatch):
     doc = SimpleNamespace(current_version_id="v-2")
     called = {"reset": None, "enqueued": None}
-    monkeypatch.setattr(processing_module.repositories, "get_document", lambda *_a, **_k: doc, raising=False)
-    monkeypatch.setattr(
-        processing_module.repositories,
-        "reset_processing_state",
-        lambda _db, vid: called.update(reset=vid),
-        raising=False,
-    )
+    monkeypatch.setattr(processing_module, "get_document", lambda *_a, **_k: doc)
+    monkeypatch.setattr(processing_module, "reset_processing_state", lambda _db, vid: called.update(reset=vid))
     monkeypatch.setattr(processing_module, "enqueue_processing", lambda vid: called.update(enqueued=vid))
 
     result = processing_module.reprocess_document("doc-2", db=object())
@@ -57,7 +52,7 @@ def test_reprocess_document_resets_state_and_enqueues(processing_module, monkeyp
 
 
 def test_reprocess_document_not_found_raises(processing_module, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(processing_module.repositories, "get_document", lambda *_a, **_k: None, raising=False)
+    monkeypatch.setattr(processing_module, "get_document", lambda *_a, **_k: None)
 
     with pytest.raises(HTTPException) as exc:
         processing_module.reprocess_document("doc-404", db=object())

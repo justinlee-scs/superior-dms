@@ -1,5 +1,5 @@
 # app/auth/jwt.py
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 from jose import jwt, JWTError
 from passlib.context import CryptContext
@@ -42,7 +42,7 @@ def create_access_token(user_id: UUID) -> str:
     Parameters:
         user_id (type=UUID): Identifier used to locate the target record.
     """
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     payload = {
         "sub": str(user_id),
         "exp": expire,

@@ -30,11 +30,13 @@ class _FakeDocument:
     content_hash = _Field()
     current_version_id = _Field()
     created_at = _Field()
+    uploaded_by_user_id = _Field()
 
-    def __init__(self, id, filename, content_hash):
+    def __init__(self, id, filename, content_hash, uploaded_by_user_id=None):
         self.id = id
         self.filename = filename
         self.content_hash = content_hash
+        self.uploaded_by_user_id = uploaded_by_user_id
         self.current_version_id = None
         self.document_type = None
 
@@ -205,13 +207,14 @@ def test_hash_query_update_type_list_versions_and_delete(patched_models):
     db.query_map[_FakeDocumentVersion] = _Query(all_result=[v1, v2])
     assert repo.list_document_versions(db, doc_id) == [v1, v2]
 
-    rows = [(doc, ProcessingStatus.uploaded, "invoice", 0.9, ["invoice"])]
+    rows = [(doc, ProcessingStatus.uploaded, "invoice", 0.9, ["invoice"], "uploader")]
     db.query_map[(
         _FakeDocument,
         _FakeDocumentVersion.processing_status,
         _FakeDocumentVersion.classification,
         _FakeDocumentVersion.confidence,
         _FakeDocumentVersion.tags,
+        repo.User.username,
     )] = _Query(all_result=rows)
     db.query_map[(_FakeDocumentVersion.document_id, _FakeDocumentVersion.id)] = _Query(
         all_result=[(doc_id, v1.id), (doc_id, v2.id)]
@@ -219,8 +222,9 @@ def test_hash_query_update_type_list_versions_and_delete(patched_models):
     doc.current_version_id = v2.id
     listed = repo.list_documents(db)
     assert listed[0][4] == ["invoice"]
-    assert listed[0][5] == 2
+    assert listed[0][5] == "uploader"
     assert listed[0][6] == 2
+    assert listed[0][7] == 2
 
     repo.set_current_document_version(db, doc, v2)
     assert doc.current_version_id == v2.id

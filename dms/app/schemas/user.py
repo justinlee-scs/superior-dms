@@ -1,8 +1,6 @@
-from pydantic import BaseModel
-from pydantic import EmailStr
 from uuid import UUID
-from typing import List
 
+from pydantic import BaseModel, ConfigDict, EmailStr
 from app.schemas.role import RoleResponse
 from app.db.models.user_permission_override import PermissionEffect
 
@@ -23,13 +21,7 @@ class UserResponse(BaseModel):
     is_active: bool
     roles: list[RoleResponse]
 
-    class Config:
-        """Configure model serialization and ORM behavior.
-
-        Parameters:
-            from_attributes: Enable model construction from ORM attributes.
-        """
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserCreate(BaseModel):

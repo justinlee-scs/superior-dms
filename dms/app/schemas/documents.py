@@ -1,11 +1,8 @@
 from datetime import datetime
-from typing import Optional
-from uuid import UUID
 from enum import Enum
-from datetime import datetime 
+from uuid import UUID
 
-from pydantic import BaseModel
-from pydantic import Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DocumentResponse(BaseModel):
@@ -36,9 +33,7 @@ class DocumentResponse(BaseModel):
     current_version_number: int | None = 1
     tags: list[str] = Field(default_factory=list)
 
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = ConfigDict(from_attributes=True)
 
 class DocumentTypeEnum(str, Enum):
     """Allowed document-type values accepted and returned by the API.
@@ -90,13 +85,7 @@ class DocumentRead(BaseModel):
     document_type: DocumentTypeEnum
     created_at: datetime
 
-    class Config:
-        """Enable ORM-object to schema conversion for response serialization.
-
-        Parameters:
-            from_attributes: Enable model construction from ORM attributes.
-        """
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class DocumentTypeUpdate(BaseModel):
     """Request payload for updating a document's type.

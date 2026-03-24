@@ -51,10 +51,15 @@ def test_bulk_download_documents_success(monkeypatch: pytest.MonkeyPatch) -> Non
     else:
         body = b"".join(iterator)
 
-    assert b"report.pdf" in body
-    assert b"report (2).pdf" in body
-    assert b"abc" in body
-    assert b"xyz" in body
+    import io
+    import zipfile
+
+    archive = zipfile.ZipFile(io.BytesIO(body))
+    names = archive.namelist()
+    assert "report.pdf" in names
+    assert "report (2).pdf" in names
+    assert archive.read("report.pdf") == b"abc"
+    assert archive.read("report (2).pdf") == b"xyz"
 
 
 def test_bulk_download_documents_missing(monkeypatch: pytest.MonkeyPatch) -> None:

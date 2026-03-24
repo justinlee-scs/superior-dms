@@ -24,12 +24,20 @@ class _Begin:
 class _DB:
     def __init__(self):
         self.flushes = 0
+        self.commits = 0
+        self.rollbacks = 0
 
     def begin(self):
         return _Begin()
 
     def flush(self):
         self.flushes += 1
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
 
 
 def _run(coro):
@@ -58,6 +66,7 @@ def _doc(doc_id=None):
         document_type="incoming_invoice",
         status="uploaded",
         confidence=0.8,
+        uploaded_by_user=None,
     )
 
 
@@ -80,9 +89,10 @@ def _version(version_id=None, document_id=None):
 
 def test_upload_document_empty_and_duplicate(monkeypatch: pytest.MonkeyPatch):
     db = _DB()
+    current_user = SimpleNamespace(id=uuid4(), username="user")
     empty = _upload("a.pdf", b"")
     with pytest.raises(HTTPException) as exc:
-        _run(docs_api.upload_document(file=empty, db=db))
+        _run(docs_api.upload_document(file=empty, db=db, current_user=current_user))
     assert exc.value.status_code == 400
 
     monkeypatch.setattr(docs_api, "_validate_supported_upload", lambda *_a, **_k: None)
@@ -90,12 +100,13 @@ def test_upload_document_empty_and_duplicate(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(docs_api, "get_document_by_hash", lambda **_k: _doc())
     dup = _upload("a.pdf", b"%PDF-1.7")
     with pytest.raises(HTTPException) as exc2:
-        _run(docs_api.upload_document(file=dup, db=db))
+        _run(docs_api.upload_document(file=dup, db=db, current_user=current_user))
     assert exc2.value.status_code == 409
 
 
 def test_upload_document_success(monkeypatch: pytest.MonkeyPatch):
     db = _DB()
+    current_user = SimpleNamespace(id=uuid4(), username="user")
     doc = _doc()
     ver = _version(document_id=doc.id)
     doc.current_version_id = ver.id
@@ -108,7 +119,7 @@ def test_upload_document_success(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(docs_api, "create_document_version", lambda **_k: ver)
     monkeypatch.setattr(docs_api, "process_document", lambda **_k: called.update(processed=True))
 
-    resp = _run(docs_api.upload_document(file=_upload("a.pdf", b"%PDF-1.7"), db=db))
+    resp = _run(docs_api.upload_document(file=_upload("a.pdf", b"%PDF-1.7"), db=db, current_user=current_user))
     assert resp.id == doc.id
     assert called["processed"] is True
 
@@ -119,7 +130,7 @@ def test_get_documents_and_get_document(monkeypatch: pytest.MonkeyPatch):
     v2 = _version(document_id=d.id)
     v2.id = uuid4()
     d.current_version_id = v2.id
-    rows = [(d, "uploaded", "invoice", 0.9, ["invoice"], 2, 2)]
+    rows = [(d, "uploaded", "invoice", 0.9, ["invoice"], "User", 2, 2)]
     monkeypatch.setattr(docs_api, "list_documents", lambda **_k: rows)
     docs = docs_api.get_documents(db=object())
     assert len(docs) == 1 and docs[0].version_count == 2

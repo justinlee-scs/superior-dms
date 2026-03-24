@@ -6,7 +6,7 @@ import io
 import mimetypes
 import tempfile
 import zipfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
@@ -335,7 +335,7 @@ def bulk_download_documents(
         finally:
             archive_file.close()
 
-    archive_name = f"documents-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.zip"
+    archive_name = f"documents-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.zip"
     return StreamingResponse(
         iter_archive(),
         media_type="application/zip",

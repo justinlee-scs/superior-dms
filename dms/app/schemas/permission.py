@@ -1,6 +1,6 @@
-from pydantic import BaseModel
 from uuid import UUID
 
+from pydantic import BaseModel, ConfigDict
 
 class PermissionResponse(BaseModel):
     """Define the schema for permission response.
@@ -14,10 +14,4 @@ class PermissionResponse(BaseModel):
     key: str
     description: str | None
 
-    class Config:
-        """Configure model serialization and ORM behavior.
-
-        Parameters:
-            from_attributes: Enable model construction from ORM attributes.
-        """
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

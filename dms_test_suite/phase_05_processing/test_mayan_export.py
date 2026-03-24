@@ -2,15 +2,31 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.export_unusableversion import mayan
+import importlib
+import sys
+import types
+
+
+def _load_mayan():
+    dummy_db = types.ModuleType("app.db")
+    dummy_db.get_conn = lambda: None
+    sys.modules["app.db"] = dummy_db
+    dummy_export = types.ModuleType("app.export")
+    dummy_field_mapping = types.ModuleType("app.export.field_mapping")
+    dummy_field_mapping.FIELD_MAPPING = {}
+    sys.modules["app.export"] = dummy_export
+    sys.modules["app.export.field_mapping"] = dummy_field_mapping
+    return importlib.import_module("app.export_unusableversion.mayan")
 
 
 def test_lookup_mayan_metadata_type_id_unimplemented() -> None:
+    mayan = _load_mayan()
     with pytest.raises(NotImplementedError):
         mayan.lookup_mayan_metadata_type_id("label")
 
 
 def test_export_document_to_mayan(monkeypatch: pytest.MonkeyPatch) -> None:
+    mayan = _load_mayan()
     calls = []
 
     class _Cursor:

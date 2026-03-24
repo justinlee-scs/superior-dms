@@ -49,6 +49,7 @@ class Role(Base):
         primaryjoin=id == role_hierarchy.c.manager_role_id,
         secondaryjoin=id == role_hierarchy.c.managed_role_id,
         lazy="selectin",
+        overlaps="manager_roles",
     )
 
     manager_roles = relationship(
@@ -57,6 +58,7 @@ class Role(Base):
         primaryjoin=id == role_hierarchy.c.managed_role_id,
         secondaryjoin=id == role_hierarchy.c.manager_role_id,
         lazy="selectin",
+        overlaps="managed_roles",
     )
 
     managed_users = relationship(
@@ -65,6 +67,7 @@ class Role(Base):
         primaryjoin=id == role_user_management.c.manager_role_id,
         secondaryjoin="User.id == role_user_management.c.managed_user_id",
         lazy="selectin",
+        overlaps="managed_by_roles",
     )
 
     manager_users = relationship(
@@ -73,4 +76,5 @@ class Role(Base):
         primaryjoin=id == user_role_management.c.managed_role_id,
         secondaryjoin="User.id == user_role_management.c.manager_user_id",
         lazy="selectin",
+        overlaps="managed_roles",
     )

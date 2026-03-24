@@ -29,12 +29,15 @@ def process_document_version(db: Session, version_id: str | UUID) -> None:
 
     try:
         normalized_version_id = UUID(str(version_id))
+    except (TypeError, ValueError):
+        normalized_version_id = version_id
+
+    try:
         start = time.perf_counter()
         version = db.get(DocumentVersion, normalized_version_id)
         if not version:
             return
         version.processing_status = ProcessingStatus.processing
-        db.commit()
 
         # Load raw bytes from repository
         file_bytes = load_document_version_bytes(db, normalized_version_id)
@@ -81,9 +84,9 @@ def process_document_version(db: Session, version_id: str | UUID) -> None:
             ocr_latency_ms=ocr_latency_ms,
         )
 
-    except Exception as exc:
+    except Exception:
         # If any error occurs, mark version as failed
-        version = db.get(DocumentVersion, UUID(str(version_id)))
+        version = db.get(DocumentVersion, normalized_version_id)
         if version:
             version.processing_status = ProcessingStatus.failed
             db.commit()

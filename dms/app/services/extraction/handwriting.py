@@ -7,11 +7,14 @@ from .handwriting_model import get_handwriting_classifier
 
 
 def _analyze_image(image: Image.Image) -> tuple[float, float, int]:
-    ocr = pytesseract.image_to_data(
-        image,
-        output_type=pytesseract.Output.DICT,
-        config="--oem 1 --psm 6",
-    )
+    try:
+        ocr = pytesseract.image_to_data(
+            image,
+            output_type=pytesseract.Output.DICT,
+            config="--oem 1 --psm 6",
+        )
+    except Exception:
+        return 0.0, 0.0, 0
     confs: list[int] = []
     words: list[str] = []
     for text, conf in zip(ocr.get("text", []), ocr.get("conf", [])):

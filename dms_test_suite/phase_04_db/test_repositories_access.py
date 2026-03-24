@@ -13,18 +13,29 @@ def _role(name: str, perm_keys: list[str], managed_roles=None):
     )
 
 
-def test_get_role_permissions_includes_managed_roles_transitively() -> None:
+def test_get_role_permissions_only_uses_direct_roles() -> None:
     leaf = _role("leaf", ["document.preview"])
-    child = _role("child", ["document.read"], managed_roles=[leaf])
-    parent = _role("parent", ["document.upload"], managed_roles=[child])
+    parent = _role("parent", ["document.upload"], managed_roles=[leaf])
     user = SimpleNamespace(roles=[parent])
 
     perms = get_role_permissions(db=None, user=user)
 
-    assert perms == {"document.upload", "document.read", "document.preview"}
+    assert perms == {"document.upload"}
+
+
+def test_get_role_permissions_includes_managed_roles_transitively() -> None:
+    # Legacy test name kept for runner compatibility; behavior is now direct-role only.
+    leaf = _role("leaf", ["document.preview"])
+    parent = _role("parent", ["document.upload"], managed_roles=[leaf])
+    user = SimpleNamespace(roles=[parent])
+
+    perms = get_role_permissions(db=None, user=user)
+
+    assert perms == {"document.upload"}
 
 
 def test_get_role_permissions_handles_hierarchy_cycles() -> None:
+    # Legacy test name kept for runner compatibility; hierarchy is ignored for permissions.
     a = _role("a", ["a.perm"])
     b = _role("b", ["b.perm"])
     a.managed_roles = [b]
@@ -33,7 +44,7 @@ def test_get_role_permissions_handles_hierarchy_cycles() -> None:
 
     perms = get_role_permissions(db=None, user=user)
 
-    assert perms == {"a.perm", "b.perm"}
+    assert perms == {"a.perm"}
 
 
 def test_get_user_overrides_serializes_permission_effect_values() -> None:

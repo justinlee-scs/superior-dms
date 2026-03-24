@@ -113,26 +113,7 @@ def _derive_company_tag(
         filename (type=str | None): File or entity name used for storage and display.
         existing_tags (type=list[str] | None): Known tag catalog used for matching.
     """
-    patterns = (
-        r"\bcompany[\s:#-]+([A-Za-z0-9][A-Za-z0-9_.-]{1,63})\b",
-        r"\bvendor[\s:#-]+([A-Za-z0-9][A-Za-z0-9_.-]{1,63})\b",
-        r"\bcustomer[\s:#-]+([A-Za-z0-9][A-Za-z0-9_.-]{1,63})\b",
-    )
     lowered = text.lower()
-    for pattern in patterns:
-        match = re.search(pattern, lowered)
-        if match:
-            return f"company:{match.group(1)}"
-
-    if filename:
-        # Accept explicit file naming conventions like company_acme_invoice.pdf
-        base = filename.rsplit("/", 1)[-1].rsplit("\\", 1)[-1].lower()
-        match = re.search(
-            r"(?:^|[_\-.])company[_\-.]?([a-z0-9][a-z0-9_.-]{1,63})(?:[_\-.]|$)",
-            base,
-        )
-        if match:
-            return f"company:{match.group(1)}"
 
     if existing_tags:
         normalized_text = re.sub(r"[^a-z0-9]+", " ", lowered)
@@ -148,6 +129,26 @@ def _derive_company_tag(
             parts = [p for p in phrase.split() if len(p) >= 3]
             if parts and all(part in words for part in parts):
                 return candidate
+
+    patterns = (
+        r"\bcompany[\s:#-]+([A-Za-z0-9][A-Za-z0-9_.-]{1,63})\b",
+        r"\bvendor[\s:#-]+([A-Za-z0-9][A-Za-z0-9_.-]{1,63})\b",
+        r"\bcustomer[\s:#-]+([A-Za-z0-9][A-Za-z0-9_.-]{1,63})\b",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, lowered)
+        if match:
+            return f"company:{match.group(1)}"
+
+    if filename:
+        # Accept explicit file naming conventions like company_acme_invoice.pdf
+        base = filename.rsplit("/", 1)[-1].rsplit("\\", 1)[-1].lower()
+        match = re.search(
+            r"(?:^|[_\-.])company[_\-.]?([a-z0-9][a-z0-9_.-]{1,63})(?:[_\-.]|$)",
+            base,
+        )
+        if match:
+            return f"company:{match.group(1)}"
 
     return ""
 
