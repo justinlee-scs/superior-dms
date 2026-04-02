@@ -4,6 +4,9 @@ import argparse
 import csv
 import json
 import os
+import re
+import sys
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +50,37 @@ def _extract_transcriptions(results: list[dict[str, Any]]) -> list[str]:
     return texts
 
 
+def _extract_text_inputs(results: list[dict[str, Any]], from_name: str) -> list[str]:
+    entries: list[str] = []
+    for item in results:
+        if item.get("from_name") != from_name:
+            continue
+        value = item.get("value", {}) or {}
+        raw = value.get("text")
+        if isinstance(raw, list):
+            for entry in raw:
+                if isinstance(entry, str) and entry.strip():
+                    entries.append(entry.strip())
+        elif isinstance(raw, str) and raw.strip():
+            entries.append(raw.strip())
+    return entries
+
+
+def _normalize_due_date_tag(raw: str | None) -> str:
+    if not raw:
+        return ""
+    cleaned = re.sub(r"^\s*due[_\s-]?date\s*[:\-]\s*", "", raw.strip(), flags=re.IGNORECASE)
+    match = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", cleaned)
+    if not match:
+        return ""
+    value = match.group(1)
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return ""
+    return f"due_date:{value}"
+
+
 def _find_image_path(data: dict[str, Any]) -> str | None:
     for key in ("image", "image_path", "image_url"):
         value = data.get(key)
@@ -62,6 +96,7 @@ def main() -> int:
     parser.add_argument("--doc-from-name", default="document_type")
     parser.add_argument("--tags-from-name", default="tags")
     parser.add_argument("--handwriting-from-name", default="handwriting")
+    parser.add_argument("--due-date-from-name", default="due_date")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -90,8 +125,25 @@ def main() -> int:
             doc_rows.append((text, doc_type[0]))
 
         tags = _extract_choices(results, args.tags_from_name)
-        if text and tags:
-            tag_rows.append((text, ",".join(sorted(set(tags)))))
+        due_date_inputs = _extract_text_inputs(results, args.due_date_from_name)
+        due_date_raw = due_date_inputs[0] if due_date_inputs else ""
+        due_date_tag = _normalize_due_date_tag(due_date_raw) if due_date_raw else ""
+        if due_date_raw and not due_date_tag:
+            task_id = task.get("id")
+            filename = data.get("filename") or data.get("image") or data.get("image_path") or ""
+            hint = f"task_id={task_id}" if task_id is not None else "task_id=unknown"
+            if filename:
+                hint = f"{hint} filename={filename}"
+            print(
+                f"Warning: invalid due_date value '{due_date_raw}' ({hint}). "
+                "Expected format: due_date:YYYY-MM-DD",
+                file=sys.stderr,
+            )
+        tag_set = set(tags)
+        if due_date_tag:
+            tag_set.add(due_date_tag)
+        if text and tag_set:
+            tag_rows.append((text, ",".join(sorted(tag_set))))
 
         handwriting = _extract_choices(results, args.handwriting_from_name)
         if image_path and handwriting:

@@ -23,6 +23,14 @@ export type DocumentVersion = {
   confidence: number | null;
   created_at: string;
   size_bytes: number;
+  due_date?: string | null;
+};
+
+export type DuePaymentItem = {
+  document_id: string;
+  version_id: string;
+  filename: string;
+  due_date: string;
 };
 
 export function listDocumentVersions(documentId: string) {
@@ -163,4 +171,12 @@ export async function bulkDownloadDocuments(documentIds: string[]) {
   }
 
   return res.blob();
+}
+
+export function listUpcomingDuePayments(daysAhead = 30, limit = 50) {
+  const params = new URLSearchParams({
+    days_ahead: String(daysAhead),
+    limit: String(limit),
+  });
+  return apiFetch<DuePaymentItem[]>(`/documents/upcoming-due-payments?${params.toString()}`);
 }

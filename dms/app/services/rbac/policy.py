@@ -16,6 +16,7 @@ class Permissions:
         DOCUMENT_VERSION_SET_CURRENT: Parameter.
         DOCUMENT_TAG_READ: Parameter.
         DOCUMENT_TAG_EDIT: Parameter.
+        DOCUMENT_DUE_PAYMENTS: Parameter.
         WORKFLOW_ASSIGN: Parameter.
         WORKFLOW_ADVANCE: Parameter.
         ADMIN_USERS: Parameter.
@@ -35,6 +36,7 @@ class Permissions:
     DOCUMENT_VERSION_SET_CURRENT = "document_version.set_current"
     DOCUMENT_TAG_READ = "tags.read"
     DOCUMENT_TAG_EDIT = "tags.edit"
+    DOCUMENT_DUE_PAYMENTS = "document.due_payments"
 
     WORKFLOW_ASSIGN = "workflow.assign"
     WORKFLOW_ADVANCE = "workflow.advance"

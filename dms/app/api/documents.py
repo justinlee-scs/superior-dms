@@ -1,13 +1,14 @@
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from uuid import UUID
+from uuid import UUID, uuid4
 from fastapi.responses import StreamingResponse
 import io
 import mimetypes
 import tempfile
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 from pathlib import Path
+import os
 
 from PIL import Image, UnidentifiedImageError
 
@@ -25,6 +26,7 @@ from app.db.repositories.documents import (
     get_document_by_hash,
     get_document_by_id,
     list_documents,
+    list_upcoming_due_payments,
     remove_document_version_tags,
     replace_document_version_tags,
     update_document_type,
@@ -34,10 +36,11 @@ from app.db.repositories.documents import (
     set_current_document_version,
     delete_document as delete_document_repo,
     list_existing_tags,
+    load_document_version_bytes,
 )
 from app.db.repositories.tags import create_tag_pool_entry, list_tag_pool
 
-from app.schemas.documents import BulkDownloadRequest, DocumentResponse, DocumentTypeUpdate
+from app.schemas.documents import BulkDownloadRequest, DocumentResponse, DocumentTypeUpdate, DuePaymentItem
 from app.schemas.document_versions import (
     DocumentVersionResponse,
     DocumentVersionListItem,
@@ -52,8 +55,7 @@ from app.schemas.tags import (
 )
 from app.processing.pipeline import process_document
 from app.services.extraction.office import OFFICE_EXTENSIONS, is_valid_office_file
-# Optional (disabled): object storage and label studio.
-# from app.storage.backends import build_object_storage_from_env
+from app.storage.backends import build_object_storage_from_env
 # from app.services.labelstudio.client import LabelStudioClient, LabelStudioConfig
 
 
@@ -130,6 +132,10 @@ def _unique_zip_entry_name(raw_name: str, fallback: str, used_names: set[str]) -
     return candidate
 
 
+def _object_storage_enabled() -> bool:
+    return os.getenv("OBJECT_STORAGE_ENABLED", "").strip().lower() in {"1", "true", "yes"}
+
+
 @router.post(
     "/upload",
     response_model=DocumentResponse,
@@ -155,15 +161,22 @@ async def upload_document(
 
     _validate_supported_upload(file, file_bytes)
 
-    # Optional (disabled): store raw bytes to S3/MinIO and persist object key instead of DB blob.
-    # storage = build_object_storage_from_env()
-    # object_key = f"documents/{uuid4()}/{file.filename or 'upload.bin'}"
-    # storage_ref = storage.put_bytes(
-    #     bucket=os.getenv("OBJECT_STORAGE_BUCKET", "dms"),
-    #     key=object_key,
-    #     data=file_bytes,
-    #     content_type=file.content_type or "application/octet-stream",
-    # )
+    storage_ref = None
+    if _object_storage_enabled():
+        try:
+            storage = build_object_storage_from_env()
+            object_key = f"documents/{uuid4()}/{file.filename or 'upload.bin'}"
+            storage_ref = storage.put_bytes(
+                bucket=os.getenv("OBJECT_STORAGE_BUCKET", "dms"),
+                key=object_key,
+                data=file_bytes,
+                content_type=file.content_type or "application/octet-stream",
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to store file in object storage: {exc}",
+            ) from exc
 
     from app.services.hash import compute_content_hash
     content_hash = compute_content_hash(file_bytes)
@@ -187,8 +200,12 @@ async def upload_document(
         version = create_document_version(
             db=db,
             document_id=document.id,
-            file_bytes=file_bytes,
+            file_bytes=None if storage_ref else file_bytes,
             set_as_current=True,
+            storage_bucket=storage_ref.bucket if storage_ref else None,
+            storage_key=storage_ref.key if storage_ref else None,
+            storage_etag=storage_ref.etag if storage_ref else None,
+            storage_size_bytes=storage_ref.size_bytes if storage_ref else None,
             commit=False,
         )
 
@@ -213,6 +230,9 @@ async def upload_document(
         created_at=document.created_at,
         current_version_id=version.id,
         tags=version.tags or [],
+        due_date=version.due_date,
+        size_bytes=version.storage_size_bytes,
+        page_count=version.page_count,
     )
 
 
@@ -243,8 +263,11 @@ def get_documents(
             version_count=version_count or 1,
             current_version_number=current_version_number or 1,
             tags=tags or [],
+            due_date=due_date,
+            size_bytes=size_bytes,
+            page_count=page_count,
         )
-        for doc, processing_status, CLASSIFICATION, confidence, tags, uploader_username, version_count, current_version_number in rows
+        for doc, processing_status, CLASSIFICATION, confidence, tags, due_date, page_count, size_bytes, uploader_username, version_count, current_version_number in rows
     ]
 
 
@@ -308,9 +331,10 @@ def bulk_download_documents(
             raise HTTPException(status_code=404, detail=f"Document not found: {document_id}")
 
         version = get_document_version(db=db, document_id=document_id)
-        if not version or version.content is None:
+        if not version:
             raise HTTPException(status_code=404, detail=f"File not found for document: {document_id}")
-        items.append((document.filename or str(document_id), version.content))
+        content = load_document_version_bytes(db=db, version_id=version.id)
+        items.append((document.filename or str(document_id), content))
 
     archive_file = tempfile.SpooledTemporaryFile(max_size=8 * 1024 * 1024, mode="w+b")
     used_names: set[str] = set()
@@ -382,6 +406,9 @@ def get_document(
         version_count=len(versions) or 1,
         current_version_number=current_version_number or 1,
         tags=(current_version.tags if current_version else []) or [],
+        due_date=current_version.due_date if current_version else None,
+        size_bytes=current_version.storage_size_bytes if current_version else None,
+        page_count=current_version.page_count if current_version else None,
     )
 
 
@@ -424,6 +451,9 @@ def set_document_type(
         current_version_id=document.current_version_id,
         version_count=len(versions) or 1,
         tags=(current_version.tags if current_version else []) or [],
+        due_date=current_version.due_date if current_version else None,
+        size_bytes=current_version.storage_size_bytes if current_version else None,
+        page_count=current_version.page_count if current_version else None,
     )
 
 
@@ -486,8 +516,9 @@ def download_document(
     if not version:
         raise HTTPException(status_code=404, detail="File not found")
 
+    content = load_document_version_bytes(db=db, version_id=version.id)
     return StreamingResponse(
-        io.BytesIO(version.content),
+        io.BytesIO(content),
         media_type="application/octet-stream",
         headers={
             "Content-Disposition": f'attachment; filename="{version.document.filename}"'
@@ -516,8 +547,9 @@ def preview_document(
     mime_type, _ = mimetypes.guess_type(filename)
     mime_type = mime_type or "application/octet-stream"
 
+    content = load_document_version_bytes(db=db, version_id=version.id)
     return StreamingResponse(
-        io.BytesIO(version.content),
+        io.BytesIO(content),
         media_type=mime_type,
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
@@ -554,9 +586,46 @@ def get_document_versions(
             ocr_model_version=version.ocr_model_version,
             tags=version.tags or [],
             created_at=version.created_at,
-            size_bytes=len(version.content) if version.content else 0,
+            size_bytes=version.storage_size_bytes or (len(version.content) if version.content else 0),
+            due_date=version.due_date,
+            page_count=version.page_count,
         )
         for index, version in enumerate(versions)
+    ]
+
+
+@router.get("/upcoming-due-payments", response_model=list[DuePaymentItem])
+def get_upcoming_due_payments(
+    days_ahead: int = 30,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permissions.DOCUMENT_DUE_PAYMENTS)),
+):
+    """Return upcoming due payments for incoming invoices."""
+    if days_ahead < 0:
+        raise HTTPException(status_code=400, detail="days_ahead must be >= 0")
+    if limit <= 0:
+        raise HTTPException(status_code=400, detail="limit must be > 0")
+
+    start = date.today()
+    end = start + timedelta(days=days_ahead)
+
+    rows = list_upcoming_due_payments(
+        db=db,
+        start_date=start,
+        end_date=end,
+        limit=min(limit, 200),
+    )
+
+    return [
+        DuePaymentItem(
+            document_id=doc.id,
+            version_id=version.id,
+            filename=doc.filename,
+            due_date=version.due_date,
+        )
+        for doc, version in rows
+        if version.due_date is not None
     ]
 
 
@@ -589,11 +658,32 @@ async def create_new_document_version(
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
 
+        storage_ref = None
+        if _object_storage_enabled():
+            try:
+                storage = build_object_storage_from_env()
+                object_key = f"documents/{uuid4()}/{file.filename or 'upload.bin'}"
+                storage_ref = storage.put_bytes(
+                    bucket=os.getenv("OBJECT_STORAGE_BUCKET", "dms"),
+                    key=object_key,
+                    data=file_bytes,
+                    content_type=file.content_type or "application/octet-stream",
+                )
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to store file in object storage: {exc}",
+                ) from exc
+
         version = create_document_version(
             db=db,
             document_id=document_id,
-            file_bytes=file_bytes,
+            file_bytes=None if storage_ref else file_bytes,
             set_as_current=True,
+            storage_bucket=storage_ref.bucket if storage_ref else None,
+            storage_key=storage_ref.key if storage_ref else None,
+            storage_etag=storage_ref.etag if storage_ref else None,
+            storage_size_bytes=storage_ref.size_bytes if storage_ref else None,
             commit=False,
         )
 
@@ -609,7 +699,7 @@ async def create_new_document_version(
             commit=False,
         )
 
-    return version
+        return version
 
 
 @router.post(
@@ -665,8 +755,9 @@ def download_document_version(
     if not version or version.document_id != document_id:
         raise HTTPException(status_code=404, detail="File version not found")
 
+    content = load_document_version_bytes(db=db, version_id=version.id)
     return StreamingResponse(
-        io.BytesIO(version.content),
+        io.BytesIO(content),
         media_type="application/octet-stream",
         headers={
             "Content-Disposition": f'attachment; filename="{version.document.filename}"'
@@ -697,8 +788,9 @@ def preview_document_version(
     mime_type, _ = mimetypes.guess_type(filename)
     mime_type = mime_type or "application/octet-stream"
 
+    content = load_document_version_bytes(db=db, version_id=version.id)
     return StreamingResponse(
-        io.BytesIO(version.content),
+        io.BytesIO(content),
         media_type=mime_type,
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )

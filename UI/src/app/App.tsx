@@ -12,6 +12,7 @@ import { BulkActionBar } from "@/app/components/bulk-action-bar";
 import { VersionHistoryModal } from "@/app/components/version-history-modal";
 import { ProfileDialog } from "@/app/components/profile-dialog";
 import { TagEditorDialog } from "@/app/components/tag-editor-dialog";
+import { UpcomingDuePaymentsPanel, type DuePayment } from "@/app/components/upcoming-due-payments-panel";
 
 import { SelectionProvider, useSelection } from "@/app/selection/selection-context";
 
@@ -38,12 +39,14 @@ import {
   createTagPool,
   deleteDocument,
   listDocuments,
+  listUpcomingDuePayments,
   listTagPool,
   replaceDocumentVersionTags,
   uploadDocument,
 } from "@/lib/dms";
 import { API_BASE_URL } from "@/lib/api";
 import { getMyAccess } from "@/lib/rbac";
+import { formatBytes } from "@/lib/format";
 import RolesPage from "@/admin/roles-page";
 
 /**
@@ -55,7 +58,8 @@ function mapApiDocument(doc: any): Document {
     id: doc.id,
     name: doc.filename,
     type: extension,
-    size: doc.size ?? "—",
+    size: formatBytes(doc.size_bytes ?? null),
+    sizeBytes: doc.size_bytes ?? null,
     author: doc.author ?? "System",
     date: doc.created_at?.slice(0, 10) ?? "",
     tags: doc.tags ?? [],
@@ -67,6 +71,8 @@ function mapApiDocument(doc: any): Document {
     currentVersionId: doc.current_version_id,
     currentVersionNumber: doc.current_version_number ?? 1,
     versionCount: doc.version_count ?? 1,
+    dueDate: doc.due_date ?? null,
+    pageCount: doc.page_count ?? null,
   };
 }
 
@@ -95,6 +101,10 @@ function AppInner() {
   const [activeTab, setActiveTab] = useState<"documents" | "upload" | "admin">("documents");
   const [tagPool, setTagPool] = useState<string[]>([]);
   const [editingTagsDoc, setEditingTagsDoc] = useState<Document | null>(null);
+  const [duePayments, setDuePayments] = useState<DuePayment[]>([]);
+  const [duePaymentsLoading, setDuePaymentsLoading] = useState(false);
+  const [accessPermissions, setAccessPermissions] = useState<Set<string>>(new Set());
+  const [duePaymentsWindowDays, setDuePaymentsWindowDays] = useState(7);
 
   const selection = useSelection();
 
@@ -112,11 +122,34 @@ function AppInner() {
     setTagPool(data.tags ?? []);
   };
 
+  const refreshDuePayments = async () => {
+    if (!accessPermissions.has("document.due_payments")) {
+      setDuePayments([]);
+      setDuePaymentsLoading(false);
+      return;
+    }
+    setDuePaymentsLoading(true);
+    try {
+      const items = await listUpcomingDuePayments(duePaymentsWindowDays, 12);
+      setDuePayments(
+        items.map((item) => ({
+          documentId: item.document_id,
+          versionId: item.version_id,
+          filename: item.filename,
+          dueDate: item.due_date,
+        })),
+      );
+    } finally {
+      setDuePaymentsLoading(false);
+    }
+  };
+
   useEffect(() => {
     refreshDocuments().catch(() =>
       toast.error("Failed to load documents")
     );
     refreshTagPool().catch(() => toast.error("Failed to load tags"));
+    refreshDuePayments().catch(() => toast.error("Failed to load due payments"));
   }, []);
 
   useEffect(() => {
@@ -124,18 +157,21 @@ function AppInner() {
       .then((access) => {
         const hasAdminUsers = access.permissions.includes("admin.users");
         const hasAdminRoles = access.permissions.includes("admin.roles");
+        setAccessPermissions(new Set(access.permissions));
         setIsAdmin(hasAdminUsers || hasAdminRoles);
       })
       .catch(() => {
         setIsAdmin(false);
+        setAccessPermissions(new Set());
       });
   }, []);
 
   useEffect(() => {
     refreshDocuments().catch(() => toast.error("Failed to load documents"));
     refreshTagPool().catch(() => toast.error("Failed to load tags"));
+    refreshDuePayments().catch(() => toast.error("Failed to load due payments"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [accessPermissions, duePaymentsWindowDays]);
 
   /**
    * Filters
@@ -218,6 +254,9 @@ function AppInner() {
 
   const handleFileUpload = async (file: File) => {
     await uploadDocument(file); // MUST throw on failure
+    await refreshDocuments();
+    await refreshTagPool();
+    await refreshDuePayments();
   };
 
   const handleDelete = (doc: Document) => {
@@ -303,6 +342,20 @@ function AppInner() {
   const handlePreview = (doc: Document) => {
     const token = sessionStorage.getItem("access_token");
     fetch(`${API_BASE_URL}/documents/${doc.id}/preview`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Preview failed");
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        window.open(url, "_blank");
+      })
+      .catch(() => toast.error("Preview failed"));
+  };
+
+  const handlePreviewById = (documentId: string) => {
+    const token = sessionStorage.getItem("access_token");
+    fetch(`${API_BASE_URL}/documents/${documentId}/preview`, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     })
       .then(async (res) => {
@@ -447,88 +500,109 @@ function AppInner() {
 
           {/* Content */}
           <div className="flex-1 overflow-auto p-6 pb-24">
-            <Tabs
-              value={activeTab}
-              onValueChange={(value) => setActiveTab(value as "documents" | "upload" | "admin")}
-            >
-              <TabsList>
-                <TabsTrigger value="documents">
-                  <FileText className="w-4 h-4 mr-2" />
-                  Documents
-                </TabsTrigger>
-                <TabsTrigger value="upload">
-                  <UploadIcon className="w-4 h-4 mr-2" />
-                  Upload
-                </TabsTrigger>
-              </TabsList>
+            <div className="flex flex-col gap-6 xl:flex-row">
+              <div className="min-w-0 flex-1">
+                <Tabs
+                  value={activeTab}
+                  onValueChange={(value) => setActiveTab(value as "documents" | "upload" | "admin")}
+                >
+                  <TabsList>
+                    <TabsTrigger value="documents">
+                      <FileText className="w-4 h-4 mr-2" />
+                      Documents
+                    </TabsTrigger>
+                    <TabsTrigger value="upload">
+                      <UploadIcon className="w-4 h-4 mr-2" />
+                      Upload
+                    </TabsTrigger>
+                  </TabsList>
 
-              <BulkActionBar
-                count={selection.selected.size}
-                darkMode={darkMode}
-                onDownload={() => {
-                  void handleBulkDownload();
-                } }
-                onDelete={async () => {
-                  for (const doc of selection.selected.values()) {
-                    await handleDelete(doc);
-                  }
-                  selection.clear();
-                } }
-                onClear={selection.clear} documents={[]}              />
+                  <BulkActionBar
+                    count={selection.selected.size}
+                    darkMode={darkMode}
+                    onDownload={() => {
+                      void handleBulkDownload();
+                    }}
+                    onDelete={async () => {
+                      for (const doc of selection.selected.values()) {
+                        await handleDelete(doc);
+                      }
+                      selection.clear();
+                    }}
+                    onClear={selection.clear} documents={[]}
+                  />
 
-              <TabsContent value="documents" className="mt-6">
-                {viewMode === "compact" ? (
-                  <CompactProjectView
-                    documents={filteredDocuments}
-                    onPreview={handlePreview}
-                    onDownload={handleDownload}
-                    onDelete={handleDelete}
-                    onEditWorkflow={handleEditWorkflow}
-                    onEditTags={(doc) => setEditingTagsDoc(doc)}
-                    onOpenVersions={(doc) => setVersionModalDoc(doc)}
-                    darkMode={darkMode}
-                  />
-                ) : viewMode === "grouped" ? (
-                  <GroupedDocuments
-                    documents={filteredDocuments}
-                    onPreview={handlePreview}
-                    onDownload={handleDownload}
-                    onDelete={handleDelete}
-                    onEditWorkflow={handleEditWorkflow}
-                    onEditTags={(doc) => setEditingTagsDoc(doc)}
-                    darkMode={darkMode}
-                  />
-                ) : (
-                  <div className="grid gap-4">
-                    {filteredDocuments.map((doc) => (
-                      <DocumentCard
-                        key={doc.id}
-                        document={doc}
-                        onPreview={() => handlePreview(doc)}
-                        onDownload={() => handleDownload(doc)}
-                        onDelete={() => handleDelete(doc)}
-                        onEditWorkflow={() => handleEditWorkflow(doc)}
-                        onEditTags={() => setEditingTagsDoc(doc)}
+                  <TabsContent value="documents" className="mt-6">
+                    {viewMode === "compact" ? (
+                      <CompactProjectView
+                        documents={filteredDocuments}
+                        onPreview={handlePreview}
+                        onDownload={handleDownload}
+                        onDelete={handleDelete}
+                        onEditWorkflow={handleEditWorkflow}
+                        onEditTags={(doc) => setEditingTagsDoc(doc)}
+                        onOpenVersions={(doc) => setVersionModalDoc(doc)}
+                        darkMode={darkMode}
                       />
-                    ))}
+                    ) : viewMode === "grouped" ? (
+                      <GroupedDocuments
+                        documents={filteredDocuments}
+                        onPreview={handlePreview}
+                        onDownload={handleDownload}
+                        onDelete={handleDelete}
+                        onEditWorkflow={handleEditWorkflow}
+                        onEditTags={(doc) => setEditingTagsDoc(doc)}
+                        darkMode={darkMode}
+                      />
+                    ) : (
+                      <div className="grid gap-4">
+                        {filteredDocuments.map((doc) => (
+                          <DocumentCard
+                            key={doc.id}
+                            document={doc}
+                            onPreview={() => handlePreview(doc)}
+                            onDownload={() => handleDownload(doc)}
+                            onDelete={() => handleDelete(doc)}
+                            onEditWorkflow={() => handleEditWorkflow(doc)}
+                            onEditTags={() => setEditingTagsDoc(doc)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="upload" className="mt-6">
+                    {/* <UploadZone onFilesUploaded={handleUpload} /> */}
+                    <UploadZone
+                      onFileUploaded={handleFileUpload}
+                      darkMode={darkMode}
+                    />
+                  </TabsContent>
+
+                  {isAdmin && (
+                    <TabsContent value="admin" className="mt-6">
+                      <RolesPage darkMode={darkMode} onBackToDocuments={() => setActiveTab("documents")} />
+                    </TabsContent>
+                  )}
+                </Tabs>
+              </div>
+
+              {activeTab === "documents" && (
+                <div className="xl:w-80">
+                  <div className="xl:sticky xl:top-6">
+                    <UpcomingDuePaymentsPanel
+                      items={duePayments}
+                      loading={duePaymentsLoading}
+                      darkMode={darkMode}
+                      onPreview={(item) => handlePreviewById(item.documentId)}
+                      daysAhead={duePaymentsWindowDays}
+                      onDaysAheadChange={setDuePaymentsWindowDays}
+                      hasAccess={accessPermissions.has("document.due_payments")}
+                    />
                   </div>
-                )}
-              </TabsContent>
-
-              <TabsContent value="upload" className="mt-6">
-                {/* <UploadZone onFilesUploaded={handleUpload} /> */}
-                <UploadZone 
-                onFileUploaded={handleFileUpload}
-                darkMode={darkMode}
-                 />
-              </TabsContent>
-
-              {isAdmin && (
-                <TabsContent value="admin" className="mt-6">
-                  <RolesPage darkMode={darkMode} onBackToDocuments={() => setActiveTab("documents")} />
-                </TabsContent>
+                </div>
               )}
-            </Tabs>
+            </div>
           </div>
 
 

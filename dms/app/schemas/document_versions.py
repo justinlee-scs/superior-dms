@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -34,6 +34,8 @@ class DocumentVersionResponse(BaseModel):
     ocr_latency_ms: int | None = None
     tags: list[str] = Field(default_factory=list)
     created_at: datetime
+    due_date: date | None = None
+    page_count: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -67,6 +69,8 @@ class DocumentVersionListItem(BaseModel):
     tags: list[str] = Field(default_factory=list)
     created_at: datetime
     size_bytes: int
+    due_date: date | None = None
+    page_count: int | None = None
 
 
 class SetCurrentVersionResponse(BaseModel):

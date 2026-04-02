@@ -22,6 +22,7 @@ ROLE_PERMISSION_MAP = {
         "document_version.set_current",
         "tags.read",
         "tags.edit",
+        "document.due_payments",
     ],
     "viewer": [
         "document.read",
@@ -30,6 +31,7 @@ ROLE_PERMISSION_MAP = {
         "document_version.read",
         "document_version.preview",
         "document_version.download",
+        "document.due_payments",
     ],
 }
 

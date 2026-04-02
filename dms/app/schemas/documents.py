@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date
 from enum import Enum
 from uuid import UUID
 
@@ -32,6 +32,9 @@ class DocumentResponse(BaseModel):
     version_count: int = 1
     current_version_number: int | None = 1
     tags: list[str] = Field(default_factory=list)
+    due_date: date | None = None
+    size_bytes: int | None = None
+    page_count: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -100,3 +103,12 @@ class BulkDownloadRequest(BaseModel):
     """Request payload for downloading multiple current document versions as a ZIP."""
 
     document_ids: list[UUID] = Field(min_length=1, max_length=100)
+
+
+class DuePaymentItem(BaseModel):
+    """Upcoming due payment item derived from incoming invoices."""
+
+    document_id: UUID
+    version_id: UUID
+    filename: str
+    due_date: date

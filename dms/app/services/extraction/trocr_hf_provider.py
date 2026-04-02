@@ -61,7 +61,7 @@ class TrOCRHFProvider(OCRProvider):
                 engine="trocr+office_native",
                 model_version=self.model_name_or_path,
                 latency_ms=latency_ms,
-                metadata={"pages": 1, "source": "office-parser"},
+                metadata={"page_count": 1, "source": "office-parser"},
             )
 
         try:
@@ -88,7 +88,7 @@ class TrOCRHFProvider(OCRProvider):
             engine="trocr",
             model_version=self.model_name_or_path,
             latency_ms=latency_ms,
-            metadata={"pages": len(images)},
+            metadata={"page_count": len(images)},
         )
 
     def _to_images(self, *, file_bytes: bytes, suffix: str) -> list[Image.Image]:

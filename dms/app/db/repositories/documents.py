@@ -1,11 +1,13 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, or_
+from datetime import date
 import uuid
 from uuid import UUID
 
 from app.db.models import Document, DocumentVersion
+from app.db.models.documents import DocumentType
 from app.db.models.user import User
-from app.db.models.enums import ProcessingStatus
+from app.db.models.enums import ProcessingStatus, DocumentClass
 from app.services.extraction.tags import normalize_tag
 
 
@@ -43,9 +45,13 @@ def create_document(
 def create_document_version(
     db: Session,
     document_id: UUID,
-    file_bytes: bytes,
+    file_bytes: bytes | None,
     set_as_current: bool = False,
     *,
+    storage_bucket: str | None = None,
+    storage_key: str | None = None,
+    storage_etag: str | None = None,
+    storage_size_bytes: int | None = None,
     commit: bool = True,
 ) -> DocumentVersion:
     """Create document version.
@@ -53,14 +59,25 @@ def create_document_version(
     Parameters:
         db (type=Session): Database session used for persistence operations.
         document_id (type=UUID): Identifier used to locate the target record.
-        file_bytes (type=bytes): Raw file content used for validation or processing.
+        file_bytes (type=bytes | None): Raw file content used for validation or processing.
+        storage_bucket (type=str | None): Object storage bucket name.
+        storage_key (type=str | None): Object storage key.
+        storage_etag (type=str | None): Object storage ETag (if available).
+        storage_size_bytes (type=int | None): Object storage size in bytes.
         set_as_current (type=bool, default=False): Function argument used by this operation.
         commit (type=bool, default=True): Flag controlling whether to commit the transaction.
     """
+    if file_bytes is None and not storage_key:
+        raise ValueError("file_bytes or storage_key is required to create a document version")
+
     version = DocumentVersion(
         id=uuid.uuid4(),
         document_id=document_id,
         content=file_bytes,
+        storage_bucket=storage_bucket,
+        storage_key=storage_key,
+        storage_etag=storage_etag,
+        storage_size_bytes=storage_size_bytes or (len(file_bytes) if file_bytes is not None else None),
         processing_status=ProcessingStatus.uploaded,
     )
     db.add(version)
@@ -97,6 +114,16 @@ def load_document_version_bytes(
     if not version:
         raise ValueError("DocumentVersion not found")
 
+    if version.storage_key:
+        from app.storage.backends import build_object_storage_from_env
+
+        storage = build_object_storage_from_env()
+        bucket = version.storage_bucket or "dms"
+        return storage.get_bytes(bucket=bucket, key=version.storage_key)
+
+    if version.content is None:
+        raise ValueError("DocumentVersion has no content stored")
+
     return version.content
 
 
@@ -107,6 +134,8 @@ def update_processing_results(
     classification,
     confidence: float,
     tags: list[str] | None = None,
+    due_date: date | None = None,
+    page_count: int | None = None,
     ocr_raw_confidence: float | None = None,
     ocr_engine: str | None = None,
     ocr_model_version: str | None = None,
@@ -139,6 +168,8 @@ def update_processing_results(
     version.ocr_engine = ocr_engine
     version.ocr_model_version = ocr_model_version
     version.ocr_latency_ms = ocr_latency_ms
+    version.due_date = due_date
+    version.page_count = page_count
     version.processing_status = ProcessingStatus.uploaded
 
     db.commit()
@@ -200,6 +231,9 @@ def list_documents(db: Session):
             DocumentVersion.classification,
             DocumentVersion.confidence,
             DocumentVersion.tags,
+            DocumentVersion.due_date,
+            DocumentVersion.page_count,
+            DocumentVersion.storage_size_bytes,
             User.username,
         )
         .outerjoin(
@@ -236,6 +270,9 @@ def list_documents(db: Session):
             classification,
             confidence,
             tags,
+            due_date,
+            page_count,
+            size_bytes,
             uploader_username,
             len(version_ids_by_document.get(doc.id, [])),
             (
@@ -244,7 +281,7 @@ def list_documents(db: Session):
                 else None
             ),
         )
-        for doc, processing_status, classification, confidence, tags, uploader_username in rows
+        for doc, processing_status, classification, confidence, tags, due_date, page_count, size_bytes, uploader_username in rows
     ]
 
 
@@ -325,10 +362,39 @@ def reset_processing_state(
     version.ocr_model_version = None
     version.ocr_latency_ms = None
     version.tags = []
+    version.due_date = None
+    version.page_count = None
     version.processing_status = ProcessingStatus.pending
     db.commit()
     db.refresh(version)
     return version
+
+
+def list_upcoming_due_payments(
+    db: Session,
+    *,
+    start_date: date,
+    end_date: date,
+    limit: int = 50,
+) -> list[tuple[Document, DocumentVersion]]:
+    """Return upcoming due payments for incoming invoices."""
+    rows = (
+        db.query(Document, DocumentVersion)
+        .join(DocumentVersion, Document.current_version_id == DocumentVersion.id)
+        .filter(
+            DocumentVersion.due_date.isnot(None),
+            DocumentVersion.due_date >= start_date,
+            DocumentVersion.due_date <= end_date,
+            or_(
+                Document.document_type == DocumentType.incoming_invoice,
+                DocumentVersion.classification == DocumentClass.INCOMING_INVOICE,
+            ),
+        )
+        .order_by(DocumentVersion.due_date.asc(), Document.created_at.asc())
+        .limit(limit)
+        .all()
+    )
+    return rows
 
 
 def list_existing_tags(

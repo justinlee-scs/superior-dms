@@ -267,7 +267,7 @@ The repository now includes scaffold code for:
 Runtime status:
 - TrOCR HF + OpenCV preprocessing are now active in the OCR pipeline.
 - Label Studio export is active only when `LABEL_STUDIO_ENABLED=true`.
-- MinIO/S3 wiring remains placeholder-only.
+- MinIO/S3 object storage is available when enabled via environment variables.
 - `app/services/extraction/ocr_sync.py`
 - `app/api/documents.py` (Label Studio hooks only)
 
@@ -275,6 +275,39 @@ To activate after review:
 1. Install optional dependencies from `requirements.txt` (currently commented).
 2. Configure optional env vars from `.env.example`.
 3. Uncomment the marked "Optional (disabled)" blocks in the files above.
+
+## 16. Why MinIO (Object Storage)
+
+By default, uploaded file bytes are stored in Postgres. When MinIO is enabled, raw files live in object storage while Postgres keeps only metadata and a pointer to the file.
+
+Benefits:
+1. Keeps the database smaller and faster.
+2. Scales storage independently of the DB.
+3. Makes backups and migrations easier.
+
+### Enable MinIO
+
+Set the following environment variables before starting the app:
+
+```bash
+export OBJECT_STORAGE_ENABLED=true
+export OBJECT_STORAGE_BACKEND=minio
+export MINIO_ENDPOINT=127.0.0.1:9000
+export MINIO_ACCESS_KEY=YOUR_KEY
+export MINIO_SECRET_KEY=YOUR_SECRET
+export MINIO_SECURE=false
+export OBJECT_STORAGE_BUCKET=dms
+```
+
+Then apply the migration:
+
+```bash
+cd /home/justinlee/.LINUXPRACTICE/dms
+. .venv/bin/activate
+alembic upgrade head
+```
+
+When MinIO is enabled, new uploads are stored in object storage instead of Postgres blobs. Existing data remains in Postgres unless you migrate it separately.
 
 ```bash
 alembic downgrade -1

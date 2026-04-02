@@ -3,7 +3,8 @@ import logging
 from sqlalchemy.orm import Session
 
 from app.db.models.document_versions import DocumentVersion
-from app.db.models.enums import ProcessingStatus
+from app.db.models.enums import ProcessingStatus, DocumentClass
+from app.db.models.documents import DocumentType
 from app.db.repositories.documents import list_existing_tags
 from app.db.repositories.tags import create_tag_pool_entry
 
@@ -11,6 +12,8 @@ from app.services.extraction.handwriting import is_handwritten
 from app.services.extraction.icr import run_icr_model
 from app.services.extraction.classify import classify_document
 from app.services.extraction.tags import derive_tags
+from app.services.extraction.due_dates import extract_due_date
+from app.services.extraction.field_extractor import extract_fields, fields_to_tags
 
 from app.services.extraction.ocr_sync import extract_text_with_metadata
 from app.services.labelstudio.client import LabelStudioClient, LabelStudioConfig
@@ -84,6 +87,25 @@ def process_document(
             filename=version.document.filename,
             existing_tags=existing_tags,
         )
+        field_values = extract_fields(file_bytes, version.document.filename)
+        if field_values:
+            tags.extend(fields_to_tags(field_values))
+        due_date = None
+        if classification == DocumentClass.INCOMING_INVOICE:
+            due_date = extract_due_date(text)
+        if version.document.document_type == DocumentType.incoming_invoice:
+            due_date = due_date or extract_due_date(text)
+        if due_date:
+            tags.append(f"due_date:{due_date.isoformat()}")
+        page_count = extraction.metadata.get("page_count")
+        if page_count is None:
+            page_count = extraction.metadata.get("pages")
+        if isinstance(page_count, str) and page_count.isdigit():
+            page_count = int(page_count)
+        if isinstance(page_count, (float, int)):
+            page_count = int(page_count)
+        else:
+            page_count = None
         handwriting_conf = extraction.metadata.get("handwriting_confidence")
         needs_review = False
         if handwriting_conf is not None and handwriting_conf < 0.85:
@@ -109,6 +131,10 @@ def process_document(
         version.ocr_model_version = extraction.model_version
         version.ocr_latency_ms = extraction.latency_ms
         version.tags = tags
+        version.due_date = due_date
+        version.page_count = page_count
+        if version.storage_size_bytes is None and file_bytes is not None:
+            version.storage_size_bytes = len(file_bytes)
         version.processing_status = ProcessingStatus.uploaded
         _notify_label_studio(
             document_id=str(version.document_id),

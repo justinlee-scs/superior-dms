@@ -37,9 +37,16 @@ class DocumentVersion(Base):
         index=True,
     )
     
-    content = Column(LargeBinary, nullable=False)
+    content = Column(LargeBinary, nullable=True)
+
+    storage_bucket = Column(sa.String(128), nullable=True)
+    storage_key = Column(sa.String(512), nullable=True)
+    storage_etag = Column(sa.String(128), nullable=True)
+    storage_size_bytes = Column(sa.Integer, nullable=True)
     
     extracted_text = Column(Text, nullable=True)
+
+    due_date = Column(sa.Date, nullable=True)
 
     classification = Column(
         sa.Enum(
@@ -57,6 +64,8 @@ class DocumentVersion(Base):
     ocr_latency_ms = Column(sa.Integer, nullable=True)
 
     tags = Column(sa.JSON, nullable=False, default=list)
+
+    page_count = Column(sa.Integer, nullable=True)
     
     created_at = Column(sa.DateTime, nullable=False, default=datetime.utcnow)
 

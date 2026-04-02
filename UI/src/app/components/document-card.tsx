@@ -7,12 +7,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/app/components/ui/dropdown-menu";
+import { formatBytes, formatPageCount } from "@/lib/format";
 
 export interface Document {
   id: string;
   name: string;
   type: string;
   size: string;
+  sizeBytes?: number | null;
   author: string;
   date: string;
   tags: string[];
@@ -24,6 +26,8 @@ export interface Document {
   currentVersionId?: string;
   currentVersionNumber?: number;
   versionCount?: number;
+  dueDate?: string | null;
+  pageCount?: number | null;
 }
 
 interface DocumentCardProps {
@@ -87,7 +91,7 @@ export function DocumentCard({
       <div className="flex-1 min-w-0">
         <div className={`font-medium truncate ${darkMode ? "text-gray-200" : ""}`}>{document.name}</div>
         <div className={`text-xs truncate ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
-          {document.author} • {new Date(document.date).toLocaleDateString()} • {document.size}
+          {document.author} • {new Date(document.date).toLocaleDateString()} • {formatPageCount(document.pageCount)} • {formatBytes(document.sizeBytes)}
         </div>
       </div>
 

@@ -14,6 +14,7 @@ from app.services.extraction.ocr import run_tesseract
 from app.services.extraction.icr import run_icr_model
 from app.services.extraction.classify import classify_document
 from app.services.extraction.tags import derive_tags
+from app.services.extraction.field_extractor import extract_fields, fields_to_tags
 from app.db.models.enums import DocumentClass, ProcessingStatus
 from app.db.models.document_versions import DocumentVersion
 from app.db.session import SessionLocal
@@ -69,6 +70,9 @@ def process_document_version(db: Session, version_id: str | UUID) -> None:
             filename=version.document.filename,
             existing_tags=existing_tags,
         )
+        field_values = extract_fields(file_bytes, version.document.filename)
+        if field_values:
+            tags.extend(fields_to_tags(field_values))
 
         # 4. Persist results
         update_processing_results(

@@ -17,6 +17,20 @@ python "${ROOT_DIR}/scripts/training/prepare_labelstudio.py" \
   --input "${OUTPUT_DIR}/labelstudio_export.json" \
   --output-dir "${TRAIN_DIR}"
 
+if [[ "${SKIP_FIELD_EXTRACTOR:-false}" == "true" ]]; then
+  echo "Skipping field extractor training (SKIP_FIELD_EXTRACTOR=true)."
+else
+  echo "Building field extractor dataset..."
+  python "${ROOT_DIR}/scripts/training/build_field_dataset.py" \
+    --input "${OUTPUT_DIR}/labelstudio_export.json" \
+    --output "${TRAIN_DIR}/field_tokens.csv"
+
+  echo "Training field extractor..."
+  python "${ROOT_DIR}/scripts/training/train_field_extractor.py" \
+    --input "${TRAIN_DIR}/field_tokens.csv" \
+    --output "${MODEL_DIR}/field_extractor.joblib"
+fi
+
 echo "Training document classifier..."
 python "${ROOT_DIR}/scripts/training/train_doc_classifier.py" \
   --input "${TRAIN_DIR}/doc_class.csv" \

@@ -61,6 +61,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   "document.delete": "Delete Documents",
   "document.download": "Download Documents",
   "document.preview": "Preview Documents",
+  "document.due_payments": "View Upcoming Payments",
   "workflow.advance": "View Workflows",
   "workflow.assign": "Edit Workflows",
   "admin.users": "Manage Users",
@@ -76,6 +77,7 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   "document.delete": "Can delete documents",
   "document.download": "Can download documents",
   "document.preview": "Can preview documents",
+  "document.due_payments": "Can view upcoming due payments",
   "workflow.advance": "Can view workflow status",
   "workflow.assign": "Can modify workflows",
   "admin.users": "Can create and update users",
@@ -112,8 +114,8 @@ export default function RolesPage({
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [users, setUsers] = useState<User[]>([]);
 
-  const [rolePermissionCounts, setRolePermissionCounts] = useState<Record<string, number>>({});
-  const [userPermissionCounts, setUserPermissionCounts] = useState<Record<string, number>>({});
+  const [rolePermissionCounts, setRolePermissionCounts] = useState<Record<string, number | null>>({});
+  const [userPermissionCounts, setUserPermissionCounts] = useState<Record<string, number | null>>({});
 
   const [managedRoleMap, setManagedRoleMap] = useState<Record<string, Role[]>>({});
   const [managedUserMap, setManagedUserMap] = useState<Record<string, User[]>>({});
@@ -261,23 +263,35 @@ export default function RolesPage({
       setHierarchyManagerUserId(usersData[0].id);
     }
 
-    await loadHierarchyMaps(rolesData, usersData);
+    try {
+      await loadHierarchyMaps(rolesData, usersData);
+    } catch (error) {
+      console.warn("Failed to load hierarchy maps", error);
+    }
 
-    const roleCountsEntries = await Promise.all(
+    const roleCountsEntries = await Promise.allSettled(
       rolesData.map(async (role) => {
         const details = await getRole(role.id);
         return [role.id, details.permissions.length] as const;
       }),
     );
-    setRolePermissionCounts(Object.fromEntries(roleCountsEntries));
+    const roleCounts = roleCountsEntries.map((entry, index) => {
+      if (entry.status === "fulfilled") return entry.value;
+      return [rolesData[index].id, null] as const;
+    });
+    setRolePermissionCounts(Object.fromEntries(roleCounts));
 
-    const userCountsEntries = await Promise.all(
+    const userCountsEntries = await Promise.allSettled(
       usersData.map(async (user) => {
         const details = await getUserPermissions(user.id);
         return [user.id, details.effective_permissions.length] as const;
       }),
     );
-    setUserPermissionCounts(Object.fromEntries(userCountsEntries));
+    const userCounts = userCountsEntries.map((entry, index) => {
+      if (entry.status === "fulfilled") return entry.value;
+      return [usersData[index].id, null] as const;
+    });
+    setUserPermissionCounts(Object.fromEntries(userCounts));
   };
 
   useEffect(() => {
@@ -688,7 +702,7 @@ export default function RolesPage({
                   <div className="text-lg font-semibold">{role.name}</div>
                   <div className={`mt-1 text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>{role.description || "No description"}</div>
                   <div className={`mt-1 text-sm ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
-                    {rolePermissionCounts[role.id] ?? 0} permission(s)
+                    {rolePermissionCounts[role.id] ?? "—"} permission(s)
                   </div>
                   <div className="mt-1 inline-flex items-center rounded-md bg-purple-100 px-2 py-0.5 text-xs text-purple-700">
                     <Lock className="mr-1 h-3 w-3" />
@@ -741,7 +755,7 @@ export default function RolesPage({
                     </span>
                   </div>
                   <div className={`mt-1 text-sm ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
-                    {user.roles.length} role(s), {userPermissionCounts[user.id] ?? 0} permission(s)
+                    {user.roles.length} role(s), {userPermissionCounts[user.id] ?? "—"} permission(s)
                   </div>
                 </button>
               ))}
@@ -1182,7 +1196,7 @@ export default function RolesPage({
                                       {managedRole.name}
                                     </span>
                                     <span className={`${darkMode ? "text-gray-300" : "text-gray-400"}`}>
-                                      {rolePermissionCounts[managedRole.id] ?? 0} perms
+                                      {rolePermissionCounts[managedRole.id] ?? "—"} perms
                                     </span>
                                     {hierarchyManagerType === "role" && hierarchyManagerRoleId === role.id && (
                                       <Checkbox

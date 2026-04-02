@@ -84,3 +84,7 @@ def get_handwriting_classifier() -> Optional[HandwritingClassifier]:
     threshold = float(os.getenv("HANDWRITING_THRESHOLD", "0.5"))
     image_size = int(os.getenv("HANDWRITING_IMAGE_SIZE", "224"))
     return HandwritingClassifier(model=model, threshold=threshold, image_size=image_size)
+
+
+def clear_handwriting_cache() -> None:
+    get_handwriting_classifier.cache_clear()

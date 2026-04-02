@@ -43,6 +43,7 @@ RESERVED_TAG_PREFIXES = (
     "document_type:",
     "security_clearance:",
     "company:",
+    "due_date:",
 )
 
 
@@ -281,6 +282,32 @@ def _predict_model_tags(text: str) -> set[str]:
     return predicted
 
 
+def predict_model_tag_scores(text: str) -> dict[str, float]:
+    """Return per-tag probabilities when the tagger supports predict_proba."""
+    model_bundle = _load_tagger_model()
+    if not model_bundle:
+        return {}
+    vectorizer = model_bundle.get("vectorizer")
+    model = model_bundle.get("model")
+    labels = model_bundle.get("labels") or []
+    if vectorizer is None or model is None or not labels:
+        return {}
+    if not hasattr(model, "predict_proba"):
+        return {}
+    features = vectorizer.transform([text or ""])
+    probs = model.predict_proba(features)
+    if isinstance(probs, list):
+        probs = probs[0]
+    row = probs[0] if hasattr(probs, "__len__") and len(probs) else probs
+    scores: dict[str, float] = {}
+    for label, prob in zip(labels, row):
+        try:
+            scores[str(label)] = float(prob)
+        except Exception:
+            continue
+    return scores
+
+
 def derive_tags(
     text: str,
     classification: DocumentClass | str | None,
@@ -334,3 +361,7 @@ def derive_tags(
         tags.discard("project:unassigned")
 
     return sorted(tags)
+
+
+def clear_tagger_cache() -> None:
+    _load_tagger_model.cache_clear()

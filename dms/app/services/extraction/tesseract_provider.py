@@ -38,6 +38,7 @@ class TesseractProvider(OCRProvider):
                 engine="office_xml",
                 model_version="builtin",
                 latency_ms=latency_ms,
+                metadata={"page_count": 1, "source": "office-parser"},
             )
 
         if suffix == ".pdf":
@@ -57,4 +58,5 @@ class TesseractProvider(OCRProvider):
             engine="tesseract",
             model_version="pytesseract",
             latency_ms=latency_ms,
+            metadata={"page_count": len(images)},
         )

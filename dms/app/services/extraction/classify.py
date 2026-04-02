@@ -71,3 +71,33 @@ def classify_document(text: str) -> DocumentClass:
         return DocumentClass.CONTRACT
 
     return DocumentClass.UNKNOWN
+
+
+def classify_document_with_score(text: str) -> tuple[DocumentClass, float]:
+    """Return classification plus confidence score when model supports it."""
+    model_bundle = _load_model()
+    if model_bundle:
+        vectorizer = model_bundle.get("vectorizer")
+        model = model_bundle.get("model")
+        labels = model_bundle.get("labels")
+        if vectorizer is not None and model is not None and labels:
+            features = vectorizer.transform([text or ""])
+            if hasattr(model, "predict_proba"):
+                probs = model.predict_proba(features)[0]
+                best_idx = int(probs.argmax())
+                best_label = labels[best_idx]
+                try:
+                    return DocumentClass(best_label), float(probs[best_idx])
+                except Exception:
+                    return DocumentClass.UNKNOWN, float(probs[best_idx])
+            prediction = model.predict(features)[0]
+            try:
+                return DocumentClass(prediction), 0.0
+            except Exception:
+                return DocumentClass.UNKNOWN, 0.0
+
+    return classify_document(text), 0.0
+
+
+def clear_classifier_cache() -> None:
+    _load_model.cache_clear()

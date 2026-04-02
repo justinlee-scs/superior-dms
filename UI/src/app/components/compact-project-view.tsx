@@ -23,6 +23,7 @@ import {
 import type { Document } from "@/app/components/document-card";
 import { SelectionCheckbox } from "@/app/components/selection-checkbox";
 import { useSelection } from "@/app/selection/selection-context";
+import { formatBytes, formatPageCount } from "@/lib/format";
 
 interface CompactProjectViewProps {
   documents: Document[];
@@ -128,7 +129,7 @@ export function CompactProjectView({
         case "name":
           return a.name.localeCompare(b.name);
         case "size":
-          return parseFloat(b.size) - parseFloat(a.size);
+          return (b.sizeBytes ?? 0) - (a.sizeBytes ?? 0);
         default:
           return 0;
       }
@@ -340,8 +341,9 @@ export function CompactProjectView({
                               </span>
                             </div>
 
-                            <div className="w-20 text-xs text-right text-gray-500">
-                              {doc.size}
+                            <div className="w-32 text-xs text-right text-gray-500">
+                              <div>{formatPageCount(doc.pageCount)}</div>
+                              <div>{formatBytes(doc.sizeBytes)}</div>
                             </div>
 
                             <div className="opacity-0 group-hover:opacity-100">

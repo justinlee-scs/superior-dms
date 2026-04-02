@@ -33,6 +33,17 @@ Outputs:
 - `output/training/tags.csv` (text,tags)
 - `output/training/handwriting.csv` (image_path,label)
 - `output/training/trocr.jsonl` (image_path,text)
+- `output/training/field_tokens.csv` (token-level field labels)
+
+Due date tagging (recommended):
+- Add a free-text field in Label Studio named `due_date`.
+- Enter dates as `due_date:YYYY-MM-DD` (example: `due_date:2024-03-15`).
+- `prepare_labelstudio.py` will normalize this into a tag and include it in `tags.csv`.
+
+Example Label Studio config snippet:
+```xml
+<TextArea name="due_date" toName="ocr_text" label="Due date (format: due_date:YYYY-MM-DD)" rows="1" />
+```
 
 If you label illegible regions, enter `[illegible]` in the transcription.
 Those rows are automatically excluded from TrOCR training/evaluation.
@@ -94,6 +105,18 @@ TrOCR fine-tune (CPU, slow):
 python scripts/training/train_trocr.py \
   --input output/training/trocr.jsonl \
   --output output/models/trocr
+
+Field extractor (token classifier):
+
+```bash
+python scripts/training/build_field_dataset.py \
+  --input output/labelstudio_export.json \
+  --output output/training/field_tokens.csv
+
+python scripts/training/train_field_extractor.py \
+  --input output/training/field_tokens.csv \
+  --output output/models/field_extractor.joblib
+```
 ```
 
 ## 3b) Or run everything

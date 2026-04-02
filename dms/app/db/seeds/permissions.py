@@ -17,6 +17,7 @@ ALL_PERMISSIONS = [
     Permissions.DOCUMENT_VERSION_SET_CURRENT,
     Permissions.DOCUMENT_TAG_READ,
     Permissions.DOCUMENT_TAG_EDIT,
+    Permissions.DOCUMENT_DUE_PAYMENTS,
     Permissions.WORKFLOW_ASSIGN,
     Permissions.WORKFLOW_ADVANCE,
     Permissions.ADMIN_USERS,
