@@ -29,5 +29,7 @@ venv/
 *.egg-info/
 dist/
 build/
-# generated datasets
+# generated datasets & model files (too large for Git)
 output/
+models/
+*.safetensors
