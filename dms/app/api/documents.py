@@ -40,7 +40,12 @@ from app.db.repositories.documents import (
 )
 from app.db.repositories.tags import create_tag_pool_entry, list_tag_pool
 
-from app.schemas.documents import BulkDownloadRequest, DocumentResponse, DocumentTypeUpdate, DuePaymentItem
+from app.schemas.documents import (
+    BulkDownloadRequest,
+    DocumentResponse,
+    DocumentTypeUpdate,
+    DuePaymentItem,
+)
 from app.schemas.document_versions import (
     DocumentVersionResponse,
     DocumentVersionListItem,
@@ -56,6 +61,7 @@ from app.schemas.tags import (
 from app.processing.pipeline import process_document
 from app.services.extraction.office import OFFICE_EXTENSIONS, is_valid_office_file
 from app.storage.backends import build_object_storage_from_env
+
 # from app.services.labelstudio.client import LabelStudioClient, LabelStudioConfig
 
 
@@ -133,7 +139,11 @@ def _unique_zip_entry_name(raw_name: str, fallback: str, used_names: set[str]) -
 
 
 def _object_storage_enabled() -> bool:
-    return os.getenv("OBJECT_STORAGE_ENABLED", "").strip().lower() in {"1", "true", "yes"}
+    return os.getenv("OBJECT_STORAGE_ENABLED", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
 
 
 @router.post(
@@ -145,7 +155,7 @@ async def upload_document(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    #_=Depends(require_role("editor")),
+    # _=Depends(require_role("editor")),
     _=Depends(require_permission(Permissions.DOCUMENT_UPLOAD)),
 ):
     """Asynchronously handle upload document.
@@ -179,6 +189,7 @@ async def upload_document(
             ) from exc
 
     from app.services.hash import compute_content_hash
+
     content_hash = compute_content_hash(file_bytes)
 
     try:
@@ -239,7 +250,7 @@ async def upload_document(
 @router.get("/", response_model=list[DocumentResponse])
 def get_documents(
     db: Session = Depends(get_db),
-    #_=Depends(require_role("viewer")), #what if we comment out the viewing thing real quick one time
+    # _=Depends(require_role("viewer")), #what if we comment out the viewing thing real quick one time
     _=Depends(require_permission(Permissions.DOCUMENT_READ)),
 ):
     """Return documents.
@@ -290,7 +301,11 @@ def get_tag_pool(
     return TagPoolResponse(tags=sorted(pool))
 
 
-@router.post("/tag-pool", response_model=TagPoolCreateResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/tag-pool",
+    response_model=TagPoolCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def create_tag_pool(
     payload: TagPoolCreateRequest,
     db: Session = Depends(get_db),
@@ -328,17 +343,23 @@ def bulk_download_documents(
     for document_id in unique_ids:
         document = get_document_by_id(db=db, document_id=document_id)
         if not document:
-            raise HTTPException(status_code=404, detail=f"Document not found: {document_id}")
+            raise HTTPException(
+                status_code=404, detail=f"Document not found: {document_id}"
+            )
 
         version = get_document_version(db=db, document_id=document_id)
         if not version:
-            raise HTTPException(status_code=404, detail=f"File not found for document: {document_id}")
+            raise HTTPException(
+                status_code=404, detail=f"File not found for document: {document_id}"
+            )
         content = load_document_version_bytes(db=db, version_id=version.id)
         items.append((document.filename or str(document_id), content))
 
     archive_file = tempfile.SpooledTemporaryFile(max_size=8 * 1024 * 1024, mode="w+b")
     used_names: set[str] = set()
-    with zipfile.ZipFile(archive_file, mode="w", compression=zipfile.ZIP_DEFLATED) as zip_file:
+    with zipfile.ZipFile(
+        archive_file, mode="w", compression=zipfile.ZIP_DEFLATED
+    ) as zip_file:
         for index, (filename, content) in enumerate(items, start=1):
             entry_name = _unique_zip_entry_name(
                 raw_name=filename,
@@ -359,7 +380,9 @@ def bulk_download_documents(
         finally:
             archive_file.close()
 
-    archive_name = f"documents-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.zip"
+    archive_name = (
+        f"documents-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.zip"
+    )
     return StreamingResponse(
         iter_archive(),
         media_type="application/zip",
@@ -371,7 +394,7 @@ def bulk_download_documents(
 def get_document(
     document_id: UUID,
     db: Session = Depends(get_db),
-    #_=Depends(require_role("viewer")),
+    # _=Depends(require_role("viewer")),
     _=Depends(require_permission(Permissions.DOCUMENT_READ)),
 ):
     """Return document.
@@ -397,7 +420,11 @@ def get_document(
     return DocumentResponse(
         id=document.id,
         filename=document.filename,
-        author=(document.uploaded_by_user.username if document.uploaded_by_user else "System"),
+        author=(
+            document.uploaded_by_user.username
+            if document.uploaded_by_user
+            else "System"
+        ),
         status=current_version.processing_status if current_version else None,
         document_type=document.document_type,
         confidence=current_version.confidence if current_version else None,
@@ -417,7 +444,7 @@ def set_document_type(
     document_id: UUID,
     payload: DocumentTypeUpdate,
     db: Session = Depends(get_db),
-    #_=Depends(require_role("editor")),
+    # _=Depends(require_role("editor")),
     _=Depends(require_permission(Permissions.DOCUMENT_UPDATE)),
 ):
     """Set document type.
@@ -443,7 +470,11 @@ def set_document_type(
     return DocumentResponse(
         id=document.id,
         filename=document.filename,
-        author=(document.uploaded_by_user.username if document.uploaded_by_user else "System"),
+        author=(
+            document.uploaded_by_user.username
+            if document.uploaded_by_user
+            else "System"
+        ),
         status=current_version.processing_status if current_version else None,
         document_type=document.document_type,
         confidence=current_version.confidence if current_version else None,
@@ -461,7 +492,7 @@ def set_document_type(
 def get_document_output(
     document_id: UUID,
     db: Session = Depends(get_db),
-    #_=Depends(require_role("viewer")),
+    # _=Depends(require_role("viewer")),
     _=Depends(require_permission(Permissions.DOCUMENT_READ)),
 ):
     """Return document output.
@@ -481,7 +512,7 @@ def get_document_output(
 def delete_document(
     document_id: UUID,
     db: Session = Depends(get_db),
-    #_=Depends(require_role("admin")),
+    # _=Depends(require_role("admin")),
     _=Depends(require_permission(Permissions.DOCUMENT_DELETE)),
 ):
     """Delete document.
@@ -502,7 +533,7 @@ def delete_document(
 def download_document(
     document_id: UUID,
     db: Session = Depends(get_db),
-    #_=Depends(require_role("viewer")),
+    # _=Depends(require_role("viewer")),
     _=Depends(require_permission(Permissions.DOCUMENT_DOWNLOAD)),
 ):
     """Handle download document.
@@ -525,11 +556,11 @@ def download_document(
         },
     )
 
+
 @router.get("/{document_id}/preview")
 def preview_document(
     document_id: UUID,
     db: Session = Depends(get_db),
-    #_=Depends(require_role("viewer")),
     _=Depends(require_permission(Permissions.DOCUMENT_PREVIEW)),
 ):
     """Handle preview document.
@@ -545,13 +576,26 @@ def preview_document(
 
     filename = version.document.filename
     mime_type, _ = mimetypes.guess_type(filename)
-    mime_type = mime_type or "application/octet-stream"
+    # force common previewable types
+    if not mime_type:
+        if filename.lower().endswith(".pdf"):
+            mime_type = "application/pdf"
+        elif filename.lower().endswith(".png"):
+            mime_type = "image/png"
+        elif filename.lower().endswith(".jpg") or filename.lower().endswith(".jpeg"):
+            mime_type = "image/jpeg"
+        else:
+            mime_type = "application/octet-stream"
 
     content = load_document_version_bytes(db=db, version_id=version.id)
     return StreamingResponse(
         io.BytesIO(content),
         media_type=mime_type,
-        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Content-Length": str(len(content)),
+            "Cache-Control": "no-store",
+        },
     )
 
 
@@ -586,7 +630,8 @@ def get_document_versions(
             ocr_model_version=version.ocr_model_version,
             tags=version.tags or [],
             created_at=version.created_at,
-            size_bytes=version.storage_size_bytes or (len(version.content) if version.content else 0),
+            size_bytes=version.storage_size_bytes
+            or (len(version.content) if version.content else 0),
             due_date=version.due_date,
             page_count=version.page_count,
         )
@@ -651,30 +696,31 @@ async def create_new_document_version(
     file_bytes = await file.read()
     if not file_bytes:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
     _validate_supported_upload(file, file_bytes)
 
-    with db.begin():
-        document = get_document_by_id(db=db, document_id=document_id)
-        if not document:
-            raise HTTPException(status_code=404, detail="Document not found")
+    document = get_document_by_id(db=db, document_id=document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
 
-        storage_ref = None
-        if _object_storage_enabled():
-            try:
-                storage = build_object_storage_from_env()
-                object_key = f"documents/{uuid4()}/{file.filename or 'upload.bin'}"
-                storage_ref = storage.put_bytes(
-                    bucket=os.getenv("OBJECT_STORAGE_BUCKET", "dms"),
-                    key=object_key,
-                    data=file_bytes,
-                    content_type=file.content_type or "application/octet-stream",
-                )
-            except Exception as exc:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Failed to store file in object storage: {exc}",
-                ) from exc
+    storage_ref = None
+    if _object_storage_enabled():
+        try:
+            storage = build_object_storage_from_env()
+            object_key = f"documents/{uuid4()}/{file.filename or 'upload.bin'}"
+            storage_ref = storage.put_bytes(
+                bucket=os.getenv("OBJECT_STORAGE_BUCKET", "dms"),
+                key=object_key,
+                data=file_bytes,
+                content_type=file.content_type or "application/octet-stream",
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to store file in object storage: {exc}",
+            ) from exc
 
+    try:
         version = create_document_version(
             db=db,
             document_id=document_id,
@@ -687,10 +733,10 @@ async def create_new_document_version(
             commit=False,
         )
 
-        # Keep canonical display name aligned with latest uploaded version.
-        if file.filename:
+        if file.filename and not document.filename:
             document.filename = file.filename
-            db.flush()
+
+        db.flush()
 
         process_document(
             db=db,
@@ -699,7 +745,12 @@ async def create_new_document_version(
             commit=False,
         )
 
+        db.commit()
         return version
+
+    except Exception:
+        db.rollback()
+        raise
 
 
 @router.post(

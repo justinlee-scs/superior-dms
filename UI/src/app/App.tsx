@@ -5,19 +5,33 @@ import { HTML5Backend } from "react-dnd-html5-backend";
 import { DocumentCard, type Document } from "@/app/components/document-card";
 import { GroupedDocuments } from "@/app/components/grouped-documents";
 import { CompactProjectView } from "@/app/components/compact-project-view";
-import { SearchFilters, type FilterState } from "@/app/components/search-filters";
+import {
+  SearchFilters,
+  type FilterState,
+} from "@/app/components/search-filters";
 import { UploadZone } from "@/app/components/upload-zone";
 import { WorkflowEditor } from "@/app/components/workflow-editor";
 import { BulkActionBar } from "@/app/components/bulk-action-bar";
 import { VersionHistoryModal } from "@/app/components/version-history-modal";
 import { ProfileDialog } from "@/app/components/profile-dialog";
 import { TagEditorDialog } from "@/app/components/tag-editor-dialog";
-import { UpcomingDuePaymentsPanel, type DuePayment } from "@/app/components/upcoming-due-payments-panel";
+import {
+  UpcomingDuePaymentsPanel,
+  type DuePayment,
+} from "@/app/components/upcoming-due-payments-panel";
 
-import { SelectionProvider, useSelection } from "@/app/selection/selection-context";
+import {
+  SelectionProvider,
+  useSelection,
+} from "@/app/selection/selection-context";
 
 import { Button } from "@/app/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/app/components/ui/tabs";
 import { Toaster } from "@/app/components/ui/sonner";
 
 import {
@@ -30,7 +44,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Shield,
-  UserCircle2
+  UserCircle2,
 } from "lucide-react";
 
 import { toast } from "sonner";
@@ -91,19 +105,25 @@ function AppInner() {
     tagMatchMode: "any",
   });
 
-  const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
+  const [selectedDocument, setSelectedDocument] = useState<Document | null>(
+    null,
+  );
   const [workflowEditorOpen, setWorkflowEditorOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"compact" | "grouped">("compact");
   const [darkMode, setDarkMode] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [versionModalDoc, setVersionModalDoc] = useState<Document | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"documents" | "upload" | "admin">("documents");
+  const [activeTab, setActiveTab] = useState<"documents" | "upload" | "admin">(
+    "documents",
+  );
   const [tagPool, setTagPool] = useState<string[]>([]);
   const [editingTagsDoc, setEditingTagsDoc] = useState<Document | null>(null);
   const [duePayments, setDuePayments] = useState<DuePayment[]>([]);
   const [duePaymentsLoading, setDuePaymentsLoading] = useState(false);
-  const [accessPermissions, setAccessPermissions] = useState<Set<string>>(new Set());
+  const [accessPermissions, setAccessPermissions] = useState<Set<string>>(
+    new Set(),
+  );
   const [duePaymentsWindowDays, setDuePaymentsWindowDays] = useState(7);
 
   const selection = useSelection();
@@ -112,9 +132,28 @@ function AppInner() {
    * Load documents
    */
   const refreshDocuments = async () => {
-    const apiDocs = await listDocuments() as any[];
+    const apiDocs = (await listDocuments()) as any[];
     const baseDocs = apiDocs.map(mapApiDocument);
     setDocuments(baseDocs);
+  };
+
+  // wait until backend actually returns the uploaded file
+  const waitForDocument = async (
+    filename: string,
+    retries = 6,
+    delay = 300,
+  ): Promise<any[] | null> => {
+    for (let i = 0; i < retries; i++) {
+      const docs = (await listDocuments()) as any[];
+
+      if (docs.some((d) => d.filename === filename)) {
+        return docs;
+      }
+
+      await new Promise((res) => setTimeout(res, delay));
+    }
+
+    return null;
   };
 
   const refreshTagPool = async () => {
@@ -145,11 +184,11 @@ function AppInner() {
   };
 
   useEffect(() => {
-    refreshDocuments().catch(() =>
-      toast.error("Failed to load documents")
-    );
+    refreshDocuments().catch(() => toast.error("Failed to load documents"));
     refreshTagPool().catch(() => toast.error("Failed to load tags"));
-    refreshDuePayments().catch(() => toast.error("Failed to load due payments"));
+    refreshDuePayments().catch(() =>
+      toast.error("Failed to load due payments"),
+    );
   }, []);
 
   useEffect(() => {
@@ -169,7 +208,9 @@ function AppInner() {
   useEffect(() => {
     refreshDocuments().catch(() => toast.error("Failed to load documents"));
     refreshTagPool().catch(() => toast.error("Failed to load tags"));
-    refreshDuePayments().catch(() => toast.error("Failed to load due payments"));
+    refreshDuePayments().catch(() =>
+      toast.error("Failed to load due payments"),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessPermissions, duePaymentsWindowDays]);
 
@@ -253,10 +294,29 @@ function AppInner() {
   // };
 
   const handleFileUpload = async (file: File) => {
-    await uploadDocument(file); // MUST throw on failure
-    await refreshDocuments();
-    await refreshTagPool();
-    await refreshDuePayments();
+    await toast.promise(
+      (async () => {
+        await uploadDocument(file);
+
+        // wait until backend actually returns the file
+        const docs = await waitForDocument(file.name);
+
+        if (docs) {
+          setDocuments(docs.map(mapApiDocument));
+        } else {
+          // fallback if timing fails
+          await refreshDocuments();
+        }
+
+        // refresh supporting data
+        await Promise.all([refreshTagPool()]);
+      })(),
+      {
+        loading: `Uploading ${file.name}...`,
+        success: `${file.name} uploaded`,
+        error: `Failed to upload ${file.name}`,
+      },
+    );
   };
 
   const handleDelete = (doc: Document) => {
@@ -267,7 +327,9 @@ function AppInner() {
     const timeoutId = setTimeout(async () => {
       try {
         await deleteDocument(doc.id);
-        setDeletedQueue((prev) => prev.filter((item) => item.doc.id !== doc.id));
+        setDeletedQueue((prev) =>
+          prev.filter((item) => item.doc.id !== doc.id),
+        );
       } catch {
         toast.error(`Failed to delete ${doc.name}`);
         await refreshDocuments();
@@ -286,14 +348,16 @@ function AppInner() {
           onClick={() => {
             clearTimeout(timeoutId); // cancel backend delete
             setDocuments((prev) => [...prev, doc]); // restore UI
-            setDeletedQueue((prev) => prev.filter((item) => item.doc.id !== doc.id));
+            setDeletedQueue((prev) =>
+              prev.filter((item) => item.doc.id !== doc.id),
+            );
             toast.dismiss(toastId);
           }}
         >
           Undo
         </button>
       </div>,
-      { duration: 5000 }
+      { duration: 5000 },
     );
   };
 
@@ -338,23 +402,51 @@ function AppInner() {
   //   selection.clear();
   // };
 
-
   const handlePreview = (doc: Document) => {
     const token = sessionStorage.getItem("access_token");
+      const newWindow = window.open("", "_blank");
+      if (!newWindow) {
+        toast.error("Popup blocked");
+        return;
+      }
     fetch(`${API_BASE_URL}/documents/${doc.id}/preview`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  })
+    .then(async (res) => {
+      if (!res.ok) throw new Error("Preview failed");
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+
+      // force render via iframe
+      newWindow.document.open();
+      newWindow.document.write(`
+        <html>
+          <head><title>${doc.name}</title></head>
+          <body style="margin:0">
+            <iframe 
+              src="${url}" 
+              frameborder="0" 
+              style="width:100%; height:100vh;">
+            </iframe>
+          </body>
+        </html>
+      `);
+      newWindow.document.close();
     })
-      .then(async (res) => {
-        if (!res.ok) throw new Error("Preview failed");
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        window.open(url, "_blank");
-      })
-      .catch(() => toast.error("Preview failed"));
-  };
+    .catch(() => {
+      newWindow.close();
+      toast.error("Preview failed");
+    });
+};
 
   const handlePreviewById = (documentId: string) => {
     const token = sessionStorage.getItem("access_token");
+    const newWindow = window.open("", "_blank");
+    if (!newWindow) {
+      toast.error("Popup blocked");
+      return;
+    }
     fetch(`${API_BASE_URL}/documents/${documentId}/preview`, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     })
@@ -393,7 +485,9 @@ function AppInner() {
     if (!selectedDocs.length) return;
 
     try {
-      const blob = await bulkDownloadDocuments(selectedDocs.map((doc) => doc.id));
+      const blob = await bulkDownloadDocuments(
+        selectedDocs.map((doc) => doc.id),
+      );
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -403,7 +497,9 @@ function AppInner() {
       a.remove();
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Bulk download failed");
+      toast.error(
+        error instanceof Error ? error.message : "Bulk download failed",
+      );
     }
   };
 
@@ -424,7 +520,9 @@ function AppInner() {
       toast.error("Document has no current version to tag");
       return;
     }
-    const createCalls = nextTags.map((tag) => createTagPool(tag).catch(() => null));
+    const createCalls = nextTags.map((tag) =>
+      createTagPool(tag).catch(() => null),
+    );
     await Promise.all(createCalls);
     const response = await replaceDocumentVersionTags(
       editingTagsDoc.id,
@@ -434,7 +532,9 @@ function AppInner() {
 
     setDocuments((prev) =>
       prev.map((doc) =>
-        doc.id === editingTagsDoc.id ? { ...doc, tags: response.tags ?? [] } : doc,
+        doc.id === editingTagsDoc.id
+          ? { ...doc, tags: response.tags ?? [] }
+          : doc,
       ),
     );
     await refreshTagPool();
@@ -443,7 +543,9 @@ function AppInner() {
 
   return (
     <DndProvider backend={HTML5Backend}>
-      <div className={`flex h-screen ${darkMode ? "bg-gray-900 text-white" : ""}`}>
+      <div
+        className={`flex h-screen ${darkMode ? "bg-gray-900 text-white" : ""}`}
+      >
         <SearchFilters
           filters={filters}
           onFiltersChange={setFilters}
@@ -480,12 +582,20 @@ function AppInner() {
                 >
                   <Layers className="w-4 h-4" />
                 </Button>
-                <Button variant="outline" onClick={() => setDarkMode(!darkMode)}>
+                <Button
+                  variant="outline"
+                  onClick={() => setDarkMode(!darkMode)}
+                >
                   {darkMode ? <Sun /> : <Moon />}
                 </Button>
-                <div className={`mx-1 h-5 w-px ${darkMode ? "bg-gray-600" : "bg-gray-300"}`} />
+                <div
+                  className={`mx-1 h-5 w-px ${darkMode ? "bg-gray-600" : "bg-gray-300"}`}
+                />
                 {isAdmin && (
-                  <Button variant="outline" onClick={() => setActiveTab("admin")}>
+                  <Button
+                    variant="outline"
+                    onClick={() => setActiveTab("admin")}
+                  >
                     <Shield className="mr-2 h-4 w-4" />
                     Admin
                   </Button>
@@ -504,7 +614,9 @@ function AppInner() {
               <div className="min-w-0 flex-1">
                 <Tabs
                   value={activeTab}
-                  onValueChange={(value) => setActiveTab(value as "documents" | "upload" | "admin")}
+                  onValueChange={(value) =>
+                    setActiveTab(value as "documents" | "upload" | "admin")
+                  }
                 >
                   <TabsList>
                     <TabsTrigger value="documents">
@@ -529,7 +641,8 @@ function AppInner() {
                       }
                       selection.clear();
                     }}
-                    onClear={selection.clear} documents={[]}
+                    onClear={selection.clear}
+                    documents={[]}
                   />
 
                   <TabsContent value="documents" className="mt-6">
@@ -572,7 +685,6 @@ function AppInner() {
                   </TabsContent>
 
                   <TabsContent value="upload" className="mt-6">
-                    {/* <UploadZone onFilesUploaded={handleUpload} /> */}
                     <UploadZone
                       onFileUploaded={handleFileUpload}
                       darkMode={darkMode}
@@ -581,7 +693,10 @@ function AppInner() {
 
                   {isAdmin && (
                     <TabsContent value="admin" className="mt-6">
-                      <RolesPage darkMode={darkMode} onBackToDocuments={() => setActiveTab("documents")} />
+                      <RolesPage
+                        darkMode={darkMode}
+                        onBackToDocuments={() => setActiveTab("documents")}
+                      />
                     </TabsContent>
                   )}
                 </Tabs>
@@ -605,13 +720,11 @@ function AppInner() {
             </div>
           </div>
 
-
-
           <WorkflowEditor
             document={selectedDocument}
             open={workflowEditorOpen}
             onOpenChange={setWorkflowEditorOpen}
-            onSave={() => { }}
+            onSave={() => {}}
           />
 
           <VersionHistoryModal

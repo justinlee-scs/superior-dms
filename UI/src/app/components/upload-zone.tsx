@@ -43,7 +43,9 @@ export function UploadZone({ onFileUploaded, darkMode }: UploadZoneProps) {
 
   const handleFiles = async (files: File[]) => {
     for (const file of files) {
-      uploadFile(file);
+      await uploadFile(file);
+      /* await Promise.all(files.map(file => uploadFile(file))); 
+      --wire in if backend can handle concurrent uploads*/ 
     }
   };
 

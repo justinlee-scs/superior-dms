@@ -22,7 +22,11 @@ logger = logging.getLogger(__name__)
 
 
 def _label_studio_enabled() -> bool:
-    return os.getenv("LABEL_STUDIO_ENABLED", "false").strip().lower() in {"1", "true", "yes"}
+    return os.getenv("LABEL_STUDIO_ENABLED", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
 
 
 def _notify_label_studio(*, document_id: str, filename: str, text: str) -> None:
@@ -42,9 +46,12 @@ def _notify_label_studio(*, document_id: str, filename: str, text: str) -> None:
         )
     )
     try:
-        client.create_task_for_document(doc_id=document_id, filename=filename, text=text)
+        client.create_task_for_document(
+            doc_id=document_id, filename=filename, text=text
+        )
     except Exception as exc:
         logger.warning("Label Studio export failed: %s", exc)
+
 
 def process_document(
     db: Session,
@@ -62,9 +69,7 @@ def process_document(
         commit (type=bool, default=True): Flag controlling whether to commit the transaction.
     """
     version = (
-        db.query(DocumentVersion)
-        .filter(DocumentVersion.id == version_id)
-        .one_or_none()
+        db.query(DocumentVersion).filter(DocumentVersion.id == version_id).one_or_none()
     )
 
     if not version:
@@ -80,49 +85,78 @@ def process_document(
 
         classification = classify_document(text)
         existing_tags = list_existing_tags(db)
-        tags = derive_tags(
-            text,
-            classification,
-            document_type=version.document.document_type,
-            filename=version.document.filename,
-            existing_tags=existing_tags,
+
+        # ---- TAG DERIVATION ----
+        derived_tags = set(
+            derive_tags(
+                text,
+                classification,
+                document_type=version.document.document_type,
+                filename=version.document.filename,
+                existing_tags=existing_tags,
+            )
         )
+
         field_values = extract_fields(file_bytes, version.document.filename)
-        if field_values:
-            tags.extend(fields_to_tags(field_values))
+        field_tags = set(fields_to_tags(field_values)) if field_values else set()
+
+        new_system_tags = derived_tags.union(field_tags)
+
+        existing_tags_set = set(version.tags or [])
+        user_tags = {t for t in existing_tags_set if not t.startswith("system:")}
+
+        tags = sorted(user_tags.union(new_system_tags))
+
+        # ---- DUE DATE ----
         due_date = None
-        if classification == DocumentClass.INCOMING_INVOICE:
+        is_invoice = (
+            classification == DocumentClass.INCOMING_INVOICE
+            or version.document.document_type == DocumentType.incoming_invoice
+        )
+
+        if is_invoice:
             due_date = extract_due_date(text)
-        if version.document.document_type == DocumentType.incoming_invoice:
-            due_date = due_date or extract_due_date(text)
+
         if due_date:
+            tags = [t for t in tags if not t.startswith("due_date:")]
             tags.append(f"due_date:{due_date.isoformat()}")
+
+        # ---- PAGE COUNT ----
         page_count = extraction.metadata.get("page_count")
         if page_count is None:
             page_count = extraction.metadata.get("pages")
+
         if isinstance(page_count, str) and page_count.isdigit():
             page_count = int(page_count)
-        if isinstance(page_count, (float, int)):
+        elif isinstance(page_count, (float, int)):
             page_count = int(page_count)
         else:
             page_count = None
+
+        # ---- REVIEW FLAG ----
         handwriting_conf = extraction.metadata.get("handwriting_confidence")
         needs_review = False
+
         if handwriting_conf is not None and handwriting_conf < 0.85:
             needs_review = True
+
         required_prefixes = ("company:", "project:", "document_type:")
         for prefix in required_prefixes:
             if not any(tag.startswith(prefix) for tag in tags):
                 needs_review = True
                 break
+
         if needs_review:
             tags.append("needs_review")
+
+        # ---- TAG POOL ----
         for tag in tags:
             try:
                 create_tag_pool_entry(db=db, tag=tag)
             except ValueError:
                 continue
 
+        # ---- ASSIGN TO VERSION ----
         version.extracted_text = text
         version.classification = classification
         version.confidence = confidence
@@ -130,12 +164,16 @@ def process_document(
         version.ocr_engine = extraction.engine
         version.ocr_model_version = extraction.model_version
         version.ocr_latency_ms = extraction.latency_ms
-        version.tags = tags
+
+        version.tags = list(tags)
         version.due_date = due_date
         version.page_count = page_count
+
         if version.storage_size_bytes is None and file_bytes is not None:
             version.storage_size_bytes = len(file_bytes)
+
         version.processing_status = ProcessingStatus.uploaded
+
         _notify_label_studio(
             document_id=str(version.document_id),
             filename=version.document.filename,

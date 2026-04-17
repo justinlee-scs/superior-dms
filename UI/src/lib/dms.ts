@@ -48,11 +48,17 @@ export async function uploadDocumentVersion(documentId: string, file: File) {
   form.append("file", file);
 
   const token = sessionStorage.getItem("access_token");
-  const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/documents/${documentId}/versions`, {
-    method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    body: form,
-  });
+
+  const res = await fetch(
+    `${import.meta.env.VITE_API_BASE_URL}/documents/${documentId}/versions`,
+    {
+      method: "POST",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: form,
+    }
+  );
 
   if (res.status === 401) {
     sessionStorage.removeItem("access_token");

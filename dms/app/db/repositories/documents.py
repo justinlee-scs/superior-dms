@@ -68,34 +68,53 @@ def create_document_version(
         commit (type=bool, default=True): Flag controlling whether to commit the transaction.
     """
     if file_bytes is None and not storage_key:
-        raise ValueError("file_bytes or storage_key is required to create a document version")
+        raise ValueError(
+            "file_bytes or storage_key is required to create a document version"
+        )
+
+    document = db.get(Document, document_id)
+    if not document:
+        raise ValueError("Document not found")
+
+    # ---- VERSION NUMBER (NO FILENAME CHANGE) ----
+    latest = (
+        db.query(DocumentVersion.version_number)
+        .filter(DocumentVersion.document_id == document_id)
+        .order_by(DocumentVersion.version_number.desc())
+        .first()
+    )
+
+    version_number = (latest[0] if latest else 0) + 1
 
     version = DocumentVersion(
         id=uuid.uuid4(),
         document_id=document_id,
         content=file_bytes,
         storage_bucket=storage_bucket,
-        storage_key=storage_key,
+        storage_key=storage_key,  # <-- unchanged, no .v1 logic
         storage_etag=storage_etag,
-        storage_size_bytes=storage_size_bytes or (len(file_bytes) if file_bytes is not None else None),
+        storage_size_bytes=storage_size_bytes
+        or (len(file_bytes) if file_bytes is not None else None),
+        version_number=version_number,  # <-- ADD THIS FIELD
         processing_status=ProcessingStatus.uploaded,
     )
+
     db.add(version)
+    db.flush()
+
+    # ---- UPDATE DOCUMENT POINTER ----
+    if set_as_current or not document.current_version_id:
+        document.current_version_id = version.id
+
+    document.version_count = version_number
+
     if commit:
         db.commit()
         db.refresh(version)
+        db.refresh(document)
     else:
         db.flush()
-    
-    document = db.get(Document, document_id)
-    if document and (set_as_current or not document.current_version_id):
-        document.current_version_id = version.id
-        if commit:
-            db.commit()
-            db.refresh(document)
-        else:
-            db.flush()
-        
+
     return version
 
 
@@ -186,9 +205,7 @@ def get_document_by_hash(
         content_hash (type=str): Function argument used by this operation.
     """
     return (
-        db.query(Document)
-        .filter(Document.content_hash == content_hash)
-        .one_or_none()
+        db.query(Document).filter(Document.content_hash == content_hash).one_or_none()
     )
 
 
@@ -276,8 +293,10 @@ def list_documents(db: Session):
             uploader_username,
             len(version_ids_by_document.get(doc.id, [])),
             (
-                version_ids_by_document.get(doc.id, []).index(doc.current_version_id) + 1
-                if doc.current_version_id and doc.current_version_id in version_ids_by_document.get(doc.id, [])
+                version_ids_by_document.get(doc.id, []).index(doc.current_version_id)
+                + 1
+                if doc.current_version_id
+                and doc.current_version_id in version_ids_by_document.get(doc.id, [])
                 else None
             ),
         )
@@ -530,7 +549,11 @@ def delete_document(
         raise ValueError(f"Document {document_id} not found")
 
     # Delete all versions associated with this document
-    versions = db.query(DocumentVersion).filter(DocumentVersion.document_id == document_id).all()
+    versions = (
+        db.query(DocumentVersion)
+        .filter(DocumentVersion.document_id == document_id)
+        .all()
+    )
     for v in versions:
         db.delete(v)
 

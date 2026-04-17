@@ -6,6 +6,7 @@ Create Date: 2026-03-31 13:00:00
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 
 # revision identifiers, used by Alembic.
@@ -16,8 +17,16 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("document_versions", sa.Column("page_count", sa.Integer(), nullable=True))
+    bind = op.get_bind()
+    inspector = inspect(bind)
+    columns = {c["name"] for c in inspector.get_columns("document_versions")}
+    if "page_count" not in columns:
+        op.add_column("document_versions", sa.Column("page_count", sa.Integer(), nullable=True))
 
 
 def downgrade() -> None:
-    op.drop_column("document_versions", "page_count")
+    bind = op.get_bind()
+    inspector = inspect(bind)
+    columns = {c["name"] for c in inspector.get_columns("document_versions")}
+    if "page_count" in columns:
+        op.drop_column("document_versions", "page_count")

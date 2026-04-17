@@ -113,11 +113,7 @@ export function DocumentCard({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {onPreview && <DropdownMenuItem onClick={() => onPreview(document)}>Preview</DropdownMenuItem>}
-            {onDownload && (
-              <DropdownMenuItem onClick={() => onDownload(document)}>
-                <Download className="w-4 h-4 mr-2" /> Download
-              </DropdownMenuItem>
-            )}
+            {onDownload && (<DropdownMenuItem onClick={() => onDownload(document)}>Download</DropdownMenuItem>)}
             {onDelete && <DropdownMenuItem onClick={() => onDelete(document)}>Delete</DropdownMenuItem>}
             {onEditWorkflow && <DropdownMenuItem onClick={() => onEditWorkflow(document)}>Edit Workflow</DropdownMenuItem>}
             {onEditTags && <DropdownMenuItem onClick={() => onEditTags(document)}>Edit Tags</DropdownMenuItem>}

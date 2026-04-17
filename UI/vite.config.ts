@@ -12,8 +12,15 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      // Alias @ to the src directory
       '@': path.resolve(__dirname, './src'),
+    },
+  },
+  server: {
+    host: '0.0.0.0',      // already passed via CLI flag, but explicit here too
+    port: 5173,
+    watch: {
+      usePolling: true,   // required for Docker volume mounts — inotify doesn't work
+      interval: 1000,     // poll every 1s (increase to 2000 if CPU usage is high)
     },
   },
 })

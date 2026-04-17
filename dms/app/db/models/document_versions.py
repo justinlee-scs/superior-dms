@@ -7,6 +7,7 @@ from sqlalchemy.orm import relationship
 
 from app.db.session import Base
 
+
 class DocumentVersion(Base):
     """Represent the document version database model.
 
@@ -26,7 +27,12 @@ class DocumentVersion(Base):
         processing_status: Current processing state for this document version.
         document: Document value used by this model/schema.
     """
+
     __tablename__ = "document_versions"
+
+    __table_args__ = (
+        sa.UniqueConstraint("document_id", "version_number", name="uq_doc_version"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True)
 
@@ -36,14 +42,14 @@ class DocumentVersion(Base):
         nullable=False,
         index=True,
     )
-    
+    version_number = Column(sa.Integer, nullable=False)
     content = Column(LargeBinary, nullable=True)
 
     storage_bucket = Column(sa.String(128), nullable=True)
     storage_key = Column(sa.String(512), nullable=True)
     storage_etag = Column(sa.String(128), nullable=True)
     storage_size_bytes = Column(sa.Integer, nullable=True)
-    
+
     extracted_text = Column(Text, nullable=True)
 
     due_date = Column(sa.Date, nullable=True)
@@ -66,7 +72,7 @@ class DocumentVersion(Base):
     tags = Column(sa.JSON, nullable=False, default=list)
 
     page_count = Column(sa.Integer, nullable=True)
-    
+
     created_at = Column(sa.DateTime, nullable=False, default=datetime.utcnow)
 
     processing_status = Column(
@@ -78,7 +84,7 @@ class DocumentVersion(Base):
         nullable=False,
         default=ProcessingStatus.pending,
     )
-    
+
     # THIS relationship uses document_id
     document = relationship(
         "Document",
