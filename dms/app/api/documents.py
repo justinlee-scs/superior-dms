@@ -1,3 +1,5 @@
+from marshal import version
+
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from uuid import UUID, uuid4
@@ -61,6 +63,8 @@ from app.schemas.tags import (
 from app.processing.pipeline import process_document
 from app.services.extraction.office import OFFICE_EXTENSIONS, is_valid_office_file
 from app.storage.backends import build_object_storage_from_env
+
+from app.workers.processor import enqueue_document_processing
 
 # from app.services.labelstudio.client import LabelStudioClient, LabelStudioConfig
 
@@ -220,13 +224,9 @@ async def upload_document(
             commit=False,
         )
 
-        process_document(
-            db=db,
-            version_id=version.id,
-            file_bytes=file_bytes,
-            commit=False,
-        )
         db.commit()
+
+        enqueue_document_processing(version.id)
     except Exception:
         db.rollback()
         raise
@@ -738,14 +738,8 @@ async def create_new_document_version(
 
         db.flush()
 
-        process_document(
-            db=db,
-            version_id=version.id,
-            file_bytes=file_bytes,
-            commit=False,
-        )
-
         db.commit()
+        enqueue_document_processing(version.id)
         return version
 
     except Exception:

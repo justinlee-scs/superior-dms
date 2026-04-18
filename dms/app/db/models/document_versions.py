@@ -85,6 +85,8 @@ class DocumentVersion(Base):
         default=ProcessingStatus.pending,
     )
 
+    layout_json = Column(sa.JSON, nullable=True)
+
     # THIS relationship uses document_id
     document = relationship(
         "Document",

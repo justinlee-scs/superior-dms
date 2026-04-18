@@ -1,5 +1,7 @@
+from marshal import version
 import os
 import logging
+from django import db
 from sqlalchemy.orm import Session
 
 from app.db.models.document_versions import DocumentVersion
@@ -14,6 +16,7 @@ from app.services.extraction.classify import classify_document
 from app.services.extraction.tags import derive_tags
 from app.services.extraction.due_dates import extract_due_date
 from app.services.extraction.field_extractor import extract_fields, fields_to_tags
+from app.services.extraction.lilt import run_lilt_model
 
 from app.services.extraction.ocr_sync import extract_text_with_metadata
 from app.services.labelstudio.client import LabelStudioClient, LabelStudioConfig
@@ -76,14 +79,31 @@ def process_document(
         return
 
     try:
+        version.processing_status = ProcessingStatus.processing
+
+        # ---- OCR EXTRACTION ----
         extraction = extract_text_with_metadata(
             file_bytes=file_bytes,
             filename=version.document.filename,
         )
+
         text = extraction.text
         confidence = extraction.confidence
 
+        # ---- LiLT STRUCTURED EXTRACTION (PRIMARY) ----
+        lilt_result = run_lilt_model(
+            file_bytes=file_bytes,
+            filename=version.document.filename,
+        )
+
+        # merge LiLT extracted text if available
+        if lilt_result and lilt_result.text:
+            text = lilt_result.text
+            confidence = lilt_result.confidence or confidence
+
+        # ---- CLASSIFICATION ----
         classification = classify_document(text)
+
         existing_tags = list_existing_tags(db)
 
         # ---- TAG DERIVATION ----
@@ -97,7 +117,14 @@ def process_document(
             )
         )
 
-        field_values = extract_fields(file_bytes, version.document.filename)
+        # ---- FIELD EXTRACTION (LiLT PRIORITY) ----
+        field_values = None
+
+        if lilt_result and lilt_result.fields:
+            field_values = lilt_result.fields
+        else:
+            field_values = extract_fields(file_bytes, version.document.filename)
+
         field_tags = set(fields_to_tags(field_values)) if field_values else set()
 
         new_system_tags = derived_tags.union(field_tags)
@@ -115,7 +142,10 @@ def process_document(
         )
 
         if is_invoice:
-            due_date = extract_due_date(text)
+            if lilt_result and lilt_result.fields and "due_date" in lilt_result.fields:
+                due_date = lilt_result.fields.get("due_date")
+            else:
+                due_date = extract_due_date(text)
 
         if due_date:
             tags = [t for t in tags if not t.startswith("due_date:")]
@@ -134,10 +164,9 @@ def process_document(
             page_count = None
 
         # ---- REVIEW FLAG ----
-        handwriting_conf = extraction.metadata.get("handwriting_confidence")
         needs_review = False
 
-        if handwriting_conf is not None and handwriting_conf < 0.85:
+        if confidence is not None and confidence < 0.75:
             needs_review = True
 
         required_prefixes = ("company:", "project:", "document_type:")
@@ -156,13 +185,13 @@ def process_document(
             except ValueError:
                 continue
 
-        # ---- ASSIGN TO VERSION ----
+        # ---- ASSIGN ----
         version.extracted_text = text
         version.classification = classification
         version.confidence = confidence
         version.ocr_raw_confidence = extraction.raw_confidence
-        version.ocr_engine = extraction.engine
-        version.ocr_model_version = extraction.model_version
+        version.ocr_engine = "lilt+ocr"
+        version.ocr_model_version = "lilt"
         version.ocr_latency_ms = extraction.latency_ms
 
         version.tags = list(tags)

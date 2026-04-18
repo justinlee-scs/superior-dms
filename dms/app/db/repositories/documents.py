@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, or_
+from sqlalchemy import desc, or_, func
 from datetime import date
 import uuid
 from uuid import UUID
@@ -76,7 +76,7 @@ def create_document_version(
     if not document:
         raise ValueError("Document not found")
 
-    # ---- VERSION NUMBER (NO FILENAME CHANGE) ----
+    # version number is incremented based on the latest existing version for this document, not based on filename or storage key
     latest = (
         db.query(DocumentVersion.version_number)
         .filter(DocumentVersion.document_id == document_id)
@@ -91,22 +91,20 @@ def create_document_version(
         document_id=document_id,
         content=file_bytes,
         storage_bucket=storage_bucket,
-        storage_key=storage_key,  # <-- unchanged, no .v1 logic
+        storage_key=storage_key,
         storage_etag=storage_etag,
         storage_size_bytes=storage_size_bytes
         or (len(file_bytes) if file_bytes is not None else None),
-        version_number=version_number,  # <-- ADD THIS FIELD
-        processing_status=ProcessingStatus.uploaded,
+        version_number=version_number,
+        processing_status=ProcessingStatus.pending,
     )
 
     db.add(version)
     db.flush()
 
-    # ---- UPDATE DOCUMENT POINTER ----
+    # update document pointer
     if set_as_current or not document.current_version_id:
         document.current_version_id = version.id
-
-    document.version_count = version_number
 
     if commit:
         db.commit()
@@ -560,3 +558,12 @@ def delete_document(
     # Delete the document itself
     db.delete(document)
     db.commit()
+
+
+def _get_next_version_number(db, document_id):
+    max_version = (
+        db.query(func.max(DocumentVersion.version_number))
+        .filter(DocumentVersion.document_id == document_id)
+        .scalar()
+    )
+    return (max_version or 0) + 1
