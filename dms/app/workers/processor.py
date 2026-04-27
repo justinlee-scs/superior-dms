@@ -60,6 +60,11 @@ def enqueue_processing(version_id: str | UUID) -> None:
     thread.start()
 
 
+def enqueue_document_processing(version_id: str | UUID) -> None:
+    """Backward-compatible alias used by document upload endpoints."""
+    enqueue_processing(version_id)
+
+
 # import time
 # import threading
 # from uuid import UUID

@@ -6,6 +6,7 @@ from app.api.v1.rbac import api_router as rbac_router
 from app.api.auth import router as auth_router
 from app.api.processing import router as processing_router
 from app.api.labelstudio_ml import router as labelstudio_router
+from app.api.admin_training import router as admin_training_router
 
 import app.db.models
 
@@ -13,6 +14,7 @@ from fastapi import Depends
 from app.auth.deps import get_current_user
 from app.db.models.user import User
 from app.core.config import settings
+from app.services.nightly_retrainer import start_nightly_retrainer
 
 app = FastAPI(title="DMS API")
 
@@ -29,6 +31,12 @@ app.include_router(auth_router)
 app.include_router(processing_router)
 app.include_router(rbac_router, prefix="/rbac")
 app.include_router(labelstudio_router)
+app.include_router(admin_training_router)
+
+
+@app.on_event("startup")
+def _startup_jobs() -> None:
+    start_nightly_retrainer()
 
 @app.get("/")
 def root():

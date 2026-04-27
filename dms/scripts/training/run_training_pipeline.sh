@@ -17,6 +17,11 @@ python "${ROOT_DIR}/scripts/training/prepare_labelstudio.py" \
   --input "${OUTPUT_DIR}/labelstudio_export.json" \
   --output-dir "${TRAIN_DIR}"
 
+echo "Augmenting datasets with UI feedback..."
+python "${ROOT_DIR}/scripts/training/augment_with_feedback.py" \
+  --doc-class "${TRAIN_DIR}/doc_class.csv" \
+  --tags "${TRAIN_DIR}/tags.csv"
+
 if [[ "${SKIP_FIELD_EXTRACTOR:-false}" == "true" ]]; then
   echo "Skipping field extractor training (SKIP_FIELD_EXTRACTOR=true)."
 else
@@ -29,6 +34,15 @@ else
   python "${ROOT_DIR}/scripts/training/train_field_extractor.py" \
     --input "${TRAIN_DIR}/field_tokens.csv" \
     --output "${MODEL_DIR}/field_extractor.joblib"
+fi
+
+if [[ "${SKIP_LILT:-true}" == "true" ]]; then
+  echo "Skipping LiLT training (SKIP_LILT=true)."
+else
+  echo "Training LiLT token classifier..."
+  python "${ROOT_DIR}/scripts/training/train_lilt.py" \
+    --input "${TRAIN_DIR}/field_tokens.csv" \
+    --output "${MODEL_DIR}/lilt"
 fi
 
 echo "Training document classifier..."

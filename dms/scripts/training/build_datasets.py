@@ -68,6 +68,15 @@ def _export_ocr_images(
     tasks_path.write_text(json.dumps(tasks, ensure_ascii=False, indent=2))
 
 
+def _labelstudio_image_prefix(*, image_mode: str, image_port: int, dataset_key: str) -> str:
+    mode = image_mode.strip().lower()
+    if mode in {"localhost", "http", "image-server"}:
+        # docker-compose mounts ./output to /images for the HTTP server.
+        return f"http://localhost:{image_port}/training/ocr_images/{dataset_key}"
+    # docker-compose mounts ./output to /data/media for Label Studio local-files.
+    return f"/data/local-files/?d=training/ocr_images/{dataset_key}"
+
+
 def _export_text_tasks(pdfs: list[Path], *, output_path: Path) -> None:
     tasks: list[dict[str, object]] = []
     for pdf_path in pdfs:
@@ -111,6 +120,12 @@ def main() -> int:
         default="/home/justinlee/.LINUXPRACTICE/dms/output/training",
     )
     parser.add_argument("--image-port", type=int, default=8089)
+    parser.add_argument(
+        "--image-mode",
+        default="local-files",
+        choices=["local-files", "localhost", "http", "image-server"],
+        help="How image URLs are written into ocr_tasks.json.",
+    )
     args = parser.parse_args()
 
     root = Path(args.root).resolve()
@@ -134,7 +149,11 @@ def main() -> int:
         rapid_pdfs,
         output_dir=rapid_img_dir,
         tasks_path=rapid_out / "ocr_tasks.json",
-        url_prefix=f"http://localhost:{args.image_port}/rapid_tire_repair",
+        url_prefix=_labelstudio_image_prefix(
+            image_mode=args.image_mode,
+            image_port=args.image_port,
+            dataset_key="rapid_tire_repair",
+        ),
         dpi=args.dpi,
     )
     _export_text_tasks(rapid_pdfs, output_path=rapid_out / "text_tasks.json")
@@ -159,7 +178,11 @@ def main() -> int:
             batch,
             output_dir=batch_img_dir,
             tasks_path=batch_out / "ocr_tasks.json",
-            url_prefix=f"http://localhost:{args.image_port}/{batch_name}",
+            url_prefix=_labelstudio_image_prefix(
+                image_mode=args.image_mode,
+                image_port=args.image_port,
+                dataset_key=batch_name,
+            ),
             dpi=args.dpi,
         )
         _export_text_tasks(batch, output_path=batch_out / "text_tasks.json")

@@ -14,19 +14,28 @@ python3 "${ROOT}/scripts/training/export_pdf_images.py" \
   --output-dir "${ROOT}/output/training/ocr_images" \
   --tasks "${ROOT}/output/training/ocr_tasks.json"
 
+IMAGE_MODE="${LS_TASK_IMAGE_MODE:-local-files}"
+
 python3 - <<'PY'
 import json
+import os
 from pathlib import Path
 
 src = Path('/home/justinlee/.LINUXPRACTICE/dms/output/training/ocr_tasks.json')
 data = json.loads(src.read_text())
+mode = os.getenv('LS_TASK_IMAGE_MODE', 'local-files').strip().lower()
 for task in data:
     img = task.get('data', {}).get('image')
     if isinstance(img, str):
         name = img.split('/')[-1]
-        task['data']['image'] = f'http://localhost:8089/{name}'
+        if mode in {'localhost', 'http', 'image-server'}:
+            task['data']['image'] = f'http://localhost:8089/{name}'
+        else:
+            # Works with LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT=/data/media
+            # and ./output mounted at /data/media in docker-compose.
+            task['data']['image'] = f'/data/local-files/?d=training/ocr_images/{name}'
 src.write_text(json.dumps(data, ensure_ascii=False, indent=2))
-print('Updated ocr_tasks.json to use http://localhost:8089/ URLs')
+print(f'Updated ocr_tasks.json to use mode={mode}')
 PY
 
 python3 "${ROOT}/scripts/training/export_text_tasks.py" \

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
+  Clock3,
   Copy,
   Eye,
   GitBranch,
@@ -49,8 +50,9 @@ import {
   type User,
   type UserPermissionsResponse,
 } from "@/lib/rbac";
+import { getRetrainSchedule, updateRetrainSchedule } from "@/lib/dms";
 
-type AdminSection = "roles" | "users" | "hierarchy";
+type AdminSection = "roles" | "users" | "hierarchy" | "training";
 type UserTab = "roles" | "permissions";
 type HierarchyManagerType = "role" | "user";
 
@@ -66,6 +68,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   "workflow.assign": "Edit Workflows",
   "admin.users": "Manage Users",
   "admin.roles": "Manage Roles",
+  "admin.training": "Manage Training",
   "tags.read": "View Tags",
   "tags.edit": "Edit Tags",
 };
@@ -82,6 +85,7 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   "workflow.assign": "Can modify workflows",
   "admin.users": "Can create and update users",
   "admin.roles": "Can create and update roles",
+  "admin.training": "Can configure nightly retraining schedule",
   "tags.read": "Can view document tags",
   "tags.edit": "Can add, remove, and replace document tags",
 };
@@ -141,6 +145,10 @@ export default function RolesPage({
   const [selectedUserPermissionKeys, setSelectedUserPermissionKeys] = useState<Set<string>>(new Set());
   const [defaultUserPermissionKeys, setDefaultUserPermissionKeys] = useState<Set<string>>(new Set());
   const [showDefaultHighlight, setShowDefaultHighlight] = useState(false);
+  const [retrainEnabled, setRetrainEnabled] = useState(true);
+  const [retrainTimezone, setRetrainTimezone] = useState("America/Los_Angeles");
+  const [retrainHour, setRetrainHour] = useState(3);
+  const [retrainMinute, setRetrainMinute] = useState(0);
 
   const selectedRole = useMemo(
     () => roles.find((role) => role.id === selectedRoleId) ?? null,
@@ -292,6 +300,16 @@ export default function RolesPage({
       return [usersData[index].id, null] as const;
     });
     setUserPermissionCounts(Object.fromEntries(userCounts));
+
+    try {
+      const schedule = await getRetrainSchedule();
+      setRetrainEnabled(schedule.enabled);
+      setRetrainTimezone(schedule.timezone);
+      setRetrainHour(schedule.hour);
+      setRetrainMinute(schedule.minute);
+    } catch (error) {
+      console.warn("Failed to load retrain schedule", error);
+    }
   };
 
   useEffect(() => {
@@ -592,6 +610,23 @@ export default function RolesPage({
     });
   };
 
+  const onSaveRetrainSchedule = async () => {
+    setLoading(true);
+    try {
+      await updateRetrainSchedule({
+        enabled: retrainEnabled,
+        timezone: retrainTimezone.trim(),
+        hour: retrainHour,
+        minute: retrainMinute,
+      });
+      toast.success("Nightly retrain schedule updated");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update retrain schedule");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div
       className={`mt-6 overflow-hidden rounded-xl border ${
@@ -600,7 +635,9 @@ export default function RolesPage({
     >
       <div
         className={`grid min-h-[72vh] ${
-          section === "hierarchy" ? "grid-cols-[230px_1fr]" : "grid-cols-[230px_320px_1fr]"
+          section === "hierarchy" || section === "training"
+            ? "grid-cols-[230px_1fr]"
+            : "grid-cols-[230px_320px_1fr]"
         }`}
       >
         <aside
@@ -668,6 +705,20 @@ export default function RolesPage({
             >
               <GitBranch className="h-5 w-5" />
               Hierarchy
+            </button>
+            <button
+              type="button"
+              onClick={() => setSection("training")}
+              className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold ${
+                section === "training"
+                  ? "bg-[#020825] text-white"
+                  : darkMode
+                    ? "text-gray-100 hover:bg-gray-800"
+                    : "text-black hover:bg-gray-200"
+              }`}
+            >
+              <Clock3 className="h-5 w-5" />
+              Training
             </button>
           </div>
         </aside>
@@ -1270,6 +1321,76 @@ export default function RolesPage({
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
+          {section === "training" && (
+            <div className="px-3 py-2">
+              <h2 className="text-2xl font-semibold">Training Schedule</h2>
+              <p className={`mt-1 text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
+                Configure nightly retraining time for feedback and annotation data.
+              </p>
+
+              <div
+                className={`mt-4 max-w-xl rounded-xl border p-4 ${
+                  darkMode ? "border-gray-700 bg-gray-800" : "border-gray-200 bg-[#f8f8f9]"
+                }`}
+              >
+                <div className="grid gap-3">
+                  <label className="flex items-center gap-3 text-sm font-medium">
+                    <Checkbox
+                      checked={retrainEnabled}
+                      onCheckedChange={(checked) => setRetrainEnabled(checked === true)}
+                    />
+                    Enable nightly retraining
+                  </label>
+
+                  <label className="grid gap-1">
+                    <span className={`text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>Timezone</span>
+                    <input
+                      className="h-10 rounded-xl border border-gray-300 bg-white px-3 text-sm text-black"
+                      value={retrainTimezone}
+                      onChange={(event) => setRetrainTimezone(event.target.value)}
+                      placeholder="America/Los_Angeles"
+                    />
+                  </label>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="grid gap-1">
+                      <span className={`text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>Hour (0-23)</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={23}
+                        className="h-10 rounded-xl border border-gray-300 bg-white px-3 text-sm text-black"
+                        value={retrainHour}
+                        onChange={(event) => setRetrainHour(Math.min(23, Math.max(0, Number(event.target.value) || 0)))}
+                      />
+                    </label>
+                    <label className="grid gap-1">
+                      <span className={`text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>Minute (0-59)</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={59}
+                        className="h-10 rounded-xl border border-gray-300 bg-white px-3 text-sm text-black"
+                        value={retrainMinute}
+                        onChange={(event) => setRetrainMinute(Math.min(59, Math.max(0, Number(event.target.value) || 0)))}
+                      />
+                    </label>
+                  </div>
+
+                  <div>
+                    <Button
+                      className="rounded-xl bg-[#020825] px-4 text-sm"
+                      disabled={loading}
+                      onClick={onSaveRetrainSchedule}
+                    >
+                      Save Schedule
+                    </Button>
+                  </div>
+                </div>
               </div>
             </div>
           )}

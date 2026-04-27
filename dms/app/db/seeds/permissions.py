@@ -22,6 +22,7 @@ ALL_PERMISSIONS = [
     Permissions.WORKFLOW_ADVANCE,
     Permissions.ADMIN_USERS,
     Permissions.ADMIN_ROLES,
+    Permissions.ADMIN_TRAINING,
 ]
 
 

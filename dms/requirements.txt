@@ -17,6 +17,7 @@ python-jose[cryptography]
 pydantic[email]
 
 python-multipart
+label-studio-sdk
 
 # Optional integrations (disabled until code paths are uncommented):
  boto3

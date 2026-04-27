@@ -21,6 +21,7 @@ from app.services.extraction.handwriting import is_handwritten
 from app.services.extraction.handwriting_model import clear_handwriting_cache
 from app.services.extraction.field_extractor import clear_field_extractor_cache, predict_field_tokens
 from app.services.extraction.tags import derive_tags, predict_model_tag_scores, clear_tagger_cache
+from app.services.extraction.lilt import clear_lilt_cache
 
 router = APIRouter(prefix="/labelstudio", tags=["labelstudio"])
 logger = logging.getLogger(__name__)
@@ -248,6 +249,7 @@ def _run_training_job() -> None:
             clear_tagger_cache()
             clear_handwriting_cache()
             clear_field_extractor_cache()
+            clear_lilt_cache()
     except Exception as exc:
         _last_train_status = "crashed"
         _last_train_return_code = None

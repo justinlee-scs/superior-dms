@@ -63,6 +63,7 @@ from app.schemas.tags import (
 from app.processing.pipeline import process_document
 from app.services.extraction.office import OFFICE_EXTENSIONS, is_valid_office_file
 from app.storage.backends import build_object_storage_from_env
+from app.services.training_feedback import capture_feedback_event
 
 from app.workers.processor import enqueue_document_processing
 
@@ -444,6 +445,7 @@ def set_document_type(
     document_id: UUID,
     payload: DocumentTypeUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     # _=Depends(require_role("editor")),
     _=Depends(require_permission(Permissions.DOCUMENT_UPDATE)),
 ):
@@ -455,6 +457,11 @@ def set_document_type(
         db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
         _ (default=Depends(require_permission(Permissions.DOCUMENT_UPDATE))): Dependency-injection placeholder argument required by FastAPI.
     """
+    current_version = get_document_version(db=db, document_id=document_id)
+    old_document_type = (
+        current_version.document.document_type if current_version else None
+    )
+
     document = update_document_type(
         db=db,
         document_id=document_id,
@@ -466,6 +473,26 @@ def set_document_type(
 
     current_version = get_document_version(db=db, document_id=document_id)
     versions = list_document_versions(db=db, document_id=document_id)
+
+    try:
+        capture_feedback_event(
+            db=db,
+            document_id=document.id,
+            document_version_id=current_version.id if current_version else None,
+            edited_by_user_id=current_user.id,
+            event_type="document_type_set",
+            predicted_tags=current_version.tags if current_version else [],
+            final_tags=current_version.tags if current_version else [],
+            predicted_document_type=old_document_type,
+            final_document_type=document.document_type,
+            extracted_text_snapshot=(
+                current_version.extracted_text if current_version else None
+            ),
+            model_confidence=current_version.confidence if current_version else None,
+            model_version=current_version.ocr_model_version if current_version else None,
+        )
+    except Exception:
+        pass
 
     return DocumentResponse(
         id=document.id,
@@ -879,6 +906,7 @@ def replace_tags_on_document_version(
     version_id: UUID,
     payload: TagUpdateRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     _=Depends(require_permission(Permissions.DOCUMENT_TAG_EDIT)),
 ):
     """Handle replace tags on document version.
@@ -894,7 +922,25 @@ def replace_tags_on_document_version(
     if not version or version.document_id != document_id:
         raise HTTPException(status_code=404, detail="Document version not found")
 
+    old_tags = list(version.tags or [])
     tags = replace_document_version_tags(db=db, version=version, tags=payload.tags)
+    try:
+        capture_feedback_event(
+            db=db,
+            document_id=document_id,
+            document_version_id=version.id,
+            edited_by_user_id=current_user.id,
+            event_type="tags_replace",
+            predicted_tags=old_tags,
+            final_tags=tags,
+            predicted_document_type=version.document.document_type,
+            final_document_type=version.document.document_type,
+            extracted_text_snapshot=version.extracted_text,
+            model_confidence=version.confidence,
+            model_version=version.ocr_model_version,
+        )
+    except Exception:
+        pass
     return DocumentVersionTagsResponse(
         document_id=document_id,
         version_id=version_id,
@@ -911,6 +957,7 @@ def add_tags_to_document_version(
     version_id: UUID,
     payload: TagUpdateRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     _=Depends(require_permission(Permissions.DOCUMENT_TAG_EDIT)),
 ):
     """Add tags to document version.
@@ -926,7 +973,25 @@ def add_tags_to_document_version(
     if not version or version.document_id != document_id:
         raise HTTPException(status_code=404, detail="Document version not found")
 
+    old_tags = list(version.tags or [])
     tags = add_document_version_tags(db=db, version=version, tags=payload.tags)
+    try:
+        capture_feedback_event(
+            db=db,
+            document_id=document_id,
+            document_version_id=version.id,
+            edited_by_user_id=current_user.id,
+            event_type="tags_add",
+            predicted_tags=old_tags,
+            final_tags=tags,
+            predicted_document_type=version.document.document_type,
+            final_document_type=version.document.document_type,
+            extracted_text_snapshot=version.extracted_text,
+            model_confidence=version.confidence,
+            model_version=version.ocr_model_version,
+        )
+    except Exception:
+        pass
     return DocumentVersionTagsResponse(
         document_id=document_id,
         version_id=version_id,
@@ -943,6 +1008,7 @@ def remove_tags_from_document_version(
     version_id: UUID,
     payload: TagUpdateRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     _=Depends(require_permission(Permissions.DOCUMENT_TAG_EDIT)),
 ):
     """Remove tags from document version.
@@ -958,7 +1024,25 @@ def remove_tags_from_document_version(
     if not version or version.document_id != document_id:
         raise HTTPException(status_code=404, detail="Document version not found")
 
+    old_tags = list(version.tags or [])
     tags = remove_document_version_tags(db=db, version=version, tags=payload.tags)
+    try:
+        capture_feedback_event(
+            db=db,
+            document_id=document_id,
+            document_version_id=version.id,
+            edited_by_user_id=current_user.id,
+            event_type="tags_remove",
+            predicted_tags=old_tags,
+            final_tags=tags,
+            predicted_document_type=version.document.document_type,
+            final_document_type=version.document.document_type,
+            extracted_text_snapshot=version.extracted_text,
+            model_confidence=version.confidence,
+            model_version=version.ocr_model_version,
+        )
+    except Exception:
+        pass
     return DocumentVersionTagsResponse(
         document_id=document_id,
         version_id=version_id,

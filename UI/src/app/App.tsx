@@ -196,8 +196,9 @@ function AppInner() {
       .then((access) => {
         const hasAdminUsers = access.permissions.includes("admin.users");
         const hasAdminRoles = access.permissions.includes("admin.roles");
+        const hasAdminTraining = access.permissions.includes("admin.training");
         setAccessPermissions(new Set(access.permissions));
-        setIsAdmin(hasAdminUsers || hasAdminRoles);
+        setIsAdmin(hasAdminUsers || hasAdminRoles || hasAdminTraining);
       })
       .catch(() => {
         setIsAdmin(false);

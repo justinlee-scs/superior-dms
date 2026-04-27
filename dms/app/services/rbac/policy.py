@@ -43,3 +43,4 @@ class Permissions:
 
     ADMIN_USERS = "admin.users"
     ADMIN_ROLES = "admin.roles"
+    ADMIN_TRAINING = "admin.training"

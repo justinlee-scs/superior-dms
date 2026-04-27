@@ -1,7 +1,7 @@
 from marshal import version
 import os
 import logging
-from django import db
+from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.db.models.document_versions import DocumentVersion
@@ -13,7 +13,7 @@ from app.db.repositories.tags import create_tag_pool_entry
 from app.services.extraction.handwriting import is_handwritten
 from app.services.extraction.icr import run_icr_model
 from app.services.extraction.classify import classify_document
-from app.services.extraction.tags import derive_tags
+from app.services.extraction.tags import derive_tags, normalize_tag
 from app.services.extraction.due_dates import extract_due_date
 from app.services.extraction.field_extractor import extract_fields, fields_to_tags
 from app.services.extraction.lilt import run_lilt_model
@@ -22,6 +22,63 @@ from app.services.extraction.ocr_sync import extract_text_with_metadata
 from app.services.labelstudio.client import LabelStudioClient, LabelStudioConfig
 
 logger = logging.getLogger(__name__)
+
+_LILT_IMAGE_EXTENSIONS = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".tif",
+    ".tiff",
+    ".bmp",
+    ".gif",
+    ".webp",
+    ".pdf",
+    ".avif",
+}
+
+
+def _can_run_lilt(filename: str | None) -> bool:
+    suffix = Path(filename or "").suffix.lower()
+    return suffix in _LILT_IMAGE_EXTENSIONS
+
+
+def _lilt_company_tag_strict() -> bool:
+    return os.getenv("LILT_COMPANY_TAG_STRICT", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
+def _extract_company_tag_from_fields(fields: dict[str, object] | None) -> str | None:
+    if not fields:
+        return None
+
+    preferred_keys = (
+        "vendor",
+        "vendor_name",
+        "supplier",
+        "supplier_name",
+        "company",
+        "company_name",
+        "bill_to",
+    )
+
+    normalized_map: dict[str, str] = {}
+    for key, raw_value in fields.items():
+        key_norm = str(key).strip().lower().replace(" ", "_")
+        value = str(raw_value or "").strip()
+        if not value:
+            continue
+        normalized_map[key_norm] = value
+
+    for key in preferred_keys:
+        if key in normalized_map:
+            tag = normalize_tag(f"company:{normalized_map[key]}")
+            if tag and tag != "company:":
+                return tag
+
+    return None
 
 
 def _label_studio_enabled() -> bool:
@@ -90,11 +147,24 @@ def process_document(
         text = extraction.text
         confidence = extraction.confidence
 
-        # ---- LiLT STRUCTURED EXTRACTION (PRIMARY) ----
-        lilt_result = run_lilt_model(
-            file_bytes=file_bytes,
-            filename=version.document.filename,
-        )
+        # ---- LiLT STRUCTURED EXTRACTION (PRIMARY FOR SUPPORTED IMAGES) ----
+        lilt_result = None
+        lilt_status = "skipped_unsupported_type"
+        if _can_run_lilt(version.document.filename):
+            try:
+                lilt_result = run_lilt_model(
+                    file_bytes=file_bytes,
+                    filename=version.document.filename,
+                )
+                lilt_status = "used" if lilt_result else "empty_result"
+            except Exception as exc:
+                lilt_status = "failed_fallback"
+                logger.warning(
+                    "LiLT extraction failed for version %s (%s): %s",
+                    version.id,
+                    version.document.filename,
+                    exc,
+                )
 
         # merge LiLT extracted text if available
         if lilt_result and lilt_result.text:
@@ -133,6 +203,20 @@ def process_document(
         user_tags = {t for t in existing_tags_set if not t.startswith("system:")}
 
         tags = sorted(user_tags.union(new_system_tags))
+
+        company_tag_from_lilt = _extract_company_tag_from_fields(
+            lilt_result.fields if lilt_result else None
+        )
+        company_tag_from_fields = _extract_company_tag_from_fields(field_values)
+
+        company_tag_to_apply = company_tag_from_fields
+        if _can_run_lilt(version.document.filename) and _lilt_company_tag_strict():
+            company_tag_to_apply = company_tag_from_lilt
+
+        if company_tag_to_apply:
+            tags = [t for t in tags if not t.startswith("company:")]
+            tags.append(company_tag_to_apply)
+            tags = sorted(set(tags))
 
         # ---- DUE DATE ----
         due_date = None
@@ -178,6 +262,15 @@ def process_document(
         if needs_review:
             tags.append("needs_review")
 
+        if (
+            _can_run_lilt(version.document.filename)
+            and _lilt_company_tag_strict()
+            and not company_tag_from_lilt
+        ):
+            tags.append("lilt_company_missing")
+            if "needs_review" not in tags:
+                tags.append("needs_review")
+
         # ---- TAG POOL ----
         for tag in tags:
             try:
@@ -202,6 +295,22 @@ def process_document(
             version.storage_size_bytes = len(file_bytes)
 
         version.processing_status = ProcessingStatus.uploaded
+        logger.info(
+            "Document processed version_id=%s filename=%s status=%s lilt=%s lilt_company_tag=%s classification=%s confidence=%s tags=%s company_tag=%s",
+            version.id,
+            version.document.filename,
+            version.processing_status.value,
+            lilt_status,
+            company_tag_from_lilt or "",
+            (
+                classification.value
+                if hasattr(classification, "value")
+                else classification
+            ),
+            confidence,
+            len(tags),
+            next((t for t in tags if t.startswith("company:")), ""),
+        )
 
         _notify_label_studio(
             document_id=str(version.document_id),

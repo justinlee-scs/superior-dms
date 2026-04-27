@@ -7,6 +7,8 @@ from app.db.models.permission import Permission
 from app.db.models.role import Role
 from app.db.models.user import User
 from app.db.models.tag_catalog import TagCatalog
+from app.db.models.training_feedback_event import TrainingFeedbackEvent
+from app.db.models.retrain_schedule_setting import RetrainScheduleSetting
 
 # join tables (must be imported)
 from app.db.models.user_role import user_roles

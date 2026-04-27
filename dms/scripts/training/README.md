@@ -65,9 +65,10 @@ bash scripts/training/generate_labelstudio_tasks.sh /abs/path/to/pdfs
 
 This creates:
 - `output/training/text_tasks.json` (Project A import)
-- `output/training/ocr_tasks.json` (Project B import, HTTP URLs)
+- `output/training/ocr_tasks.json` (Project B import, Label Studio local-files URLs by default)
 
-Start the OCR image server before importing OCR tasks:
+Default mode (recommended with docker-compose) does not require an OCR image HTTP server.
+If you explicitly set `LS_TASK_IMAGE_MODE=localhost`, start the OCR image server before importing OCR tasks:
 
 ```bash
 bash scripts/training/run_ocr_server.sh

@@ -9,7 +9,7 @@ services:
       - "9001:9001"
     volumes:
       - minio_data:/data
-      - /home/justinlee/minio/certs:/etc/minio/certs   # keep absolute — outside project
+      - /home/justinlee/minio/certs:/etc/minio/certs # keep absolute — outside project
     command: minio server /data --console-address ":9001"
     restart: unless-stopped
     healthcheck:
@@ -58,14 +58,18 @@ services:
 
   label-studio:
     image: heartexlabs/label-studio:latest
+    user: "1001:0"
     environment:
-      LABEL_STUDIO_LOCAL_FILES_SERVING_ENABLED: "true"
-      LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT: /data/media
+      - LABEL_STUDIO_LOCAL_FILES_SERVING_ENABLED=true
+      - LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT=/data/media
+      - SSRF_PROTECTION_ENABLED=false
+      - DISABLE_SIGNUP_WITHOUT_LINK=false
+      - LOCAL_FILES_SERVING_ENABLED=true
     ports:
       - "8800:8080"
     volumes:
       - labelstudio_data:/label-studio/data
-      - ./output:/data/media    # relative path — dms/output
+      - ./output:/data/media # relative path — dms/output
     command: label-studio start
     restart: unless-stopped
     depends_on:
@@ -78,7 +82,7 @@ services:
     ports:
       - "8089:8089"
     volumes:
-      - ./output:/images        # relative path — dms/output
+      - ./output:/images # relative path — dms/output
     restart: unless-stopped
 
   ui:
@@ -93,7 +97,7 @@ services:
     command: npm run dev -- --host 0.0.0.0 --port 5173
     restart: unless-stopped
     environment:
-      - VITE_API_BASE_URL=http://localhost:8008   # correct var name, localhost for browser access
+      - VITE_API_BASE_URL=http://localhost:8008 # correct var name, localhost for browser access
     depends_on:
       - web
 

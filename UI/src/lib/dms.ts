@@ -33,6 +33,14 @@ export type DuePaymentItem = {
   due_date: string;
 };
 
+export type RetrainSchedule = {
+  enabled: boolean;
+  timezone: string;
+  hour: number;
+  minute: number;
+  updated_at?: string | null;
+};
+
 export function listDocumentVersions(documentId: string) {
   return apiFetch<DocumentVersion[]>(`/documents/${documentId}/versions`);
 }
@@ -185,4 +193,20 @@ export function listUpcomingDuePayments(daysAhead = 30, limit = 50) {
     limit: String(limit),
   });
   return apiFetch<DuePaymentItem[]>(`/documents/upcoming-due-payments?${params.toString()}`);
+}
+
+export function getRetrainSchedule() {
+  return apiFetch<RetrainSchedule>("/admin/training/schedule");
+}
+
+export function updateRetrainSchedule(payload: {
+  enabled: boolean;
+  timezone: string;
+  hour: number;
+  minute: number;
+}) {
+  return apiFetch<RetrainSchedule>("/admin/training/schedule", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
 }
