@@ -1,10 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from urllib.parse import urlencode
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 
 from app.db.session import get_db
 from app.db.models.user import User
 from app.auth.jwt import verify_password, create_access_token, hash_password
+from app.auth.oidc_google import (
+    build_google_authorization_url,
+    exchange_code_for_id_token,
+    fetch_google_identity,
+    find_or_create_user_from_google_identity,
+    validate_state_token,
+)
+from app.core.config import settings
 
 from app.auth.deps import get_current_user
 from app.services.rbac.access_resolver import resolve_permissions
@@ -45,6 +56,10 @@ class ProfileUpdateRequest(BaseModel):
     username: str | None = None
     current_password: str | None = None
     new_password: str | None = None
+
+
+class OIDCLoginStartResponse(BaseModel):
+    authorization_url: str
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -152,4 +167,54 @@ def update_profile(
         "username": user.username,
         "roles": [r.name for r in user.roles],
         "permissions": sorted(permissions),
+    }
+
+
+@router.get("/oidc/google/login", response_model=OIDCLoginStartResponse)
+def google_oidc_login(post_login_redirect: str | None = Query(default=None)):
+    try:
+        authorization_url = build_google_authorization_url(post_login_redirect=post_login_redirect)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"authorization_url": authorization_url}
+
+
+@router.get("/oidc/google/callback")
+def google_oidc_callback(
+    code: str | None = Query(default=None),
+    state: str | None = Query(default=None),
+    error: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    if error:
+        raise HTTPException(status_code=400, detail=f"Google auth error: {error}")
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code/state")
+
+    try:
+        state_payload = validate_state_token(state)
+        id_token = exchange_code_for_id_token(code)
+        identity = fetch_google_identity(id_token)
+        user = find_or_create_user_from_google_identity(db, identity)
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail=f"Google OIDC login failed: {exc}") from exc
+
+    token = create_access_token(user.id)
+
+    post_login_redirect = state_payload.get("plr") or settings.google_oidc_post_login_redirect
+    if post_login_redirect:
+        query = urlencode({"access_token": token, "token_type": "bearer"})
+        return RedirectResponse(url=f"{post_login_redirect}?{query}", status_code=302)
+
+    permissions = resolve_permissions(db, user)
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "id": str(user.id),
+            "email": user.email,
+            "username": user.username,
+            "roles": [r.name for r in user.roles],
+            "permissions": sorted(permissions),
+        },
     }

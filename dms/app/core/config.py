@@ -42,6 +42,12 @@ class Settings:
     access_token_expire_minutes: int
     cors_allow_origins: list[str]
     cors_allow_credentials: bool
+    google_oidc_enabled: bool
+    google_oidc_client_id: str
+    google_oidc_client_secret: str
+    google_oidc_redirect_uri: str
+    google_oidc_hosted_domain: str
+    google_oidc_post_login_redirect: str
 
 
 def _build_settings() -> Settings:
@@ -76,6 +82,16 @@ def _build_settings() -> Settings:
         default=True,
     )
 
+    google_oidc_enabled = _parse_bool(
+        os.getenv("GOOGLE_OIDC_ENABLED", "false"),
+        default=False,
+    )
+    google_oidc_client_id = os.getenv("GOOGLE_OIDC_CLIENT_ID", "").strip()
+    google_oidc_client_secret = os.getenv("GOOGLE_OIDC_CLIENT_SECRET", "").strip()
+    google_oidc_redirect_uri = os.getenv("GOOGLE_OIDC_REDIRECT_URI", "").strip()
+    google_oidc_hosted_domain = os.getenv("GOOGLE_OIDC_HOSTED_DOMAIN", "").strip()
+    google_oidc_post_login_redirect = os.getenv("GOOGLE_OIDC_POST_LOGIN_REDIRECT", "").strip()
+
     return Settings(
         app_env=app_env,
         database_url=database_url,
@@ -84,6 +100,12 @@ def _build_settings() -> Settings:
         access_token_expire_minutes=access_token_expire_minutes,
         cors_allow_origins=cors_allow_origins,
         cors_allow_credentials=cors_allow_credentials,
+        google_oidc_enabled=google_oidc_enabled,
+        google_oidc_client_id=google_oidc_client_id,
+        google_oidc_client_secret=google_oidc_client_secret,
+        google_oidc_redirect_uri=google_oidc_redirect_uri,
+        google_oidc_hosted_domain=google_oidc_hosted_domain,
+        google_oidc_post_login_redirect=google_oidc_post_login_redirect,
     )
 
 

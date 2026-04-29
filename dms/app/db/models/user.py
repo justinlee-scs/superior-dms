@@ -28,6 +28,8 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     username = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
+    auth_provider = Column(String, nullable=False, default="local")
+    oidc_subject = Column(String, unique=True, index=True, nullable=True)
 
     is_active = Column(Boolean, default=True, nullable=False)
 

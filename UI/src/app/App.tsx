@@ -54,6 +54,7 @@ import {
   deleteDocument,
   listDocuments,
   listUpcomingDuePayments,
+  reprocessDocument,
   listTagPool,
   replaceDocumentVersionTags,
   uploadDocument,
@@ -125,6 +126,12 @@ function AppInner() {
     new Set(),
   );
   const [duePaymentsWindowDays, setDuePaymentsWindowDays] = useState(7);
+
+  const handleLogout = () => {
+    sessionStorage.removeItem("access_token");
+    sessionStorage.removeItem("user");
+    window.location.reload();
+  };
 
   const selection = useSelection();
 
@@ -295,29 +302,29 @@ function AppInner() {
   // };
 
   const handleFileUpload = async (file: File) => {
-    await toast.promise(
-      (async () => {
-        await uploadDocument(file);
+    const loadingToastId = toast.loading(`Uploading ${file.name}...`);
+    try {
+      await uploadDocument(file);
 
-        // wait until backend actually returns the file
-        const docs = await waitForDocument(file.name);
+      // wait until backend actually returns the file
+      const docs = await waitForDocument(file.name);
 
-        if (docs) {
-          setDocuments(docs.map(mapApiDocument));
-        } else {
-          // fallback if timing fails
-          await refreshDocuments();
-        }
+      if (docs) {
+        setDocuments(docs.map(mapApiDocument));
+      } else {
+        // fallback if timing fails
+        await refreshDocuments();
+      }
 
-        // refresh supporting data
-        await Promise.all([refreshTagPool()]);
-      })(),
-      {
-        loading: `Uploading ${file.name}...`,
-        success: `${file.name} uploaded`,
-        error: `Failed to upload ${file.name}`,
-      },
-    );
+      // refresh supporting data
+      await Promise.all([refreshTagPool()]);
+      toast.success(`${file.name} uploaded`);
+    } catch (error) {
+      toast.error(`Failed to upload ${file.name}`);
+      throw error;
+    } finally {
+      toast.dismiss(loadingToastId);
+    }
   };
 
   const handleDelete = (doc: Document) => {
@@ -481,6 +488,19 @@ function AppInner() {
     window.URL.revokeObjectURL(url);
   };
 
+  const handleReprocess = async (doc: Document) => {
+    try {
+      await reprocessDocument(doc.id);
+      toast.success(`Reprocessing started for ${doc.name}`);
+      await refreshDocuments();
+      await refreshTagPool();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : `Failed to reprocess ${doc.name}`,
+      );
+    }
+  };
+
   const handleBulkDownload = async () => {
     const selectedDocs = Array.from(selection.selected.values());
     if (!selectedDocs.length) return;
@@ -605,6 +625,9 @@ function AppInner() {
                   <UserCircle2 className="mr-2 h-4 w-4" />
                   Profile
                 </Button>
+                <Button variant="outline" onClick={handleLogout}>
+                  Log out
+                </Button>
               </div>
             </div>
           </div>
@@ -655,6 +678,7 @@ function AppInner() {
                         onDelete={handleDelete}
                         onEditWorkflow={handleEditWorkflow}
                         onEditTags={(doc) => setEditingTagsDoc(doc)}
+                        onReprocess={handleReprocess}
                         onOpenVersions={(doc) => setVersionModalDoc(doc)}
                         darkMode={darkMode}
                       />
@@ -666,6 +690,7 @@ function AppInner() {
                         onDelete={handleDelete}
                         onEditWorkflow={handleEditWorkflow}
                         onEditTags={(doc) => setEditingTagsDoc(doc)}
+                        onReprocess={handleReprocess}
                         darkMode={darkMode}
                       />
                     ) : (

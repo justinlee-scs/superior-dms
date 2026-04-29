@@ -13,7 +13,7 @@ def _looks_like_pat(token: str) -> bool:
     return token.count(".") >= 2
 
 
-def _http_export_with_pat(base_url: str, pat_token: str, project_id: int) -> list[dict[str, Any]]:
+def _refresh_pat(base_url: str, pat_token: str) -> str:
     refresh_url = f"{base_url.rstrip('/')}/api/token/refresh"
     refresh_response = requests.post(
         refresh_url,
@@ -24,9 +24,19 @@ def _http_export_with_pat(base_url: str, pat_token: str, project_id: int) -> lis
     access_token = str((refresh_response.json() or {}).get("access") or "").strip()
     if not access_token:
         raise RuntimeError("PAT refresh did not return an access token.")
+    return access_token
 
+
+def _auth_headers(base_url: str, api_token: str) -> dict[str, str]:
+    if _looks_like_pat(api_token):
+        access_token = _refresh_pat(base_url=base_url, pat_token=api_token)
+        return {"Authorization": f"Bearer {access_token}"}
+    return {"Authorization": f"Token {api_token}"}
+
+
+def _http_export_with_pat(base_url: str, pat_token: str, project_id: int) -> list[dict[str, Any]]:
     url = f"{base_url.rstrip('/')}/api/projects/{project_id}/export?exportType=JSON_MIN"
-    headers = {"Authorization": f"Bearer {access_token}"}
+    headers = _auth_headers(base_url=base_url, api_token=pat_token)
     response = requests.get(url, headers=headers, timeout=60)
     response.raise_for_status()
     data = response.json()
@@ -37,7 +47,7 @@ def _http_export_with_pat(base_url: str, pat_token: str, project_id: int) -> lis
 
 def _http_export_with_legacy(base_url: str, api_token: str, project_id: int) -> list[dict[str, Any]]:
     url = f"{base_url.rstrip('/')}/api/projects/{project_id}/export?exportType=JSON_MIN"
-    headers = {"Authorization": f"Token {api_token}"}
+    headers = _auth_headers(base_url=base_url, api_token=api_token)
     response = requests.get(url, headers=headers, timeout=60)
     response.raise_for_status()
     data = response.json()
@@ -97,6 +107,26 @@ def export_tasks(base_url: str, api_token: str, project_id: int, *, no_sdk: bool
     return _http_export_with_legacy(base_url=base_url, api_token=api_token, project_id=project_id)
 
 
+def resolve_project_id(base_url: str, api_token: str) -> int:
+    """
+    Resolve an available Label Studio project id.
+    Picks the first available project returned by /api/projects.
+    """
+    url = f"{base_url.rstrip('/')}/api/projects"
+    headers = _auth_headers(base_url=base_url, api_token=api_token)
+    response = requests.get(url, headers=headers, timeout=30)
+    response.raise_for_status()
+    payload = response.json() or {}
+    projects = payload.get("results") if isinstance(payload, dict) else payload
+    if not isinstance(projects, list) or not projects:
+        raise RuntimeError("No Label Studio projects are available for export.")
+    first = projects[0]
+    project_id = int(first.get("id") or 0)
+    if project_id <= 0:
+        raise RuntimeError("Unable to resolve a valid Label Studio project id from /api/projects.")
+    return project_id
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
@@ -120,12 +150,32 @@ def main() -> int:
             "(or LABEL_STUDIO_API_TOKEN)."
         )
 
-    tasks = export_tasks(
-        base_url=base_url,
-        api_token=api_token,
-        project_id=project_id,
-        no_sdk=args.no_sdk,
-    )
+    try:
+        tasks = export_tasks(
+            base_url=base_url,
+            api_token=api_token,
+            project_id=project_id,
+            no_sdk=args.no_sdk,
+        )
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else None
+        if status != 404:
+            raise
+        print(
+            f"Configured LABEL_STUDIO_PROJECT_ID={project_id} was not found (404). "
+            "Trying automatic project discovery..."
+        )
+        resolved_id = resolve_project_id(base_url=base_url, api_token=api_token)
+        print(
+            f"Resolved Label Studio project id to {resolved_id}. "
+            f"Update LABEL_STUDIO_PROJECT_ID to this value to avoid future lookups."
+        )
+        tasks = export_tasks(
+            base_url=base_url,
+            api_token=api_token,
+            project_id=resolved_id,
+            no_sdk=True,
+        )
     with open(args.output, "w", encoding="utf-8") as f:
         json.dump(tasks, f, ensure_ascii=False, indent=2)
     print(f"Saved {len(tasks)} tasks to {args.output}")

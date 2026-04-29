@@ -5,6 +5,8 @@ from uuid import UUID
 from app.db.session import get_db
 from app.db.repositories.documents import get_document, reset_processing_state
 from app.workers.processor import enqueue_processing
+from app.services.rbac.permission_checker import require_permission
+from app.services.rbac.policy import Permissions
 
 router = APIRouter(prefix="/processing", tags=["processing"])
 
@@ -40,6 +42,7 @@ def process_document(
 def reprocess_document(
     document_id: UUID,
     db: Session = Depends(get_db),
+    _=Depends(require_permission(Permissions.DOCUMENT_UPDATE)),
 ):
     """Force reprocessing (new OCR run, same document version).
 

@@ -1,4 +1,17 @@
 services:
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - ui
+    restart: unless-stopped
+
   minio:
     image: quay.io/minio/minio:latest
     environment:
@@ -40,7 +53,7 @@ services:
       APP_ENV: development
       DATABASE_URL: postgresql+psycopg://dms_user:psqladminpass@db:5432/dms
       MINIO_ENDPOINT: minio:9000
-      CORS_ALLOW_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173"
+      CORS_ALLOW_ORIGINS: "http://localhost,http://127.0.0.1,http://localhost:5173,http://127.0.0.1:5173"
     ports:
       - "8008:8008"
     depends_on:
@@ -97,10 +110,13 @@ services:
     command: npm run dev -- --host 0.0.0.0 --port 5173
     restart: unless-stopped
     environment:
-      - VITE_API_BASE_URL=http://localhost:8008 # correct var name, localhost for browser access
+      - VITE_API_BASE_URL=/api
+      - VITE_DEV_API_PROXY_TARGET=http://web:8008
     depends_on:
       - web
 
 volumes:
   minio_data:
   labelstudio_data:
+  caddy_data:
+  caddy_config:

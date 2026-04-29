@@ -23,6 +23,8 @@ export type User = {
   username: string;
   email: string;
   is_active: boolean;
+  auth_provider: string;
+  oidc_subject: string | null;
   roles: Role[];
 };
 

@@ -37,6 +37,7 @@ interface DocumentCardProps {
   onDelete?: (doc: Document) => void;
   onEditWorkflow?: (doc: Document) => void;
   onEditTags?: (doc: Document) => void;
+  onReprocess?: (doc: Document) => void;
   darkMode?: boolean;
 }
 
@@ -74,6 +75,7 @@ export function DocumentCard({
   onDelete,
   onEditWorkflow,
   onEditTags,
+  onReprocess,
   darkMode,
 }: DocumentCardProps) {
   const FileIcon = getFileIcon(document.type);
@@ -117,6 +119,7 @@ export function DocumentCard({
             {onDelete && <DropdownMenuItem onClick={() => onDelete(document)}>Delete</DropdownMenuItem>}
             {onEditWorkflow && <DropdownMenuItem onClick={() => onEditWorkflow(document)}>Edit Workflow</DropdownMenuItem>}
             {onEditTags && <DropdownMenuItem onClick={() => onEditTags(document)}>Edit Tags</DropdownMenuItem>}
+            {onReprocess && <DropdownMenuItem onClick={() => onReprocess(document)}>Reprocess with AI</DropdownMenuItem>}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

@@ -4,16 +4,13 @@ import App from "../app/App";
 
 /**
  * AuthGate
- * - Holds token in memory only
- * - Reload clears auth automatically
+ * - Initializes from sessionStorage for persisted login state
  */
 export default function AuthGate() {
-  const [token, setToken] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(sessionStorage.getItem("access_token"));
 
   useEffect(() => {
-    sessionStorage.removeItem("access_token");
-    sessionStorage.removeItem("user");
-    setToken(null);
+    setToken(sessionStorage.getItem("access_token"));
   }, []);
 
   if (!token) {

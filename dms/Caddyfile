@@ -1,0 +1,17 @@
+{
+    auto_https off
+}
+
+:80 {
+    encode gzip
+
+    @api path /api/*
+    handle @api {
+        uri strip_prefix /api
+        reverse_proxy web:8008
+    }
+
+    handle {
+        reverse_proxy ui:5173
+    }
+}

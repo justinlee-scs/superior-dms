@@ -258,6 +258,36 @@ Rollback one revision:
 
 ## 15. Optional Integrations (Disabled by Default)
 
+## 16. Caddy Reverse Proxy (Docker Compose)
+
+This repo now includes a `caddy` service and [`Caddyfile`](/home/justinlee/.LINUXPRACTICE/dms/Caddyfile):
+- `http://localhost/` proxies to the UI (`ui:5173`)
+- `http://localhost/api/*` proxies to the API (`web:8008`) and strips `/api`
+
+Start services:
+
+```bash
+docker compose up -d
+```
+
+## 17. Google OIDC Login
+
+Set these variables in `.env`:
+- `GOOGLE_OIDC_ENABLED=true`
+- `GOOGLE_OIDC_CLIENT_ID=<google-web-client-id>`
+- `GOOGLE_OIDC_CLIENT_SECRET=<google-web-client-secret>`
+- `GOOGLE_OIDC_REDIRECT_URI=http://localhost/api/auth/oidc/google/callback`
+- `GOOGLE_OIDC_HOSTED_DOMAIN=<your-company-domain>` (optional but recommended)
+
+Flow endpoints:
+- `GET /api/auth/oidc/google/login` -> returns Google authorization URL
+- `GET /api/auth/oidc/google/callback` -> exchanges code, creates/links user, returns app JWT
+
+RBAC behavior:
+- Google user is mapped to local `users` row via `oidc_subject` (`sub` claim)
+- Existing role/permission tables remain unchanged
+- New OIDC users get default `unassigned` role if present
+
 The repository now includes scaffold code for:
 - S3/MinIO object storage backend (`app/storage/backends.py`)
 - OpenCV preprocessing (`app/services/extraction/opencv_preprocess.py`)

@@ -14,12 +14,16 @@ class UserResponse(BaseModel):
         email (type=str): User email address used for login and contact.
         is_active (type=bool): Whether the user account or entity is active.
         roles (type=list[RoleResponse]): Roles assigned to the user.
+        auth_provider (type=str): Authentication source for this user (e.g., local, google).
+        oidc_subject (type=str | None): OIDC subject claim linked to this account, when present.
     """
     id: UUID
     username: str
     email: str
     is_active: bool
     roles: list[RoleResponse]
+    auth_provider: str
+    oidc_subject: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -32,6 +32,7 @@ interface CompactProjectViewProps {
   onDelete: (doc: Document) => void;
   onEditWorkflow: (doc: Document) => void;
   onEditTags?: (doc: Document) => void;
+  onReprocess?: (doc: Document) => void;
   onOpenVersions?: (doc: Document) => void;
   darkMode?: boolean;
 }
@@ -96,6 +97,7 @@ export function CompactProjectView({
   onDelete,
   onEditWorkflow,
   onEditTags,
+  onReprocess,
   onOpenVersions,
   darkMode,
 }: CompactProjectViewProps) {
@@ -379,6 +381,11 @@ export function CompactProjectView({
                                     onClick={() => onEditTags?.(doc)}
                                   >
                                     Edit Tags
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => onReprocess?.(doc)}
+                                  >
+                                    Reprocess with AI
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>

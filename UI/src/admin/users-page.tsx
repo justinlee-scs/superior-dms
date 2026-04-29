@@ -22,6 +22,7 @@ import {
 } from "@/lib/rbac";
 
 type AdminUserTab = "roles" | "permissions";
+type AccountFilter = "all" | "google" | "local";
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
@@ -37,11 +38,18 @@ export default function UsersPage() {
   const [newUsername, setNewUsername] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [accountFilter, setAccountFilter] = useState<AccountFilter>("all");
 
   const selectedUser = useMemo(
     () => users.find((user) => user.id === selectedUserId) ?? null,
     [users, selectedUserId],
   );
+
+  const filteredUsers = useMemo(() => {
+    if (accountFilter === "all") return users;
+    if (accountFilter === "google") return users.filter((user) => !!user.oidc_subject);
+    return users.filter((user) => !user.oidc_subject);
+  }, [accountFilter, users]);
 
   const loadBase = async () => {
     const [usersData, rolesData, permissionsData] = await Promise.all([
@@ -77,6 +85,17 @@ export default function UsersPage() {
     if (!selectedUser) return;
     loadUserDetail(selectedUser).catch(() => toast.error("Failed to load user details"));
   }, [selectedUser]);
+
+  useEffect(() => {
+    if (filteredUsers.length === 0) {
+      setSelectedUserId(null);
+      return;
+    }
+    const stillVisible = filteredUsers.some((user) => user.id === selectedUserId);
+    if (!stillVisible) {
+      setSelectedUserId(filteredUsers[0].id);
+    }
+  }, [filteredUsers, selectedUserId]);
 
   const onCreateUser = async () => {
     if (!newUsername.trim() || !newEmail.trim() || !newPassword.trim()) {
@@ -194,8 +213,34 @@ export default function UsersPage() {
     <div className="mt-6 grid gap-6 lg:grid-cols-[300px_1fr]">
       <div className="space-y-4 rounded border p-4">
         <div className="text-sm font-semibold">Users</div>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={accountFilter === "all" ? "default" : "outline"}
+            onClick={() => setAccountFilter("all")}
+          >
+            All
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={accountFilter === "google" ? "default" : "outline"}
+            onClick={() => setAccountFilter("google")}
+          >
+            Google
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={accountFilter === "local" ? "default" : "outline"}
+            onClick={() => setAccountFilter("local")}
+          >
+            Local
+          </Button>
+        </div>
         <div className="space-y-2 max-h-72 overflow-auto">
-          {users.map((user) => (
+          {filteredUsers.map((user) => (
             <button
               key={user.id}
               type="button"
@@ -204,10 +249,24 @@ export default function UsersPage() {
                 user.id === selectedUserId ? "border-blue-600 bg-blue-50" : "hover:bg-gray-50"
               }`}
             >
-              <div className="font-medium">{user.username}</div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-medium">{user.username}</div>
+                <span
+                  className={`rounded px-2 py-0.5 text-[11px] font-semibold ${
+                    user.oidc_subject ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-700"
+                  }`}
+                >
+                  {user.oidc_subject ? "Google-linked" : "Local"}
+                </span>
+              </div>
               <div className="text-xs text-gray-500">{user.email}</div>
             </button>
           ))}
+          {filteredUsers.length === 0 && (
+            <div className="rounded border border-dashed px-3 py-4 text-xs text-gray-500">
+              No users match this account filter.
+            </div>
+          )}
         </div>
 
         <div className="space-y-2 border-t pt-4">
@@ -235,6 +294,15 @@ export default function UsersPage() {
           <div className="font-semibold">
             {selectedUser ? `User: ${selectedUser.username}` : "Select a user"}
           </div>
+          {selectedUser && (
+            <span
+              className={`rounded px-2 py-1 text-xs font-semibold ${
+                selectedUser.oidc_subject ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-700"
+              }`}
+            >
+              {selectedUser.oidc_subject ? "Google-linked account" : "Local-only account"}
+            </span>
+          )}
           <div className="flex gap-2">
             <Button
               variant={activeTab === "roles" ? "default" : "outline"}

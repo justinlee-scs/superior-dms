@@ -9,6 +9,7 @@ interface GroupedDocumentsProps {
   onDelete: (doc: Document) => void;
   onEditWorkflow: (doc: Document) => void;
   onEditTags?: (doc: Document) => void;
+  onReprocess?: (doc: Document) => void;
   darkMode?: boolean;
 }
 
@@ -43,6 +44,7 @@ export function GroupedDocuments({
   onDelete,
   onEditWorkflow,
   onEditTags,
+  onReprocess,
   darkMode,
 }: GroupedDocumentsProps) {
   // Group documents by type
@@ -114,6 +116,7 @@ export function GroupedDocuments({
                   onDelete={async () => onDelete(doc)}
                   onEditWorkflow={() => onEditWorkflow(doc)}
                   onEditTags={() => onEditTags?.(doc)}
+                  onReprocess={() => onReprocess?.(doc)}
                   darkMode={darkMode}
                 />
               ))}

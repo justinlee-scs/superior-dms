@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Mail, Lock } from "lucide-react";
 
 import { Button } from "@/app/components/ui/button";
@@ -20,7 +20,21 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const accessToken = params.get("access_token");
+    const tokenType = params.get("token_type");
+    if (!accessToken || (tokenType && tokenType.toLowerCase() !== "bearer")) {
+      return;
+    }
+
+    sessionStorage.setItem("access_token", accessToken);
+    window.history.replaceState({}, document.title, window.location.pathname);
+    onSuccess(accessToken);
+  }, [onSuccess]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -61,6 +75,29 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
       setError(err.message ?? "Unexpected error");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleGoogleSignIn() {
+    setGoogleLoading(true);
+    setError(null);
+    try {
+      const postLoginRedirect = `${window.location.origin}/`;
+      const res = await fetch(
+        `${API_BASE_URL}/auth/oidc/google/login?post_login_redirect=${encodeURIComponent(postLoginRedirect)}`,
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.detail ?? "Failed to start Google login");
+      }
+      const data = await res.json();
+      if (!data?.authorization_url) {
+        throw new Error("Missing Google authorization URL");
+      }
+      window.location.assign(data.authorization_url);
+    } catch (err: any) {
+      setError(err.message ?? "Unexpected error");
+      setGoogleLoading(false);
     }
   }
 
@@ -105,6 +142,15 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
 
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Signing in…" : "Sign in"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              disabled={googleLoading}
+              onClick={handleGoogleSignIn}
+            >
+              {googleLoading ? "Redirecting to Google…" : "Continue with Google"}
             </Button>
           </form>
         </CardContent>

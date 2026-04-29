@@ -210,3 +210,9 @@ export function updateRetrainSchedule(payload: {
     body: JSON.stringify(payload),
   });
 }
+
+export function reprocessDocument(documentId: string) {
+  return apiFetch<{ document_id: string; status: string }>(`/processing/documents/${documentId}/reprocess`, {
+    method: "POST",
+  });
+}
