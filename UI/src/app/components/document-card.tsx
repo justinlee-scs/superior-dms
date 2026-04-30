@@ -119,7 +119,7 @@ export function DocumentCard({
             {onDelete && <DropdownMenuItem onClick={() => onDelete(document)}>Delete</DropdownMenuItem>}
             {onEditWorkflow && <DropdownMenuItem onClick={() => onEditWorkflow(document)}>Edit Workflow</DropdownMenuItem>}
             {onEditTags && <DropdownMenuItem onClick={() => onEditTags(document)}>Edit Tags</DropdownMenuItem>}
-            {onReprocess && <DropdownMenuItem onClick={() => onReprocess(document)}>Reprocess with AI</DropdownMenuItem>}
+            {onReprocess && <DropdownMenuItem onClick={() => onReprocess(document)}>Reprocess</DropdownMenuItem>}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

@@ -7,6 +7,7 @@ interface BulkActionBarProps {
   darkMode?: boolean;
   count: number;
   onDownload: () => void;
+  onReprocess: () => void;
   onDelete: () => void;
   onClear: () => void;
 }
@@ -14,6 +15,7 @@ interface BulkActionBarProps {
 export function BulkActionBar({
   count,
   onDownload,
+  onReprocess,
   onDelete,
   onClear,
   darkMode,
@@ -28,6 +30,9 @@ export function BulkActionBar({
       <span className="text-sm font-medium">{count} selected</span>
       <Button size="sm" onClick={onDownload}>
         Download
+      </Button>
+      <Button size="sm" variant="outline" onClick={onReprocess}>
+        Reprocess
       </Button>
       {/* <Button size="sm" variant="destructive" onClick={onDelete}>
         Delete

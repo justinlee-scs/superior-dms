@@ -385,7 +385,7 @@ export function CompactProjectView({
                                   <DropdownMenuItem
                                     onClick={() => onReprocess?.(doc)}
                                   >
-                                    Reprocess with AI
+                                    Reprocess
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>

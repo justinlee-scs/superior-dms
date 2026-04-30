@@ -524,6 +524,30 @@ function AppInner() {
     }
   };
 
+  const handleBulkReprocess = async () => {
+    const selectedDocs = Array.from(selection.selected.values());
+    if (!selectedDocs.length) return;
+
+    const results = await Promise.allSettled(
+      selectedDocs.map((doc) => reprocessDocument(doc.id)),
+    );
+    const successCount = results.filter((result) => result.status === "fulfilled").length;
+    const failureCount = results.length - successCount;
+
+    if (successCount > 0 && failureCount === 0) {
+      toast.success(`Reprocessing started for ${successCount} document(s)`);
+    } else if (successCount > 0) {
+      toast.error(
+        `Reprocessing started for ${successCount} document(s), failed for ${failureCount}`,
+      );
+    } else {
+      toast.error("Failed to start reprocessing for selected documents");
+    }
+
+    await refreshDocuments();
+    await refreshTagPool();
+  };
+
   const handleEditWorkflow = (doc: Document) => {
     setSelectedDocument(doc);
     setWorkflowEditorOpen(true);
@@ -658,6 +682,9 @@ function AppInner() {
                     darkMode={darkMode}
                     onDownload={() => {
                       void handleBulkDownload();
+                    }}
+                    onReprocess={() => {
+                      void handleBulkReprocess();
                     }}
                     onDelete={async () => {
                       for (const doc of selection.selected.values()) {
