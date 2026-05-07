@@ -32,6 +32,7 @@ from app.db.repositories.documents import (
     remove_document_version_tags,
     replace_document_version_tags,
     update_document_type,
+    update_document_workflow,
     get_document_version,
     get_document_version_by_id,
     list_document_versions,
@@ -47,6 +48,8 @@ from app.schemas.documents import (
     DocumentResponse,
     DocumentTypeUpdate,
     DuePaymentItem,
+    WorkflowUpdateRequest,
+    WorkflowUpdateResponse,
 )
 from app.schemas.document_versions import (
     DocumentVersionResponse,
@@ -55,12 +58,15 @@ from app.schemas.document_versions import (
 )
 from app.schemas.tags import (
     DocumentVersionTagsResponse,
+    ProjectMoveRequest,
+    ProjectMoveResponse,
     TagPoolCreateRequest,
     TagPoolCreateResponse,
     TagPoolResponse,
     TagUpdateRequest,
 )
 from app.processing.pipeline import process_document
+from app.services.extraction.tags import normalize_tag
 from app.services.extraction.office import OFFICE_EXTENSIONS, is_valid_office_file
 from app.storage.backends import build_object_storage_from_env
 from app.services.training_feedback import capture_feedback_event
@@ -245,6 +251,7 @@ async def upload_document(
         due_date=version.due_date,
         size_bytes=version.storage_size_bytes,
         page_count=version.page_count,
+        workflow_notes=version.workflow_notes,
     )
 
 
@@ -278,8 +285,9 @@ def get_documents(
             due_date=due_date,
             size_bytes=size_bytes,
             page_count=page_count,
+            workflow_notes=workflow_notes,
         )
-        for doc, processing_status, CLASSIFICATION, confidence, tags, due_date, page_count, size_bytes, uploader_username, version_count, current_version_number in rows
+        for doc, processing_status, CLASSIFICATION, confidence, tags, due_date, page_count, size_bytes, workflow_notes, uploader_username, version_count, current_version_number in rows
     ]
 
 
@@ -437,6 +445,7 @@ def get_document(
         due_date=current_version.due_date if current_version else None,
         size_bytes=current_version.storage_size_bytes if current_version else None,
         page_count=current_version.page_count if current_version else None,
+        workflow_notes=current_version.workflow_notes if current_version else None,
     )
 
 
@@ -512,6 +521,30 @@ def set_document_type(
         due_date=current_version.due_date if current_version else None,
         size_bytes=current_version.storage_size_bytes if current_version else None,
         page_count=current_version.page_count if current_version else None,
+        workflow_notes=current_version.workflow_notes if current_version else None,
+    )
+
+
+@router.patch("/{document_id}/workflow", response_model=WorkflowUpdateResponse)
+def set_document_workflow(
+    document_id: UUID,
+    payload: WorkflowUpdateRequest,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permissions.WORKFLOW_ASSIGN)),
+):
+    version = update_document_workflow(
+        db=db,
+        document_id=document_id,
+        status=payload.status,
+        notes=payload.notes,
+    )
+    if not version:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return WorkflowUpdateResponse(
+        document_id=document_id,
+        version_id=version.id,
+        status=version.processing_status,
+        notes=version.workflow_notes,
     )
 
 
@@ -1046,5 +1079,51 @@ def remove_tags_from_document_version(
     return DocumentVersionTagsResponse(
         document_id=document_id,
         version_id=version_id,
+        tags=tags,
+    )
+
+
+@router.patch(
+    "/{document_id}/project",
+    response_model=ProjectMoveResponse,
+)
+def move_document_project(
+    document_id: UUID,
+    payload: ProjectMoveRequest,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permissions.DOCUMENT_PROJECT_MOVE)),
+):
+    document = get_document_by_id(db=db, document_id=document_id)
+    if not document or not document.current_version_id:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    version = get_document_version_by_id(db=db, version_id=document.current_version_id)
+    if not version:
+        raise HTTPException(status_code=404, detail="Document version not found")
+
+    project_name = payload.project_name.strip()
+    if not project_name:
+        raise HTTPException(status_code=400, detail="project_name is required")
+
+    normalized = normalize_tag(project_name)
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Invalid project_name")
+
+    project_tag = normalized if normalized.startswith("project:") else f"project:{normalized}"
+
+    existing_tags = list(version.tags or [])
+    next_tags = [tag for tag in existing_tags if not tag.startswith("project:")]
+    next_tags.append(project_tag)
+
+    tags = replace_document_version_tags(db=db, version=version, tags=next_tags)
+    try:
+        create_tag_pool_entry(db=db, tag=project_tag)
+    except ValueError:
+        pass
+
+    return ProjectMoveResponse(
+        document_id=document_id,
+        version_id=version.id,
+        project_tag=project_tag,
         tags=tags,
     )

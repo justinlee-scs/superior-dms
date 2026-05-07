@@ -33,6 +33,25 @@ export type DuePaymentItem = {
   due_date: string;
 };
 
+export type WorkspaceUpdateResponse = {
+  id: string;
+  in_workspace: boolean;
+};
+
+export type ProjectMoveResponse = {
+  document_id: string;
+  version_id: string;
+  project_tag: string;
+  tags: string[];
+};
+
+export type WorkflowUpdateResponse = {
+  document_id: string;
+  version_id: string;
+  status: "failed" | "pending" | "uploaded" | "needs review";
+  notes: string | null;
+};
+
 export type RetrainSchedule = {
   enabled: boolean;
   timezone: string;
@@ -136,6 +155,21 @@ export function replaceDocumentVersionTags(
   );
 }
 
+export function updateDocumentVersionDueDate(
+  documentId: string,
+  versionId: string,
+  dueDate: string | null,
+) {
+  return apiFetch<{ due_date: string | null; tags: string[] }>(
+    `/documents/${documentId}/versions/${versionId}/due-date`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ due_date: dueDate }),
+    },
+  );
+}
+
 export async function uploadDocument(file: File) {
   const form = new FormData();
   form.append("file", file);
@@ -214,5 +248,32 @@ export function updateRetrainSchedule(payload: {
 export function reprocessDocument(documentId: string) {
   return apiFetch<{ document_id: string; status: string }>(`/processing/documents/${documentId}/reprocess`, {
     method: "POST",
+  });
+}
+
+export function updateDocumentWorkspace(
+  documentId: string,
+  inWorkspace: boolean,
+) {
+  return apiFetch<WorkspaceUpdateResponse>(`/documents/${documentId}/workspace`, {
+    method: "PUT",
+    body: JSON.stringify({ in_workspace: inWorkspace }),
+  });
+}
+
+export function moveDocumentProject(documentId: string, projectName: string) {
+  return apiFetch<ProjectMoveResponse>(`/documents/${documentId}/project`, {
+    method: "PATCH",
+    body: JSON.stringify({ project_name: projectName }),
+  });
+}
+
+export function updateDocumentWorkflow(
+  documentId: string,
+  payload: { status: "failed" | "pending" | "uploaded" | "needs review"; notes: string },
+) {
+  return apiFetch<WorkflowUpdateResponse>(`/documents/${documentId}/workflow`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
   });
 }

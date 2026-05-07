@@ -7,13 +7,16 @@ from app.db.models.permission import Permission
 
 ROLE_PERMISSION_MAP = {
     "admin": "ALL",
-    "unassigned": [],
+    "unassigned": [
+        "user.password_set_self",
+    ],
     "editor": [
         "document.read",
         "document.upload",
         "document.download",
         "document.preview",
         "document.move",
+        "document.project_move",
         "document.update",
         "document_version.read",
         "document_version.create",
@@ -23,6 +26,7 @@ ROLE_PERMISSION_MAP = {
         "tags.read",
         "tags.edit",
         "document.due_payments",
+        "user.password_set_self",
     ],
     "viewer": [
         "document.read",
@@ -32,6 +36,7 @@ ROLE_PERMISSION_MAP = {
         "document_version.preview",
         "document_version.download",
         "document.due_payments",
+        "user.password_set_self",
     ],
 }
 

@@ -249,6 +249,7 @@ def list_documents(db: Session):
             DocumentVersion.due_date,
             DocumentVersion.page_count,
             DocumentVersion.storage_size_bytes,
+            DocumentVersion.workflow_notes,
             User.username,
         )
         .outerjoin(
@@ -288,6 +289,7 @@ def list_documents(db: Session):
             due_date,
             page_count,
             size_bytes,
+            workflow_notes,
             uploader_username,
             len(version_ids_by_document.get(doc.id, [])),
             (
@@ -298,7 +300,7 @@ def list_documents(db: Session):
                 else None
             ),
         )
-        for doc, processing_status, classification, confidence, tags, due_date, page_count, size_bytes, uploader_username in rows
+        for doc, processing_status, classification, confidence, tags, due_date, page_count, size_bytes, workflow_notes, uploader_username in rows
     ]
 
 
@@ -382,6 +384,22 @@ def reset_processing_state(
     version.due_date = None
     version.page_count = None
     version.processing_status = ProcessingStatus.pending
+    db.commit()
+    db.refresh(version)
+    return version
+
+
+def update_document_workflow(
+    db: Session,
+    document_id: UUID,
+    status: ProcessingStatus,
+    notes: str | None,
+) -> DocumentVersion | None:
+    version = get_document_version(db=db, document_id=document_id)
+    if not version:
+        return None
+    version.processing_status = status
+    version.workflow_notes = notes.strip() if notes else None
     db.commit()
     db.refresh(version)
     return version

@@ -1,25 +1,27 @@
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
-  Download,
-  FileText,
-  Image,
-  FileSpreadsheet,
-  File,
   Archive,
+  ArrowUpDown,
+  Bookmark,
+  BookmarkCheck,
   ChevronDown,
   ChevronRight,
-  ArrowUpDown,
+  Download,
+  File,
+  FileSpreadsheet,
+  FileText,
+  Image,
+  MoreVertical,
 } from "lucide-react";
 
-import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
+import { Button } from "@/app/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/app/components/ui/dropdown-menu";
-
 import type { Document } from "@/app/components/document-card";
 import { SelectionCheckbox } from "@/app/components/selection-checkbox";
 import { useSelection } from "@/app/selection/selection-context";
@@ -32,8 +34,10 @@ interface CompactProjectViewProps {
   onDelete: (doc: Document) => void;
   onEditWorkflow: (doc: Document) => void;
   onEditTags?: (doc: Document) => void;
+  onMoveProject?: (doc: Document) => void;
   onReprocess?: (doc: Document) => void;
   onOpenVersions?: (doc: Document) => void;
+  onToggleWorkspace?: (doc: Document) => void;
   darkMode?: boolean;
 }
 
@@ -49,42 +53,22 @@ const getFileIcon = (type: string) => {
 const getWorkflowColor = (workflow: string, darkMode?: boolean) => {
   const base =
     "border text-xs font-medium rounded-md px-2 py-0.5 whitespace-nowrap";
-
   switch (workflow.toLowerCase()) {
     case "failed":
-      return `${base} ${
-        darkMode
-          ? "bg-red-950/50 text-red-300 border-red-700"
-          : "bg-red-100 text-red-800 border-red-300"
-      }`;
+      return `${base} ${darkMode ? "bg-red-950/50 text-red-300 border-red-700" : "bg-red-100 text-red-800 border-red-300"}`;
     case "uploaded":
-      return `${base} ${
-        darkMode
-          ? "bg-sky-900/35 text-sky-300 border-sky-700"
-          : "bg-sky-100 text-sky-800 border-sky-300"
-      }`;
+      return `${base} ${darkMode ? "bg-sky-900/35 text-sky-300 border-sky-700" : "bg-sky-100 text-sky-800 border-sky-300"}`;
     case "approved":
     case "published":
-      return `${base} ${darkMode
-        ? "bg-green-900/30 text-green-300 border-green-800"
-        : "bg-green-100 text-green-800 border-green-200"
-        }`;
+      return `${base} ${darkMode ? "bg-green-900/30 text-green-300 border-green-800" : "bg-green-100 text-green-800 border-green-200"}`;
     case "in review":
+    case "needs review":
     case "pending approval":
-      return `${base} ${darkMode
-        ? "bg-yellow-900/30 text-yellow-300 border-yellow-800"
-        : "bg-yellow-100 text-yellow-800 border-yellow-200"
-        }`;
+      return `${base} ${darkMode ? "bg-yellow-900/30 text-yellow-300 border-yellow-800" : "bg-yellow-100 text-yellow-800 border-yellow-200"}`;
     case "draft":
-      return `${base} ${darkMode
-        ? "bg-gray-800 text-gray-300 border-gray-700"
-        : "bg-gray-100 text-gray-800 border-gray-200"
-        }`;
+      return `${base} ${darkMode ? "bg-gray-800 text-gray-300 border-gray-700" : "bg-gray-100 text-gray-800 border-gray-200"}`;
     default:
-      return `${base} ${darkMode
-        ? "bg-blue-900/30 text-blue-300 border-blue-800"
-        : "bg-blue-100 text-blue-800 border-blue-200"
-        }`;
+      return `${base} ${darkMode ? "bg-blue-900/30 text-blue-300 border-blue-800" : "bg-blue-100 text-blue-800 border-blue-200"}`;
   }
 };
 
@@ -97,12 +81,19 @@ export function CompactProjectView({
   onDelete,
   onEditWorkflow,
   onEditTags,
+  onMoveProject,
   onReprocess,
   onOpenVersions,
+  onToggleWorkspace,
   darkMode,
 }: CompactProjectViewProps) {
+  const formatDate = (value?: string | null) =>
+    value ? new Date(value).toLocaleDateString() : "N/A";
+  const isInvoiceDocument = (doc: Document) =>
+    (doc.documentType ?? "").toLowerCase().includes("invoice");
+
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(
-    new Set()
+    new Set(),
   );
   const [collapsedTypes, setCollapsedTypes] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<Record<string, SortOption>>({});
@@ -114,9 +105,7 @@ export function CompactProjectView({
     documents.forEach((doc) => {
       if (!projects[doc.project]) projects[doc.project] = {};
       const docType = doc.documentType || "Other";
-      if (!projects[doc.project][docType]) {
-        projects[doc.project][docType] = [];
-      }
+      if (!projects[doc.project][docType]) projects[doc.project][docType] = [];
       projects[doc.project][docType].push(doc);
     });
     return projects;
@@ -139,9 +128,7 @@ export function CompactProjectView({
   };
 
   const selectionState = (docs: Document[]) => {
-    const selectedCount = docs.filter((d) =>
-      selection.isSelected(d.id)
-    ).length;
+    const selectedCount = docs.filter((d) => selection.isSelected(d.id)).length;
     return {
       checked: docs.length > 0 && selectedCount === docs.length,
       indeterminate: selectedCount > 0 && selectedCount < docs.length,
@@ -151,7 +138,7 @@ export function CompactProjectView({
   const toggleMany = (docs: Document[]) => {
     const allSelected = docs.every((d) => selection.isSelected(d.id));
     docs.forEach((doc) =>
-      allSelected ? selection.remove(doc) : selection.add(doc)
+      allSelected ? selection.remove(doc) : selection.add(doc),
     );
   };
 
@@ -166,17 +153,19 @@ export function CompactProjectView({
         return (
           <div
             key={project}
-            className={`border rounded-lg overflow-hidden ${darkMode
-              ? "border-gray-800 bg-gray-900"
-              : "border-gray-200 bg-white"
-              }`}
+            className={`border rounded-lg overflow-hidden ${
+              darkMode
+                ? "border-gray-800 bg-gray-900"
+                : "border-gray-200 bg-white"
+            }`}
           >
             {/* Project header */}
             <div
-              className={`px-4 py-3 flex justify-between border-b ${darkMode
-                ? "bg-gray-800 border-gray-700"
-                : "bg-gray-50 border-gray-200"
-                }`}
+              className={`px-4 py-3 flex justify-between border-b ${
+                darkMode
+                  ? "bg-gray-800 border-gray-700"
+                  : "bg-gray-50 border-gray-200"
+              }`}
             >
               <div className="flex items-center gap-3">
                 <SelectionCheckbox
@@ -251,10 +240,11 @@ export function CompactProjectView({
                   <div key={typeKey}>
                     {/* Type header */}
                     <div
-                      className={`flex items-center gap-3 px-8 py-2 text-sm ${darkMode
-                        ? "bg-gray-800 border-gray-700"
-                        : "bg-gray-50 border-gray-200"
-                        }`}
+                      className={`flex items-center gap-3 px-8 py-2 text-sm ${
+                        darkMode
+                          ? "bg-gray-800 border-gray-700"
+                          : "bg-gray-50 border-gray-200"
+                      }`}
                     >
                       <SelectionCheckbox
                         checked={typeSel.checked}
@@ -274,11 +264,7 @@ export function CompactProjectView({
                         }
                         className="flex items-center gap-2"
                       >
-                        {isTypeCollapsed ? (
-                          <ChevronRight />
-                        ) : (
-                          <ChevronDown />
-                        )}
+                        {isTypeCollapsed ? <ChevronRight /> : <ChevronDown />}
                         <span className="font-medium">{docType}</span>
                         <span className="text-xs text-gray-500 dark:text-gray-400">
                           ({sortedDocs.length})
@@ -294,10 +280,11 @@ export function CompactProjectView({
                         return (
                           <div
                             key={doc.id}
-                            className={`flex items-center gap-3 pl-20 pr-4 py-2 border-t group transition-colors ${darkMode
-                              ? "border-gray-800 hover:bg-gray-800/60"
-                              : "border-gray-200 hover:bg-blue-50"
-                              }`}
+                            className={`flex items-center gap-3 pl-20 pr-4 py-2 border-t group transition-colors ${
+                              darkMode
+                                ? "border-gray-800 hover:bg-gray-800/60"
+                                : "border-gray-200 hover:bg-blue-50"
+                            }`}
                           >
                             <SelectionCheckbox
                               checked={checked}
@@ -336,7 +323,7 @@ export function CompactProjectView({
                               <span
                                 className={getWorkflowColor(
                                   doc.workflow,
-                                  darkMode
+                                  darkMode,
                                 )}
                               >
                                 {doc.workflow}
@@ -381,6 +368,11 @@ export function CompactProjectView({
                                     onClick={() => onEditTags?.(doc)}
                                   >
                                     Edit Tags
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => onMoveProject?.(doc)}
+                                  >
+                                    Move Project
                                   </DropdownMenuItem>
                                   <DropdownMenuItem
                                     onClick={() => onReprocess?.(doc)}

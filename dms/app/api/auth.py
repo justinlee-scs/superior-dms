@@ -19,6 +19,7 @@ from app.core.config import settings
 
 from app.auth.deps import get_current_user
 from app.services.rbac.access_resolver import resolve_permissions
+from app.services.rbac.policy import Permissions
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -145,13 +146,22 @@ def update_profile(
         updated = True
 
     if payload.new_password is not None:
-        if not payload.current_password:
-            raise HTTPException(status_code=400, detail="Current password is required")
-        if not verify_password(payload.current_password, user.hashed_password):
-            raise HTTPException(status_code=401, detail="Current password is incorrect")
+        permissions = resolve_permissions(db, user)
+        if Permissions.USER_PASSWORD_SET_SELF not in permissions:
+            raise HTTPException(status_code=403, detail="Permission denied")
         if len(payload.new_password) < 8:
             raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+
+        # Google-first accounts can set a local password without providing a current password.
+        if user.auth_provider != "google":
+            if not payload.current_password:
+                raise HTTPException(status_code=400, detail="Current password is required")
+            if not verify_password(payload.current_password, user.hashed_password):
+                raise HTTPException(status_code=401, detail="Current password is incorrect")
+
         user.hashed_password = hash_password(payload.new_password)
+        if user.auth_provider == "google":
+            user.auth_provider = "local"
         updated = True
 
     if not updated:

@@ -86,6 +86,7 @@ class DocumentVersion(Base):
     )
 
     layout_json = Column(sa.JSON, nullable=True)
+    workflow_notes = Column(sa.Text, nullable=True)
 
     # THIS relationship uses document_id
     document = relationship(

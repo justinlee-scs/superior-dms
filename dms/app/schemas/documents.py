@@ -3,6 +3,7 @@ from enum import Enum
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+from app.db.models.enums import ProcessingStatus
 
 
 class DocumentResponse(BaseModel):
@@ -35,6 +36,7 @@ class DocumentResponse(BaseModel):
     due_date: date | None = None
     size_bytes: int | None = None
     page_count: int | None = None
+    workflow_notes: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -112,3 +114,15 @@ class DuePaymentItem(BaseModel):
     version_id: UUID
     filename: str
     due_date: date
+
+
+class WorkflowUpdateRequest(BaseModel):
+    status: ProcessingStatus
+    notes: str | None = None
+
+
+class WorkflowUpdateResponse(BaseModel):
+    document_id: UUID
+    version_id: UUID
+    status: ProcessingStatus
+    notes: str | None = None

@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 _PROCESSOR = None
 _MODEL = None
 _ID2LABEL = None
+_MODEL_LOAD_FAILED_REASON = None
 
 
 def clear_lilt_cache() -> None:
@@ -58,26 +59,34 @@ def _hf_auth_kwargs() -> dict[str, str]:
 
 
 def _load_model():
-    global _PROCESSOR, _MODEL, _ID2LABEL
+    global _PROCESSOR, _MODEL, _ID2LABEL, _MODEL_LOAD_FAILED_REASON
+
+    if _MODEL_LOAD_FAILED_REASON:
+        raise RuntimeError(_MODEL_LOAD_FAILED_REASON)
 
     if _PROCESSOR is None or _MODEL is None:
         model_name = _get_model_name()
         auth_kwargs = _hf_auth_kwargs()
-        _PROCESSOR = LayoutLMv3Processor.from_pretrained(
-            model_name,
-            apply_ocr=True,
-            **auth_kwargs,
-        )
+        try:
+            _PROCESSOR = LayoutLMv3Processor.from_pretrained(
+                model_name,
+                apply_ocr=True,
+                **auth_kwargs,
+            )
 
-        _MODEL = LayoutLMv3ForTokenClassification.from_pretrained(
-            model_name,
-            **auth_kwargs,
-        )
-        _MODEL.to(DEVICE)
-        _MODEL.eval()
+            _MODEL = LayoutLMv3ForTokenClassification.from_pretrained(
+                model_name,
+                **auth_kwargs,
+            )
+            _MODEL.to(DEVICE)
+            _MODEL.eval()
 
-        _ID2LABEL = _MODEL.config.id2label
-        logger.info("LiLT model loaded model=%s device=%s", model_name, DEVICE)
+            _ID2LABEL = _MODEL.config.id2label
+            logger.info("LiLT model loaded model=%s device=%s", model_name, DEVICE)
+        except Exception as exc:
+            _MODEL_LOAD_FAILED_REASON = f"LiLT unavailable for {model_name}: {exc}"
+            logger.error(_MODEL_LOAD_FAILED_REASON)
+            raise RuntimeError(_MODEL_LOAD_FAILED_REASON) from exc
 
     return _PROCESSOR, _MODEL, _ID2LABEL
 

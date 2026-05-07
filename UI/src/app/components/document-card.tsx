@@ -28,6 +28,8 @@ export interface Document {
   versionCount?: number;
   dueDate?: string | null;
   pageCount?: number | null;
+  inWorkspace?: boolean;
+  workflowNotes?: string | null;
 }
 
 interface DocumentCardProps {
@@ -37,6 +39,7 @@ interface DocumentCardProps {
   onDelete?: (doc: Document) => void;
   onEditWorkflow?: (doc: Document) => void;
   onEditTags?: (doc: Document) => void;
+  onMoveProject?: (doc: Document) => void;
   onReprocess?: (doc: Document) => void;
   darkMode?: boolean;
 }
@@ -59,6 +62,7 @@ const getWorkflowColor = (workflow: string) => {
     case "published":
       return "bg-green-100 text-green-800 border-green-200";
     case "in review":
+    case "needs review":
     case "pending approval":
       return "bg-yellow-100 text-yellow-800 border-yellow-200";
     case "draft":
@@ -75,6 +79,7 @@ export function DocumentCard({
   onDelete,
   onEditWorkflow,
   onEditTags,
+  onMoveProject,
   onReprocess,
   darkMode,
 }: DocumentCardProps) {
@@ -119,6 +124,7 @@ export function DocumentCard({
             {onDelete && <DropdownMenuItem onClick={() => onDelete(document)}>Delete</DropdownMenuItem>}
             {onEditWorkflow && <DropdownMenuItem onClick={() => onEditWorkflow(document)}>Edit Workflow</DropdownMenuItem>}
             {onEditTags && <DropdownMenuItem onClick={() => onEditTags(document)}>Edit Tags</DropdownMenuItem>}
+            {onMoveProject && <DropdownMenuItem onClick={() => onMoveProject(document)}>Move Project</DropdownMenuItem>}
             {onReprocess && <DropdownMenuItem onClick={() => onReprocess(document)}>Reprocess</DropdownMenuItem>}
           </DropdownMenuContent>
         </DropdownMenu>

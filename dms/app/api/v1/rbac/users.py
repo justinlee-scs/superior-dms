@@ -31,6 +31,7 @@ from app.schemas.user import (
     UserCreate,
     UserRoleSet,
     UserOverrideSet,
+    UserPasswordSet,
 )
 from app.schemas.role import RoleResponse
 
@@ -419,3 +420,25 @@ def reset_permissions_to_default(user_id: UUID, db: Session = Depends(get_db)):
     clear_permission_overrides(db, user)
     defaults = sorted(get_role_permissions(db, user))
     return {"status": "ok", "permissions": defaults}
+
+
+@router.post("/{user_id}/password")
+def set_user_password(
+    user_id: UUID,
+    payload: UserPasswordSet,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permissions.USER_PASSWORD_CHANGE_OTHER)),
+):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    new_password = payload.new_password.strip()
+    if len(new_password) < 8:
+        raise HTTPException(400, "New password must be at least 8 characters")
+
+    user.hashed_password = hash_password(new_password)
+    if user.auth_provider == "google":
+        user.auth_provider = "local"
+    db.commit()
+    return {"status": "ok"}

@@ -19,7 +19,7 @@ interface TagEditorDialogProps {
   document: Document | null;
   availableTags: string[];
   onOpenChange: (open: boolean) => void;
-  onSave: (tags: string[]) => Promise<void> | void;
+  onSave: (payload: { tags: string[]; dueDate: string | null }) => Promise<void> | void;
 }
 
 export function TagEditorDialog({
@@ -32,12 +32,15 @@ export function TagEditorDialog({
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState("");
   const [searchTag, setSearchTag] = useState("");
+  const [dueDate, setDueDate] = useState<string>("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setSelectedTags(document?.tags ?? []);
     setNewTag("");
     setSearchTag("");
+    setDueDate(document?.dueDate ?? "");
   }, [open, document]);
 
   const visiblePool = useMemo(() => {
@@ -63,13 +66,22 @@ export function TagEditorDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Edit Tags</DialogTitle>
+          <DialogTitle>Document Details</DialogTitle>
           <DialogDescription>
-            {document ? `Set tags for ${document.name}` : "Set tags"}
+            {document ? `Update tags and due date for ${document.name}` : "Update details"}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Due date</p>
+            <Input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+            />
+          </div>
+
           <div className="space-y-2">
             <p className="text-sm font-medium">Find tags</p>
             <Input
@@ -131,12 +143,18 @@ export function TagEditorDialog({
             Cancel
           </Button>
           <Button
+            disabled={saving}
             onClick={async () => {
-              await onSave(selectedTags);
-              onOpenChange(false);
+              setSaving(true);
+              try {
+                await onSave({ tags: selectedTags, dueDate: dueDate || null });
+              } finally {
+                setSaving(false);
+                onOpenChange(false);
+              }
             }}
           >
-            Save Tags
+            {saving ? "Saving..." : "Save Details"}
           </Button>
         </DialogFooter>
       </DialogContent>

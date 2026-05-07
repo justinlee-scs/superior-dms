@@ -28,6 +28,7 @@ class Permissions:
     DOCUMENT_DOWNLOAD = "document.download"
     DOCUMENT_PREVIEW = "document.preview"
     DOCUMENT_MOVE = "document.move"
+    DOCUMENT_PROJECT_MOVE = "document.project_move"
     DOCUMENT_UPDATE = "document.update"
     DOCUMENT_VERSION_READ = "document_version.read"
     DOCUMENT_VERSION_CREATE = "document_version.create"
@@ -37,6 +38,8 @@ class Permissions:
     DOCUMENT_TAG_READ = "tags.read"
     DOCUMENT_TAG_EDIT = "tags.edit"
     DOCUMENT_DUE_PAYMENTS = "document.due_payments"
+    USER_PASSWORD_SET_SELF = "user.password_set_self"
+    USER_PASSWORD_CHANGE_OTHER = "user.password_change_other"
 
     WORKFLOW_ASSIGN = "workflow.assign"
     WORKFLOW_ADVANCE = "workflow.advance"

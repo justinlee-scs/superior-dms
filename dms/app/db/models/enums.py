@@ -44,4 +44,5 @@ class ProcessingStatus(str, enum.Enum):
     pending = "pending"
     processing = "processing"
     uploaded = "uploaded"
+    needs_review = "needs review"
     failed = "failed"

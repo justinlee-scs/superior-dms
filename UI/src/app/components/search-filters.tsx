@@ -44,6 +44,7 @@ export function SearchFilters({
 }: SearchFiltersProps) {
   const [tagSearchText, setTagSearchText] = useState("");
   const [newTagText, setNewTagText] = useState("");
+  const [authorSearchText, setAuthorSearchText] = useState("");
 
   const updateFilter = (key: keyof FilterState, value: any) => {
     onFiltersChange({ ...filters, [key]: value });
@@ -54,6 +55,12 @@ export function SearchFilters({
     const q = tagSearchText.trim().toLowerCase();
     return availableTags.filter((tag) => tag.toLowerCase().includes(q));
   }, [availableTags, tagSearchText]);
+
+  const filteredAvailableAuthors = useMemo(() => {
+    if (!authorSearchText.trim()) return availableAuthors;
+    const q = authorSearchText.trim().toLowerCase();
+    return availableAuthors.filter((author) => author.toLowerCase().includes(q));
+  }, [availableAuthors, authorSearchText]);
 
   const toggleTag = (tag: string) => {
     const newTags = filters.selectedTags.includes(tag)
@@ -125,28 +132,6 @@ export function SearchFilters({
           <Tag className="w-4 h-4" />
           Tags
         </Label>
-        <div className="flex flex-wrap gap-2">
-          {filteredAvailableTags.map((tag) => {
-            const isSelected = filters.selectedTags.includes(tag);
-            return (
-              <Badge
-                key={tag}
-                variant={isSelected ? "default" : "outline"}
-                className={`cursor-pointer rounded-full px-3 py-1 text-xs ${
-                  isSelected
-                    ? "bg-[#020825] text-white hover:bg-[#1a2248]"
-                    : darkMode
-                      ? "border-gray-600 text-gray-300 hover:bg-gray-700"
-                      : "border-gray-300 text-gray-700 hover:bg-gray-100"
-                }`}
-                onClick={() => toggleTag(tag)}
-              >
-                {tag}
-                {isSelected && <X className="w-3 h-3 ml-1" />}
-              </Badge>
-            );
-          })}
-        </div>
         <Input
           type="text"
           placeholder="Search tags..."
@@ -196,6 +181,28 @@ export function SearchFilters({
             All
           </Button>
         </div>
+        <div className="flex flex-wrap gap-2">
+          {filteredAvailableTags.map((tag) => {
+            const isSelected = filters.selectedTags.includes(tag);
+            return (
+              <Badge
+                key={tag}
+                variant={isSelected ? "default" : "outline"}
+                className={`cursor-pointer rounded-full px-3 py-1 text-xs ${
+                  isSelected
+                    ? "bg-[#020825] text-white hover:bg-[#1a2248]"
+                    : darkMode
+                      ? "border-gray-600 text-gray-300 hover:bg-gray-700"
+                      : "border-gray-300 text-gray-700 hover:bg-gray-100"
+                }`}
+                onClick={() => toggleTag(tag)}
+              >
+                {tag}
+                {isSelected && <X className="w-3 h-3 ml-1" />}
+              </Badge>
+            );
+          })}
+        </div>
       </div>
 
       {/* Filter by Author */}
@@ -204,13 +211,20 @@ export function SearchFilters({
           <User className="w-4 h-4" />
           Author
         </Label>
+        <Input
+          type="text"
+          placeholder="Search authors..."
+          value={authorSearchText}
+          onChange={(e) => setAuthorSearchText(e.target.value)}
+          className={darkMode ? "bg-gray-800 border-gray-700 text-gray-100 placeholder:text-gray-500" : ""}
+        />
         <Select value={filters.author || "all"} onValueChange={(value) => updateFilter("author", value === "all" ? "" : value)}>
           <SelectTrigger id="author" className={darkMode ? "bg-gray-800 border-gray-700 text-gray-100" : ""}>
             <SelectValue placeholder="All authors" />
           </SelectTrigger>
           <SelectContent className={darkMode ? "bg-gray-800 border-gray-700" : ""}>
             <SelectItem value="all">All authors</SelectItem>
-            {availableAuthors.map((author) => (
+            {filteredAvailableAuthors.map((author) => (
               <SelectItem key={author} value={author} className={darkMode ? "text-gray-200 focus:bg-gray-700" : ""}>
                 {author}
               </SelectItem>
@@ -225,14 +239,16 @@ export function SearchFilters({
           <Calendar className="w-4 h-4" />
           Date Range
         </Label>
-        <Select 
-          value={filters.dateRange || "all"} 
+        <Select
+          value={filters.dateRange || "all"}
           onValueChange={(value) => {
-            updateFilter("dateRange", value === "all" ? "" : value);
-            if (value !== "custom") {
-              updateFilter("startDate", undefined);
-              updateFilter("endDate", undefined);
-            }
+            const nextDateRange = value === "all" ? "" : value;
+            onFiltersChange({
+              ...filters,
+              dateRange: nextDateRange,
+              startDate: value === "custom" ? filters.startDate : undefined,
+              endDate: value === "custom" ? filters.endDate : undefined,
+            });
           }}
         >
           <SelectTrigger id="date" className={darkMode ? "bg-gray-800 border-gray-700 text-gray-100" : ""}>

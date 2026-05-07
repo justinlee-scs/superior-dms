@@ -30,7 +30,10 @@ def process_document(
     if not document.current_version_id:
         raise HTTPException(status_code=409, detail="Document has no current version")
 
-    enqueue_processing(str(document.current_version_id))
+    try:
+        enqueue_processing(str(document.current_version_id))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
 
     return {
         "document_id": document_id,
@@ -59,7 +62,10 @@ def reprocess_document(
         raise HTTPException(status_code=409, detail="Document has no current version")
 
     reset_processing_state(db, document.current_version_id)
-    enqueue_processing(str(document.current_version_id))
+    try:
+        enqueue_processing(str(document.current_version_id))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
 
     return {
         "document_id": document_id,

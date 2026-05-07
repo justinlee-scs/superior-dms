@@ -38,6 +38,7 @@ import {
   FileText,
   Upload as UploadIcon,
   Layers,
+  Bookmark,
   AlignJustify,
   Moon,
   Sun,
@@ -56,7 +57,11 @@ import {
   listUpcomingDuePayments,
   reprocessDocument,
   listTagPool,
+  moveDocumentProject,
   replaceDocumentVersionTags,
+  updateDocumentVersionDueDate,
+  updateDocumentWorkflow,
+  updateDocumentWorkspace,
   uploadDocument,
 } from "@/lib/dms";
 import { API_BASE_URL } from "@/lib/api";
@@ -67,8 +72,25 @@ import RolesPage from "@/admin/roles-page";
 /**
  * Maps backend document → UI Document
  */
+function getProjectFromTags(tags: string[] | undefined): string {
+  const projectTag = (tags ?? []).find((tag) =>
+    tag.toLowerCase().startsWith("project:"),
+  );
+  if (!projectTag) return "unassigned";
+
+  const raw = projectTag.slice("project:".length).trim();
+  if (!raw || raw === "unassigned") return "unassigned";
+
+  return raw
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 function mapApiDocument(doc: any): Document {
   const extension = (doc.filename?.split(".").pop() ?? "file").toLowerCase();
+  const tags = doc.tags ?? [];
   return {
     id: doc.id,
     name: doc.filename,
@@ -77,9 +99,9 @@ function mapApiDocument(doc: any): Document {
     sizeBytes: doc.size_bytes ?? null,
     author: doc.author ?? "System",
     date: doc.created_at?.slice(0, 10) ?? "",
-    tags: doc.tags ?? [],
+    tags,
     workflow: doc.status ?? "uploaded",
-    project: doc.project ?? "Default",
+    project: getProjectFromTags(tags),
     documentType: doc.document_type ?? "Document",
     vendor: doc.vendor,
     projectNumber: doc.project_number,
@@ -88,6 +110,8 @@ function mapApiDocument(doc: any): Document {
     versionCount: doc.version_count ?? 1,
     dueDate: doc.due_date ?? null,
     pageCount: doc.page_count ?? null,
+    inWorkspace: Boolean(doc.in_workspace),
+    workflowNotes: doc.workflow_notes ?? null,
   };
 }
 
@@ -115,7 +139,7 @@ function AppInner() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [versionModalDoc, setVersionModalDoc] = useState<Document | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"documents" | "upload" | "admin">(
+  const [activeTab, setActiveTab] = useState<"documents" | "workspace" | "upload" | "admin">(
     "documents",
   );
   const [tagPool, setTagPool] = useState<string[]>([]);
@@ -126,6 +150,7 @@ function AppInner() {
     new Set(),
   );
   const [duePaymentsWindowDays, setDuePaymentsWindowDays] = useState(7);
+  const [liveSyncEnabled, setLiveSyncEnabled] = useState(true);
 
   const handleLogout = () => {
     sessionStorage.removeItem("access_token");
@@ -222,6 +247,33 @@ function AppInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessPermissions, duePaymentsWindowDays]);
 
+  useEffect(() => {
+    if (!liveSyncEnabled) return;
+
+    const intervalId = window.setInterval(() => {
+      refreshDocuments().catch(() => undefined);
+      refreshTagPool().catch(() => undefined);
+      refreshDuePayments().catch(() => undefined);
+    }, 3000);
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        refreshDocuments().catch(() => undefined);
+        refreshTagPool().catch(() => undefined);
+        refreshDuePayments().catch(() => undefined);
+      }
+    };
+
+    window.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [liveSyncEnabled, accessPermissions, duePaymentsWindowDays]);
+
   /**
    * Filters
    */
@@ -253,9 +305,67 @@ function AppInner() {
 
       if (filters.author && doc.author !== filters.author) return false;
 
+      if (filters.dateRange) {
+        const docDate = doc.date ? new Date(`${doc.date}T00:00:00`) : null;
+        if (!docDate || Number.isNaN(docDate.getTime())) return false;
+
+        const today = new Date();
+        const now = new Date(
+          today.getFullYear(),
+          today.getMonth(),
+          today.getDate(),
+        );
+
+        if (filters.dateRange === "today") {
+          if (docDate.getTime() !== now.getTime()) return false;
+        } else if (filters.dateRange === "week") {
+          const weekStart = new Date(now);
+          weekStart.setDate(now.getDate() - now.getDay());
+          if (docDate < weekStart || docDate > now) return false;
+        } else if (filters.dateRange === "month") {
+          if (
+            docDate.getFullYear() !== now.getFullYear() ||
+            docDate.getMonth() !== now.getMonth()
+          ) {
+            return false;
+          }
+        } else if (filters.dateRange === "quarter") {
+          const currentQuarter = Math.floor(now.getMonth() / 3);
+          const docQuarter = Math.floor(docDate.getMonth() / 3);
+          if (
+            docDate.getFullYear() !== now.getFullYear() ||
+            docQuarter !== currentQuarter
+          ) {
+            return false;
+          }
+        } else if (filters.dateRange === "year") {
+          if (docDate.getFullYear() !== now.getFullYear()) return false;
+        } else if (filters.dateRange === "custom") {
+          if (!filters.startDate || !filters.endDate) return false;
+
+          const start = new Date(
+            filters.startDate.getFullYear(),
+            filters.startDate.getMonth(),
+            filters.startDate.getDate(),
+          );
+          const end = new Date(
+            filters.endDate.getFullYear(),
+            filters.endDate.getMonth(),
+            filters.endDate.getDate(),
+          );
+
+          if (docDate < start || docDate > end) return false;
+        }
+      }
+
       return true;
     });
   }, [documents, filters]);
+
+  const workspaceDocuments = useMemo(
+    () => filteredDocuments.filter((doc) => doc.inWorkspace),
+    [filteredDocuments],
+  );
 
   /**
    * Actions
@@ -553,37 +663,126 @@ function AppInner() {
     setWorkflowEditorOpen(true);
   };
 
+  const handleSaveWorkflow = async (
+    documentId: string,
+    workflow: "failed" | "pending" | "uploaded" | "needs review",
+    notes: string,
+  ) => {
+    const response = await updateDocumentWorkflow(documentId, {
+      status: workflow,
+      notes,
+    });
+    setDocuments((prev) =>
+      prev.map((doc) =>
+        doc.id === documentId
+          ? {
+              ...doc,
+              workflow: response.status,
+              workflowNotes: response.notes,
+            }
+          : doc,
+      ),
+    );
+    setSelectedDocument((prev) =>
+      prev && prev.id === documentId
+        ? { ...prev, workflow: response.status, workflowNotes: response.notes }
+        : prev,
+    );
+    toast.success("Workflow updated");
+  };
+
+  const handleWorkspaceToggle = async (doc: Document) => {
+    const next = !doc.inWorkspace;
+    setDocuments((prev) =>
+      prev.map((item) =>
+        item.id === doc.id ? { ...item, inWorkspace: next } : item,
+      ),
+    );
+    try {
+      await updateDocumentWorkspace(doc.id, next);
+    } catch (error) {
+      setDocuments((prev) =>
+        prev.map((item) =>
+          item.id === doc.id ? { ...item, inWorkspace: !next } : item,
+        ),
+      );
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update workspace flag",
+      );
+    }
+  };
+
+  const handleMoveProject = async (doc: Document) => {
+    if (!accessPermissions.has("document.project_move")) {
+      toast.error("You do not have permission to move projects");
+      return;
+    }
+    const nextProject = window.prompt(
+      "Enter project tag name (without project: prefix)",
+      doc.project === "unassigned" ? "" : doc.project,
+    );
+    if (!nextProject || !nextProject.trim()) return;
+
+    try {
+      const response = await moveDocumentProject(doc.id, nextProject.trim());
+      setDocuments((prev) =>
+        prev.map((item) =>
+          item.id === doc.id ? { ...item, tags: response.tags } : item,
+        ),
+      );
+      toast.success(`Moved to project: ${response.project_tag}`);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to move project",
+      );
+    }
+  };
+
   const handleCreateStandaloneTag = async (rawTag: string) => {
     const result = await createTagPool(rawTag);
     setTagPool((prev) => Array.from(new Set([...prev, result.tag])).sort());
     toast.success(`Tag created: ${result.tag}`);
   };
 
-  const handleSaveDocumentTags = async (nextTags: string[]) => {
+  const handleSaveDocumentTags = async (payload: {
+    tags: string[];
+    dueDate: string | null;
+  }) => {
     if (!editingTagsDoc) return;
     if (!editingTagsDoc.currentVersionId) {
       toast.error("Document has no current version to tag");
       return;
     }
-    const createCalls = nextTags.map((tag) =>
+    const createCalls = payload.tags.map((tag) =>
       createTagPool(tag).catch(() => null),
     );
     await Promise.all(createCalls);
     const response = await replaceDocumentVersionTags(
       editingTagsDoc.id,
       editingTagsDoc.currentVersionId,
-      nextTags,
+      payload.tags,
+    );
+    await updateDocumentVersionDueDate(
+      editingTagsDoc.id,
+      editingTagsDoc.currentVersionId,
+      payload.dueDate,
     );
 
     setDocuments((prev) =>
       prev.map((doc) =>
         doc.id === editingTagsDoc.id
-          ? { ...doc, tags: response.tags ?? [] }
+          ? { ...doc, tags: response.tags ?? [], dueDate: payload.dueDate }
           : doc,
       ),
     );
+    if (editingTagsDoc.id === selectedDocument?.id) {
+      setSelectedDocument((prev) =>
+        prev ? { ...prev, tags: response.tags ?? [], dueDate: payload.dueDate } : prev,
+      );
+    }
     await refreshTagPool();
-    toast.success("Document tags updated");
+    await refreshDuePayments();
+    toast.success("Document details updated");
   };
 
   return (
@@ -633,6 +832,12 @@ function AppInner() {
                 >
                   {darkMode ? <Sun /> : <Moon />}
                 </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setLiveSyncEnabled((prev) => !prev)}
+                >
+                  {liveSyncEnabled ? "Live Sync On" : "Live Sync Off"}
+                </Button>
                 <div
                   className={`mx-1 h-5 w-px ${darkMode ? "bg-gray-600" : "bg-gray-300"}`}
                 />
@@ -663,13 +868,17 @@ function AppInner() {
                 <Tabs
                   value={activeTab}
                   onValueChange={(value) =>
-                    setActiveTab(value as "documents" | "upload" | "admin")
+                    setActiveTab(value as "documents" | "workspace" | "upload" | "admin")
                   }
                 >
                   <TabsList>
                     <TabsTrigger value="documents">
                       <FileText className="w-4 h-4 mr-2" />
                       Documents
+                    </TabsTrigger>
+                    <TabsTrigger value="workspace">
+                      <Bookmark className="w-4 h-4 mr-2" />
+                      Workspace
                     </TabsTrigger>
                     <TabsTrigger value="upload">
                       <UploadIcon className="w-4 h-4 mr-2" />
@@ -705,8 +914,14 @@ function AppInner() {
                         onDelete={handleDelete}
                         onEditWorkflow={handleEditWorkflow}
                         onEditTags={(doc) => setEditingTagsDoc(doc)}
+                        onMoveProject={
+                          accessPermissions.has("document.project_move")
+                            ? handleMoveProject
+                            : undefined
+                        }
                         onReprocess={handleReprocess}
                         onOpenVersions={(doc) => setVersionModalDoc(doc)}
+                        onToggleWorkspace={handleWorkspaceToggle}
                         darkMode={darkMode}
                       />
                     ) : viewMode === "grouped" ? (
@@ -717,7 +932,13 @@ function AppInner() {
                         onDelete={handleDelete}
                         onEditWorkflow={handleEditWorkflow}
                         onEditTags={(doc) => setEditingTagsDoc(doc)}
+                        onMoveProject={
+                          accessPermissions.has("document.project_move")
+                            ? handleMoveProject
+                            : undefined
+                        }
                         onReprocess={handleReprocess}
+                        onToggleWorkspace={handleWorkspaceToggle}
                         darkMode={darkMode}
                       />
                     ) : (
@@ -731,10 +952,35 @@ function AppInner() {
                             onDelete={() => handleDelete(doc)}
                             onEditWorkflow={() => handleEditWorkflow(doc)}
                             onEditTags={() => setEditingTagsDoc(doc)}
+                            onMoveProject={
+                              accessPermissions.has("document.project_move")
+                                ? () => handleMoveProject(doc)
+                                : undefined
+                            }
                           />
                         ))}
                       </div>
                     )}
+                  </TabsContent>
+
+                  <TabsContent value="workspace" className="mt-6">
+                    <CompactProjectView
+                      documents={workspaceDocuments}
+                      onPreview={handlePreview}
+                      onDownload={handleDownload}
+                      onDelete={handleDelete}
+                      onEditWorkflow={handleEditWorkflow}
+                      onEditTags={(doc) => setEditingTagsDoc(doc)}
+                      onMoveProject={
+                        accessPermissions.has("document.project_move")
+                          ? handleMoveProject
+                          : undefined
+                      }
+                      onReprocess={handleReprocess}
+                      onOpenVersions={(doc) => setVersionModalDoc(doc)}
+                      onToggleWorkspace={handleWorkspaceToggle}
+                      darkMode={darkMode}
+                    />
                   </TabsContent>
 
                   <TabsContent value="upload" className="mt-6">
@@ -777,7 +1023,7 @@ function AppInner() {
             document={selectedDocument}
             open={workflowEditorOpen}
             onOpenChange={setWorkflowEditorOpen}
-            onSave={() => {}}
+            onSave={handleSaveWorkflow}
           />
 
           <VersionHistoryModal

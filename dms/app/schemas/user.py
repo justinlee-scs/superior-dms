@@ -70,3 +70,7 @@ class UserOverrideSet(BaseModel):
         overrides (type=list[PermissionOverrideInput]): Collection of permission overrides to apply.
     """
     overrides: list[PermissionOverrideInput]
+
+
+class UserPasswordSet(BaseModel):
+    new_password: str
