@@ -31,5 +31,5 @@ dist/
 build/
 # generated datasets & model files (too large for Git)
 output/
-models/
+/output/models/
 *.safetensors
