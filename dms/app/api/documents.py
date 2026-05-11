@@ -33,6 +33,7 @@ from app.db.repositories.documents import (
     replace_document_version_tags,
     update_document_type,
     update_document_workflow,
+    delete_document_version as delete_document_version_repo,
     get_document_version,
     get_document_version_by_id,
     list_document_versions,
@@ -899,6 +900,38 @@ def preview_document_version(
         media_type=mime_type,
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
+
+
+@router.delete("/{document_id}/versions/{version_id}", status_code=204)
+def delete_document_version(
+    document_id: UUID,
+    version_id: UUID,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permissions.DOCUMENT_VERSION_DELETE)),
+):
+    document = get_document_by_id(db=db, document_id=document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    version = get_document_version_by_id(db=db, version_id=version_id)
+    if not version or version.document_id != document_id:
+        raise HTTPException(status_code=404, detail="Document version not found")
+
+    if version.storage_key:
+        try:
+            storage = build_object_storage_from_env()
+            storage.delete(
+                bucket=version.storage_bucket or os.getenv("OBJECT_STORAGE_BUCKET", "dms"),
+                key=version.storage_key,
+            )
+        except Exception:
+            # Delete DB record even if object is already gone/unreachable.
+            pass
+
+    try:
+        delete_document_version_repo(db=db, document=document, version=version)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get(

@@ -35,6 +35,7 @@ class Permissions:
     DOCUMENT_VERSION_PREVIEW = "document_version.preview"
     DOCUMENT_VERSION_DOWNLOAD = "document_version.download"
     DOCUMENT_VERSION_SET_CURRENT = "document_version.set_current"
+    DOCUMENT_VERSION_DELETE = "document_version.delete"
     DOCUMENT_TAG_READ = "tags.read"
     DOCUMENT_TAG_EDIT = "tags.edit"
     DOCUMENT_DUE_PAYMENTS = "document.due_payments"

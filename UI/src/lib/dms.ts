@@ -122,6 +122,36 @@ export async function downloadDocumentVersion(documentId: string, versionId: str
   return res.blob();
 }
 
+export async function previewDocumentVersion(documentId: string, versionId: string) {
+  const token = sessionStorage.getItem("access_token");
+  const res = await fetch(
+    `${import.meta.env.VITE_API_BASE_URL}/documents/${documentId}/versions/${versionId}/preview`,
+    {
+      method: "GET",
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    },
+  );
+
+  if (res.status === 401) {
+    sessionStorage.removeItem("access_token");
+    window.location.reload();
+    throw new Error("Unauthorized");
+  }
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || "Version preview failed");
+  }
+
+  return res.blob();
+}
+
+export function deleteDocumentVersion(documentId: string, versionId: string) {
+  return apiFetch<void>(`/documents/${documentId}/versions/${versionId}`, {
+    method: "DELETE",
+  });
+}
+
 export function deleteDocument(id: string) {
   return apiFetch(`/documents/${id}`, { method: "DELETE" });
 }

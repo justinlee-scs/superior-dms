@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Clock3, Download, Upload, X } from "lucide-react";
+import { Clock3, Download, Eye, Trash2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/app/components/ui/button";
 import type { Document } from "@/app/components/document-card";
+import { getMyAccess } from "@/lib/rbac";
 import {
+  deleteDocumentVersion,
   downloadDocumentVersion,
   listDocumentVersions,
+  previewDocumentVersion,
   setCurrentDocumentVersion,
   uploadDocumentVersion,
   type DocumentVersion,
 } from "@/lib/dms";
-import { buildVersionedFilename } from "@/app/components/version-naming";
 
 interface VersionHistoryModalProps {
   open: boolean;
@@ -39,6 +41,9 @@ export function VersionHistoryModal({
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [settingCurrentId, setSettingCurrentId] = useState<string | null>(null);
+  const [deletingVersionId, setDeletingVersionId] = useState<string | null>(null);
+  const [canPreviewVersion, setCanPreviewVersion] = useState(false);
+  const [canDeleteVersion, setCanDeleteVersion] = useState(false);
 
   const sortedVersions = useMemo(
     () => [...versions].sort((a, b) => b.version_number - a.version_number),
@@ -53,6 +58,18 @@ export function VersionHistoryModal({
       .catch(() => toast.error("Failed to load version history"))
       .finally(() => setLoading(false));
   }, [open, document]);
+
+  useEffect(() => {
+    getMyAccess()
+      .then((access) => {
+        setCanPreviewVersion(access.permissions.includes("document_version.preview"));
+        setCanDeleteVersion(access.permissions.includes("document_version.delete"));
+      })
+      .catch(() => {
+        setCanPreviewVersion(false);
+        setCanDeleteVersion(false);
+      });
+  }, []);
 
   if (!open || !document) return null;
 
@@ -73,7 +90,7 @@ export function VersionHistoryModal({
     }
   };
 
-  // downloading versions -do not append version number at the end when downloading
+  // Keep version download behavior aligned with regular document download flow.
   const onDownloadVersion = async (version: DocumentVersion) => {
     try {
       const blob = await downloadDocumentVersion(document.id, version.id);
@@ -82,10 +99,7 @@ export function VersionHistoryModal({
       const a = window.document.createElement("a");
       a.href = url;
 
-      a.download = buildVersionedFilename(
-        document.name,
-        version.version_number,
-      );
+      a.download = document.name;
 
       window.document.body.appendChild(a);
       a.click();
@@ -113,6 +127,37 @@ export function VersionHistoryModal({
       );
     } finally {
       setSettingCurrentId(null);
+    }
+  };
+
+  const onPreviewVersion = async (version: DocumentVersion) => {
+    try {
+      const blob = await previewDocumentVersion(document.id, version.id);
+      const url = window.URL.createObjectURL(blob);
+      const previewWindow = window.open(url, "_blank");
+      if (!previewWindow) toast.error("Popup blocked");
+      window.setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Preview failed");
+    }
+  };
+
+  const onDeleteVersion = async (version: DocumentVersion) => {
+    const ok = window.confirm(
+      `Delete version v${version.version_number}? This cannot be undone.`,
+    );
+    if (!ok) return;
+    setDeletingVersionId(version.id);
+    try {
+      await deleteDocumentVersion(document.id, version.id);
+      const fresh = await listDocumentVersions(document.id);
+      setVersions(fresh);
+      await onUpdated();
+      toast.success(`Deleted v${version.version_number}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Delete failed");
+    } finally {
+      setDeletingVersionId(null);
     }
   };
 
@@ -233,11 +278,36 @@ export function VersionHistoryModal({
                         >
                           <Download className="h-4 w-4" />
                         </Button>
+                        {canPreviewVersion && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => void onPreviewVersion(version)}
+                            title="Preview version"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {canDeleteVersion && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            disabled={
+                              deletingVersionId === version.id ||
+                              sortedVersions.length <= 1
+                            }
+                            onClick={() => void onDeleteVersion(version)}
+                            title="Delete version"
+                          >
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </Button>
+                        )}
                       </div>
                     </div>
 
                     <div className="mt-2 text-sm text-gray-600">
-                      {new Date(version.created_at).toLocaleDateString()} ·{" "}
+                      Upload date:{" "}
+                      {new Date(version.created_at).toLocaleString()} ·{" "}
                       {formatBytes(version.size_bytes)}
                     </div>
                     <div className="mt-1 text-xs text-gray-500">

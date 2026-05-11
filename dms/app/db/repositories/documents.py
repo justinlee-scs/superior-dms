@@ -550,6 +550,36 @@ def set_current_document_version(
     db.refresh(document)
 
 
+def delete_document_version(
+    db: Session,
+    document: Document,
+    version: DocumentVersion,
+) -> None:
+    """Delete one document version and maintain current version pointer."""
+    versions = (
+        db.query(DocumentVersion)
+        .filter(DocumentVersion.document_id == document.id)
+        .order_by(DocumentVersion.created_at.asc())
+        .all()
+    )
+    if len(versions) <= 1:
+        raise ValueError("Cannot delete the only version")
+
+    replacement = None
+    if document.current_version_id == version.id:
+        remaining = [v for v in versions if v.id != version.id]
+        replacement = remaining[-1] if remaining else None
+
+    db.delete(version)
+    db.flush()
+
+    if replacement is not None:
+        document.current_version_id = replacement.id
+
+    db.commit()
+    db.refresh(document)
+
+
 def delete_document(
     db: Session,
     document_id: UUID,

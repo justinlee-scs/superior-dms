@@ -23,6 +23,7 @@ ROLE_PERMISSION_MAP = {
         "document_version.preview",
         "document_version.download",
         "document_version.set_current",
+        "document_version.delete",
         "tags.read",
         "tags.edit",
         "document.due_payments",
