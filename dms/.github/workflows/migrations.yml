@@ -1,0 +1,47 @@
+name: Migration Integrity
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  migration-check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: dms_user
+          POSTGRES_PASSWORD: dms_password
+          POSTGRES_DB: dms
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U dms_user -d dms"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: postgresql+psycopg://dms_user:dms_password@127.0.0.1:5432/dms
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install DB/migration dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install sqlalchemy alembic psycopg
+
+      - name: Upgrade to head
+        run: alembic upgrade head
+
+      - name: Verify model/schema drift
+        run: python scripts/check_migration_drift.py

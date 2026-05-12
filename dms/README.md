@@ -230,31 +230,49 @@ sudo journalctl -u dms-api -f
 
 ## 14. Alembic Migration Workflow
 
-Use this workflow whenever models change.
+This is the required workflow whenever schema/model changes are made.
 
-Create a migration:
+For local development:
 
 ```bash
 source .venv/bin/activate
 set -a && source .env && set +a
-alembic revision --autogenerate -m "describe_change"
+make migrate-new m="describe_change"
+make migrate-up
+make migrate-check
 ```
 
-Review the generated file in `app/db/migrations/versions/` before applying it.
+What this does:
+- `migrate-new` creates a new Alembic migration file.
+- `migrate-up` applies all migrations to head.
+- `migrate-check` verifies no model/schema drift remains.
 
-Apply migrations:
+Commit policy:
+- Always commit model changes and migration files together.
+- Migration files live in `app/db/migrations/versions/`.
+
+New device setup:
 
 ```bash
+source .venv/bin/activate
+set -a && source .env && set +a
 alembic upgrade head
 ```
 
-Show current migration:
+Existing database that already matches schema but has missing Alembic history:
 
 ```bash
-alembic current
+alembic stamp <revision_id>
+alembic upgrade head
 ```
 
-Rollback one revision:
+Optional checks:
+
+```bash
+make migrate-current
+make migrate-history
+alembic downgrade -1
+```
 
 ## 15. Optional Integrations (Disabled by Default)
 
