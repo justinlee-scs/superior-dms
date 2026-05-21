@@ -39,6 +39,15 @@ class TagPoolCreateResponse(BaseModel):
     tag: str
 
 
+class TagPoolDeleteResponse(BaseModel):
+    """Define the schema for tag pool delete response.
+
+    Parameters:
+        tag (type=str): Tag value removed from tag pool.
+    """
+    tag: str
+
+
 class DocumentVersionTagsResponse(BaseModel):
     """Define the schema for document version tags response.
 

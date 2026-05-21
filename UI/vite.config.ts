@@ -18,6 +18,7 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',      // already passed via CLI flag, but explicit here too
     port: 5173,
+    allowedHosts: ["dms.scsgroup.ca", "localhost", "127.0.0.1"],
     proxy: {
       "/api": {
         target: process.env.VITE_DEV_API_PROXY_TARGET || "http://localhost:8008",

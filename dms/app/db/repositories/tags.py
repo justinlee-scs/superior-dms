@@ -39,3 +39,23 @@ def create_tag_pool_entry(db: Session, *, tag: str) -> str:
     db.commit()
     db.refresh(row)
     return row.name
+
+
+def delete_tag_pool_entry(db: Session, *, tag: str) -> bool:
+    """Delete tag pool entry.
+
+    Parameters:
+        db (type=Session): Database session used for persistence operations.
+        tag (type=str): Tag value to delete.
+    """
+    normalized = normalize_tag(tag)
+    if not normalized:
+        return False
+
+    row = db.query(TagCatalog).filter(TagCatalog.name == normalized).one_or_none()
+    if not row:
+        return False
+
+    db.delete(row)
+    db.commit()
+    return True

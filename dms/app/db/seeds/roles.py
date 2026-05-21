@@ -26,6 +26,7 @@ ROLE_PERMISSION_MAP = {
         "document_version.delete",
         "tags.read",
         "tags.edit",
+        "tags.delete",
         "document.due_payments",
         "user.password_set_self",
     ],

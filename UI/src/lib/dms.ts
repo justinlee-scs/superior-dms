@@ -48,7 +48,7 @@ export type ProjectMoveResponse = {
 export type WorkflowUpdateResponse = {
   document_id: string;
   version_id: string;
-  status: "failed" | "pending" | "uploaded" | "needs review";
+  status: "failed" | "uploaded" | "needs review";
   notes: string | null;
 };
 
@@ -167,6 +167,12 @@ export function createTagPool(tag: string) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ tag }),
+  });
+}
+
+export function deleteTagPool(tag: string) {
+  return apiFetch<{ tag: string }>(`/documents/tag-pool/${encodeURIComponent(tag)}`, {
+    method: "DELETE",
   });
 }
 
@@ -300,7 +306,7 @@ export function moveDocumentProject(documentId: string, projectName: string) {
 
 export function updateDocumentWorkflow(
   documentId: string,
-  payload: { status: "failed" | "pending" | "uploaded" | "needs review"; notes: string },
+  payload: { status: "failed" | "uploaded" | "needs review"; notes: string },
 ) {
   return apiFetch<WorkflowUpdateResponse>(`/documents/${documentId}/workflow`, {
     method: "PATCH",

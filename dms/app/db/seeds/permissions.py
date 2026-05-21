@@ -19,6 +19,7 @@ ALL_PERMISSIONS = [
     Permissions.DOCUMENT_VERSION_DELETE,
     Permissions.DOCUMENT_TAG_READ,
     Permissions.DOCUMENT_TAG_EDIT,
+    Permissions.DOCUMENT_TAG_DELETE,
     Permissions.DOCUMENT_DUE_PAYMENTS,
     Permissions.USER_PASSWORD_SET_SELF,
     Permissions.USER_PASSWORD_CHANGE_OTHER,

@@ -17,8 +17,10 @@ from PIL import Image, UnidentifiedImageError
 from app.db.session import get_db
 from app.auth.deps import get_current_user
 from app.db.models.user import User
+from app.db.models.enums import ProcessingStatus
 
 from app.services.rbac.permission_checker import require_permission
+from app.services.rbac.access_resolver import resolve_permissions
 from app.services.rbac.policy import Permissions
 
 from app.db.repositories.documents import (
@@ -42,7 +44,11 @@ from app.db.repositories.documents import (
     list_existing_tags,
     load_document_version_bytes,
 )
-from app.db.repositories.tags import create_tag_pool_entry, list_tag_pool
+from app.db.repositories.tags import (
+    create_tag_pool_entry,
+    delete_tag_pool_entry,
+    list_tag_pool,
+)
 
 from app.schemas.documents import (
     BulkDownloadRequest,
@@ -63,6 +69,7 @@ from app.schemas.tags import (
     ProjectMoveResponse,
     TagPoolCreateRequest,
     TagPoolCreateResponse,
+    TagPoolDeleteResponse,
     TagPoolResponse,
     TagUpdateRequest,
 )
@@ -335,6 +342,24 @@ def create_tag_pool(
     return TagPoolCreateResponse(tag=created)
 
 
+@router.delete("/tag-pool/{tag_name}", response_model=TagPoolDeleteResponse)
+def delete_tag_pool(
+    tag_name: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete tag from tag pool."""
+    permissions = resolve_permissions(db, current_user)
+    if (
+        Permissions.DOCUMENT_TAG_DELETE not in permissions
+        and Permissions.DOCUMENT_TAG_EDIT not in permissions
+    ):
+        raise HTTPException(status_code=403, detail="Permission denied")
+    if not delete_tag_pool_entry(db=db, tag=tag_name):
+        raise HTTPException(status_code=404, detail="Tag not found in pool")
+    return TagPoolDeleteResponse(tag=normalize_tag(tag_name))
+
+
 @router.post("/bulk-download")
 def bulk_download_documents(
     payload: BulkDownloadRequest,
@@ -533,6 +558,11 @@ def set_document_workflow(
     db: Session = Depends(get_db),
     _=Depends(require_permission(Permissions.WORKFLOW_ASSIGN)),
 ):
+    if payload.status in {ProcessingStatus.pending, ProcessingStatus.processing}:
+        raise HTTPException(
+            status_code=400,
+            detail="Workflow status 'pending'/'processing' is system-managed and cannot be set manually",
+        )
     version = update_document_workflow(
         db=db,
         document_id=document_id,

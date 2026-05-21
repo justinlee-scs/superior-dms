@@ -16,6 +16,7 @@ class Permissions:
         DOCUMENT_VERSION_SET_CURRENT: Parameter.
         DOCUMENT_TAG_READ: Parameter.
         DOCUMENT_TAG_EDIT: Parameter.
+        DOCUMENT_TAG_DELETE: Parameter.
         DOCUMENT_DUE_PAYMENTS: Parameter.
         WORKFLOW_ASSIGN: Parameter.
         WORKFLOW_ADVANCE: Parameter.
@@ -38,6 +39,7 @@ class Permissions:
     DOCUMENT_VERSION_DELETE = "document_version.delete"
     DOCUMENT_TAG_READ = "tags.read"
     DOCUMENT_TAG_EDIT = "tags.edit"
+    DOCUMENT_TAG_DELETE = "tags.delete"
     DOCUMENT_DUE_PAYMENTS = "document.due_payments"
     USER_PASSWORD_SET_SELF = "user.password_set_self"
     USER_PASSWORD_CHANGE_OTHER = "user.password_change_other"

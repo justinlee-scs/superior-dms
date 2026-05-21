@@ -57,6 +57,8 @@ class ProfileUpdateRequest(BaseModel):
     username: str | None = None
     current_password: str | None = None
     new_password: str | None = None
+    ui_dark_mode: bool | None = None
+    ui_view_mode: str | None = None
 
 
 class OIDCLoginStartResponse(BaseModel):
@@ -117,6 +119,8 @@ def me(
         "username": user.username,
         "roles": [r.name for r in user.roles],
         "permissions": sorted(permissions),
+        "ui_dark_mode": bool(user.ui_dark_mode),
+        "ui_view_mode": user.ui_view_mode or "compact",
     }
 
 
@@ -164,6 +168,17 @@ def update_profile(
             user.auth_provider = "local"
         updated = True
 
+    if payload.ui_dark_mode is not None:
+        user.ui_dark_mode = bool(payload.ui_dark_mode)
+        updated = True
+
+    if payload.ui_view_mode is not None:
+        view_mode = payload.ui_view_mode.strip().lower()
+        if view_mode not in {"compact", "grouped"}:
+            raise HTTPException(status_code=400, detail="ui_view_mode must be 'compact' or 'grouped'")
+        user.ui_view_mode = view_mode
+        updated = True
+
     if not updated:
         raise HTTPException(status_code=400, detail="No profile changes provided")
 
@@ -177,6 +192,8 @@ def update_profile(
         "username": user.username,
         "roles": [r.name for r in user.roles],
         "permissions": sorted(permissions),
+        "ui_dark_mode": bool(user.ui_dark_mode),
+        "ui_view_mode": user.ui_view_mode or "compact",
     }
 
 

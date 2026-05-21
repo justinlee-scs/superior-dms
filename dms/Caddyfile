@@ -1,8 +1,8 @@
 {
-    auto_https off
+    # Keep this empty unless you want to set a global contact email.
 }
 
-:80 {
+(app_proxy) {
     encode gzip
 
     @api path /api/*
@@ -14,4 +14,17 @@
     handle {
         reverse_proxy ui:5173
     }
+}
+
+http://dms.scsgroup.ca, http://localhost, http://127.0.0.1 {
+    redir https://{host}{uri} permanent
+}
+
+https://dms.scsgroup.ca {
+    import app_proxy
+}
+
+https://localhost, https://127.0.0.1 {
+    tls internal
+    import app_proxy
 }

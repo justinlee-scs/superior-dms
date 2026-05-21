@@ -7,6 +7,40 @@ from typing import Any
 from app.db.models.enums import DocumentClass
 
 
+def _recipient_is_superior_city_services(lowered: str) -> bool:
+    aliases = (
+        "superior city services",
+        "superior city",
+    )
+    recipient_markers = (
+        "bill to",
+        "invoice to",
+        "customer",
+        "ship to",
+        "sold to",
+    )
+    if not any(alias in lowered for alias in aliases):
+        return False
+    return any(marker in lowered for marker in recipient_markers)
+
+
+def _sender_is_superior_city_services(lowered: str) -> bool:
+    aliases = (
+        "superior city services",
+        "superior city",
+    )
+    sender_markers = (
+        "vendor",
+        "supplier",
+        "remit to",
+        "pay to",
+        "from",
+    )
+    if not any(alias in lowered for alias in aliases):
+        return False
+    return any(marker in lowered for marker in sender_markers)
+
+
 @lru_cache(maxsize=1)
 def _load_model() -> dict[str, Any] | None:
     path = os.getenv("DOC_CLASS_MODEL_PATH", "").strip()
@@ -26,6 +60,15 @@ def classify_document(text: str) -> DocumentClass:
         text (type=str): Function argument used by this operation.
     """
 
+    lowered = (text or "").lower()
+
+    # Business rule overrides for your company.
+    if "invoice" in lowered:
+        if _recipient_is_superior_city_services(lowered):
+            return DocumentClass.INCOMING_INVOICE
+        if _sender_is_superior_city_services(lowered):
+            return DocumentClass.OUTGOING_INVOICE
+
     model_bundle = _load_model()
     if model_bundle:
         vectorizer = model_bundle.get("vectorizer")
@@ -38,8 +81,6 @@ def classify_document(text: str) -> DocumentClass:
                 return DocumentClass(prediction)
             except Exception:
                 pass
-
-    lowered = (text or "").lower()
 
     if "invoice" in lowered:
         incoming_signals = (

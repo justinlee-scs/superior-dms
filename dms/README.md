@@ -319,10 +319,6 @@ Runtime status:
 - `app/services/extraction/ocr_sync.py`
 - `app/api/documents.py` (Label Studio hooks only)
 
-To activate after review:
-1. Install optional dependencies from `requirements.txt` (currently commented).
-2. Configure optional env vars from `.env.example`.
-3. Uncomment the marked "Optional (disabled)" blocks in the files above.
 
 ## 16. Why MinIO (Object Storage)
 

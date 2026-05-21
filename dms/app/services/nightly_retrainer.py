@@ -10,8 +10,10 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import func
 
 from app.db.models.retrain_schedule_setting import RetrainScheduleSetting
+from app.db.models.training_feedback_event import TrainingFeedbackEvent
 from app.db.session import SessionLocal
 from app.services.extraction.classify import clear_classifier_cache
 from app.services.extraction.field_extractor import clear_field_extractor_cache
@@ -56,6 +58,56 @@ def _env_minute() -> int:
 
 def _root_dir() -> Path:
     return Path(__file__).resolve().parents[2]
+
+
+def _env_min_feedback_events() -> int:
+    try:
+        value = int(os.getenv("NIGHTLY_RETRAIN_MIN_FEEDBACK_EVENTS", "0"))
+    except ValueError:
+        value = 0
+    return max(value, 0)
+
+
+def _env_feedback_window_hours() -> int:
+    try:
+        value = int(os.getenv("NIGHTLY_RETRAIN_FEEDBACK_WINDOW_HOURS", "24"))
+    except ValueError:
+        value = 24
+    return max(value, 1)
+
+
+def _should_run_by_feedback_threshold() -> bool:
+    min_events = _env_min_feedback_events()
+    if min_events <= 0:
+        return True
+
+    window_hours = _env_feedback_window_hours()
+    cutoff = datetime.utcnow() - timedelta(hours=window_hours)
+
+    db = SessionLocal()
+    try:
+        count = (
+            db.query(func.count(TrainingFeedbackEvent.id))
+            .filter(TrainingFeedbackEvent.include_in_training.is_(True))
+            .filter(TrainingFeedbackEvent.created_at >= cutoff)
+            .scalar()
+            or 0
+        )
+    except SQLAlchemyError as exc:
+        logger.warning("Nightly retrain threshold check failed: %s", exc)
+        return True
+    finally:
+        db.close()
+
+    if count < min_events:
+        logger.info(
+            "Nightly retrain skipped: %s feedback events in last %sh (need >= %s).",
+            count,
+            window_hours,
+            min_events,
+        )
+        return False
+    return True
 
 
 def _next_run_time(now: datetime, tz: ZoneInfo, hour: int, minute: int) -> datetime:
@@ -160,6 +212,8 @@ def _loop() -> None:
             logger.info("Nightly retrain skipped: previous run still in progress.")
             continue
         try:
+            if not _should_run_by_feedback_threshold():
+                continue
             _run_training_pipeline()
         finally:
             _run_lock.release()

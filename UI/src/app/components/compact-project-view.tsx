@@ -25,7 +25,7 @@ import {
 import type { Document } from "@/app/components/document-card";
 import { SelectionCheckbox } from "@/app/components/selection-checkbox";
 import { useSelection } from "@/app/selection/selection-context";
-import { formatBytes, formatPageCount } from "@/lib/format";
+import { formatBytes, formatLocalDateFromDateOnly, formatPageCount } from "@/lib/format";
 
 interface CompactProjectViewProps {
   documents: Document[];
@@ -312,7 +312,7 @@ export function CompactProjectView({
                             </div>
 
                             <div className="w-28 text-xs text-gray-500">
-                              {new Date(doc.date).toLocaleDateString()}
+                              {formatLocalDateFromDateOnly(doc.date)}
                             </div>
 
                             <div className="w-36 text-xs text-gray-600 dark:text-gray-400 truncate">

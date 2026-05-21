@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 
@@ -52,6 +52,7 @@ import { toast } from "sonner";
 import {
   bulkDownloadDocuments,
   createTagPool,
+  deleteTagPool,
   deleteDocument,
   listDocuments,
   listUpcomingDuePayments,
@@ -67,6 +68,7 @@ import {
 import { API_BASE_URL } from "@/lib/api";
 import { getMyAccess } from "@/lib/rbac";
 import { formatBytes } from "@/lib/format";
+import { getCurrentUserProfile, updateCurrentUserProfile } from "@/lib/profile";
 import RolesPage from "@/admin/roles-page";
 
 /**
@@ -88,6 +90,16 @@ function getProjectFromTags(tags: string[] | undefined): string {
     .join(" ");
 }
 
+function toLocalDateOnly(value?: string | null): string {
+  if (!value) return "";
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return "";
+  const year = dt.getFullYear();
+  const month = String(dt.getMonth() + 1).padStart(2, "0");
+  const day = String(dt.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function mapApiDocument(doc: any): Document {
   const extension = (doc.filename?.split(".").pop() ?? "file").toLowerCase();
   const tags = doc.tags ?? [];
@@ -98,7 +110,7 @@ function mapApiDocument(doc: any): Document {
     size: formatBytes(doc.size_bytes ?? null),
     sizeBytes: doc.size_bytes ?? null,
     author: doc.author ?? "System",
-    date: doc.created_at?.slice(0, 10) ?? "",
+    date: toLocalDateOnly(doc.created_at),
     tags,
     workflow: doc.status ?? "uploaded",
     project: getProjectFromTags(tags),
@@ -135,7 +147,7 @@ function AppInner() {
   );
   const [workflowEditorOpen, setWorkflowEditorOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"compact" | "grouped">("compact");
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState<boolean>(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [versionModalDoc, setVersionModalDoc] = useState<Document | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -151,6 +163,22 @@ function AppInner() {
   );
   const [duePaymentsWindowDays, setDuePaymentsWindowDays] = useState(7);
   const [liveSyncEnabled, setLiveSyncEnabled] = useState(true);
+  const preferencesReadyRef = useRef(false);
+  const skipNextPreferencePersistRef = useRef(false);
+
+  const msUntilNextMidnight = () => {
+    const now = new Date();
+    const next = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() + 1,
+      0,
+      0,
+      1,
+      0,
+    );
+    return next.getTime() - now.getTime();
+  };
 
   const handleLogout = () => {
     sessionStorage.removeItem("access_token");
@@ -253,14 +281,12 @@ function AppInner() {
     const intervalId = window.setInterval(() => {
       refreshDocuments().catch(() => undefined);
       refreshTagPool().catch(() => undefined);
-      refreshDuePayments().catch(() => undefined);
     }, 3000);
 
     const onVisible = () => {
       if (document.visibilityState === "visible") {
         refreshDocuments().catch(() => undefined);
         refreshTagPool().catch(() => undefined);
-        refreshDuePayments().catch(() => undefined);
       }
     };
 
@@ -272,7 +298,55 @@ function AppInner() {
       window.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
     };
-  }, [liveSyncEnabled, accessPermissions, duePaymentsWindowDays]);
+  }, [liveSyncEnabled]);
+
+  useEffect(() => {
+    getCurrentUserProfile()
+      .then((user) => {
+        skipNextPreferencePersistRef.current = true;
+        setDarkMode(Boolean(user.ui_dark_mode));
+        setViewMode(user.ui_view_mode === "grouped" ? "grouped" : "compact");
+      })
+      .finally(() => {
+        preferencesReadyRef.current = true;
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!preferencesReadyRef.current) return;
+    if (skipNextPreferencePersistRef.current) {
+      skipNextPreferencePersistRef.current = false;
+      return;
+    }
+    updateCurrentUserProfile({
+      ui_dark_mode: darkMode,
+      ui_view_mode: viewMode,
+    }).catch(() => undefined);
+  }, [darkMode, viewMode]);
+
+  useEffect(() => {
+    let timeoutId: number | null = null;
+    let intervalId: number | null = null;
+    let cancelled = false;
+
+    const scheduleDailyRefresh = () => {
+      timeoutId = window.setTimeout(() => {
+        if (cancelled) return;
+        refreshDuePayments().catch(() => undefined);
+        intervalId = window.setInterval(() => {
+          refreshDuePayments().catch(() => undefined);
+        }, 24 * 60 * 60 * 1000);
+      }, msUntilNextMidnight());
+    };
+
+    scheduleDailyRefresh();
+    return () => {
+      cancelled = true;
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      if (intervalId !== null) window.clearInterval(intervalId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessPermissions, duePaymentsWindowDays]);
 
   /**
    * Filters
@@ -292,7 +366,17 @@ function AppInner() {
     return documents.filter((doc) => {
       if (filters.searchText) {
         const q = filters.searchText.toLowerCase();
-        if (!doc.name.toLowerCase().includes(q)) return false;
+        const haystack = [
+          doc.name,
+          doc.author,
+          doc.vendor ?? "",
+          doc.documentType ?? "",
+          doc.project ?? "",
+          ...(doc.tags ?? []),
+        ]
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(q)) return false;
       }
 
       if (filters.selectedTags.length) {
@@ -427,7 +511,7 @@ function AppInner() {
       }
 
       // refresh supporting data
-      await Promise.all([refreshTagPool()]);
+      await Promise.all([refreshTagPool(), refreshDuePayments()]);
       toast.success(`${file.name} uploaded`);
     } catch (error) {
       toast.error(`Failed to upload ${file.name}`);
@@ -522,59 +606,70 @@ function AppInner() {
 
   const handlePreview = (doc: Document) => {
     const token = sessionStorage.getItem("access_token");
-      const newWindow = window.open("", "_blank");
-      if (!newWindow) {
-        toast.error("Popup blocked");
-        return;
-      }
-    fetch(`${API_BASE_URL}/documents/${doc.id}/preview`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-  })
-    .then(async (res) => {
-      if (!res.ok) throw new Error("Preview failed");
-
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-
-      // force render via iframe
-      newWindow.document.open();
-      newWindow.document.write(`
-        <html>
-          <head><title>${doc.name}</title></head>
-          <body style="margin:0">
-            <iframe 
-              src="${url}" 
-              frameborder="0" 
-              style="width:100%; height:100vh;">
-            </iframe>
-          </body>
-        </html>
-      `);
-      newWindow.document.close();
-    })
-    .catch(() => {
-      newWindow.close();
-      toast.error("Preview failed");
-    });
-};
-
-  const handlePreviewById = (documentId: string) => {
-    const token = sessionStorage.getItem("access_token");
     const newWindow = window.open("", "_blank");
     if (!newWindow) {
       toast.error("Popup blocked");
       return;
     }
-    fetch(`${API_BASE_URL}/documents/${documentId}/preview`, {
+
+    newWindow.document.open();
+    newWindow.document.write(`
+      <html>
+        <head><title>${doc.name}</title></head>
+        <body style="margin:0;display:flex;align-items:center;justify-content:center;font-family:sans-serif;">
+          <div id="preview-loader" style="text-align:center;">
+            <div style="width:36px;height:36px;border:4px solid #d1d5db;border-top-color:#2563eb;border-radius:9999px;animation:spin 1s linear infinite;margin:0 auto 10px;"></div>
+            <div>Loading preview...</div>
+            <div id="elapsed" style="font-size:12px;color:#6b7280;margin-top:4px;">0s</div>
+          </div>
+          <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+        </body>
+      </html>
+    `);
+    newWindow.document.close();
+
+    const startedAt = Date.now();
+    const timerId = window.setInterval(() => {
+      const elapsedEl = newWindow.document.getElementById("elapsed");
+      if (elapsedEl) elapsedEl.textContent = `${Math.floor((Date.now() - startedAt) / 1000)}s`;
+    }, 300);
+
+    fetch(`${API_BASE_URL}/documents/${doc.id}/preview`, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     })
       .then(async (res) => {
         if (!res.ok) throw new Error("Preview failed");
         const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        window.open(url, "_blank");
+        const url = URL.createObjectURL(blob);
+        newWindow.document.open();
+        newWindow.document.write(`
+          <html>
+            <head><title>${doc.name}</title></head>
+            <body style="margin:0">
+              <iframe
+                src="${url}"
+                frameborder="0"
+                style="width:100%; height:100vh;">
+              </iframe>
+            </body>
+          </html>
+        `);
+        newWindow.document.close();
       })
-      .catch(() => toast.error("Preview failed"));
+      .catch(() => {
+        newWindow.close();
+        toast.error("Preview failed");
+      })
+      .finally(() => window.clearInterval(timerId));
+  };
+
+  const handlePreviewById = (documentId: string) => {
+    const doc = documents.find((item) => item.id === documentId);
+    if (doc) {
+      handlePreview(doc);
+      return;
+    }
+    toast.error("Document not found for preview");
   };
 
   const handleDownload = async (doc: Document) => {
@@ -665,7 +760,7 @@ function AppInner() {
 
   const handleSaveWorkflow = async (
     documentId: string,
-    workflow: "failed" | "pending" | "uploaded" | "needs review",
+    workflow: "failed" | "uploaded" | "needs review",
     notes: string,
   ) => {
     const response = await updateDocumentWorkflow(documentId, {
@@ -742,6 +837,22 @@ function AppInner() {
     const result = await createTagPool(rawTag);
     setTagPool((prev) => Array.from(new Set([...prev, result.tag])).sort());
     toast.success(`Tag created: ${result.tag}`);
+  };
+
+  const handleDeletePoolTag = async (tag: string) => {
+    if (!accessPermissions.has("tags.delete") && !accessPermissions.has("tags.edit")) {
+      toast.error("You do not have permission to delete tags from pool");
+      return;
+    }
+    await deleteTagPool(tag);
+    setTagPool((prev) => prev.filter((t) => t !== tag));
+    setDocuments((prev) =>
+      prev.map((doc) => ({
+        ...doc,
+        tags: doc.tags.filter((t) => t !== tag),
+      })),
+    );
+    toast.success(`Tag removed from pool: ${tag}`);
   };
 
   const handleSaveDocumentTags = async (payload: {
@@ -1038,9 +1149,13 @@ function AppInner() {
             open={editingTagsDoc !== null}
             document={editingTagsDoc}
             availableTags={availableTags}
+            canDeletePoolTags={
+              accessPermissions.has("tags.delete") || accessPermissions.has("tags.edit")
+            }
             onOpenChange={(open) => {
               if (!open) setEditingTagsDoc(null);
             }}
+            onDeletePoolTag={handleDeletePoolTag}
             onSave={handleSaveDocumentTags}
           />
 

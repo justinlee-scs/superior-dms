@@ -15,6 +15,15 @@ import { toast } from "sonner";
 
 import { Button } from "@/app/components/ui/button";
 import { Checkbox } from "@/app/components/ui/checkbox";
+import { Input } from "@/app/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/app/components/ui/dialog";
 
 import {
   activateUser,
@@ -77,6 +86,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   "admin.training": "Manage Training",
   "tags.read": "View Tags",
   "tags.edit": "Edit Tags",
+  "tags.delete": "Delete Tag Pool Tags",
 };
 
 const PERMISSION_DESCRIPTIONS: Record<string, string> = {
@@ -100,6 +110,7 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   "admin.training": "Can configure nightly retraining schedule",
   "tags.read": "Can view document tags",
   "tags.edit": "Can add, remove, and replace document tags",
+  "tags.delete": "Can delete tags from the global tag pool",
 };
 
 function permissionGroup(permissionKey: string): string {
@@ -161,6 +172,10 @@ export default function RolesPage({
   const [retrainTimezone, setRetrainTimezone] = useState("America/Los_Angeles");
   const [retrainHour, setRetrainHour] = useState(3);
   const [retrainMinute, setRetrainMinute] = useState(0);
+  const [createUserOpen, setCreateUserOpen] = useState(false);
+  const [newUsername, setNewUsername] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
 
   const selectedRole = useMemo(
     () => roles.find((role) => role.id === selectedRoleId) ?? null,
@@ -480,22 +495,24 @@ export default function RolesPage({
   };
 
   const onCreateUser = async () => {
-    const username = window.prompt("Username");
-    if (!username?.trim()) return;
-    const email = window.prompt("Email");
-    if (!email?.trim()) return;
-    const password = window.prompt("Password");
-    if (!password?.trim()) return;
+    if (!newUsername.trim() || !newEmail.trim() || !newPassword.trim()) {
+      toast.error("Username, email, and password are required");
+      return;
+    }
 
     setLoading(true);
     try {
       const created = await createUser({
-        username: username.trim(),
-        email: email.trim(),
-        password: password.trim(),
+        username: newUsername.trim(),
+        email: newEmail.trim(),
+        password: newPassword,
       });
       await loadBase();
       setSelectedUserId(created.id);
+      setCreateUserOpen(false);
+      setNewUsername("");
+      setNewEmail("");
+      setNewPassword("");
       toast.success("User created");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to create user");
@@ -784,7 +801,11 @@ export default function RolesPage({
                 <div className="text-xl font-semibold">Users</div>
                 <div className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-500"}`}>{users.length} user(s)</div>
               </div>
-              <Button className="rounded-xl bg-[#020825] px-4 text-sm" onClick={onCreateUser} disabled={loading}>
+              <Button
+                className="rounded-xl bg-[#020825] px-4 text-sm"
+                onClick={() => setCreateUserOpen(true)}
+                disabled={loading}
+              >
                 <Plus className="mr-1 h-4 w-4" />
                 New
               </Button>
@@ -1408,6 +1429,44 @@ export default function RolesPage({
           )}
         </main>
       </div>
+      <Dialog open={createUserOpen} onOpenChange={setCreateUserOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create User</DialogTitle>
+            <DialogDescription>Add a local user account.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input
+              placeholder="Username"
+              value={newUsername}
+              onChange={(event) => setNewUsername(event.target.value)}
+            />
+            <Input
+              placeholder="Email"
+              value={newEmail}
+              onChange={(event) => setNewEmail(event.target.value)}
+            />
+            <Input
+              type="password"
+              placeholder="Password"
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setCreateUserOpen(false)}
+              disabled={loading}
+            >
+              Cancel
+            </Button>
+            <Button onClick={onCreateUser} disabled={loading}>
+              Create User
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -7,7 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/app/components/ui/dropdown-menu";
-import { formatBytes, formatPageCount } from "@/lib/format";
+import { formatBytes, formatLocalDateFromDateOnly, formatPageCount } from "@/lib/format";
 
 export interface Document {
   id: string;
@@ -98,7 +98,7 @@ export function DocumentCard({
       <div className="flex-1 min-w-0">
         <div className={`font-medium truncate ${darkMode ? "text-gray-200" : ""}`}>{document.name}</div>
         <div className={`text-xs truncate ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
-          {document.author} • {new Date(document.date).toLocaleDateString()} • {formatPageCount(document.pageCount)} • {formatBytes(document.sizeBytes)}
+          {document.author} • {formatLocalDateFromDateOnly(document.date)} • {formatPageCount(document.pageCount)} • {formatBytes(document.sizeBytes)}
         </div>
       </div>
 

@@ -6,6 +6,8 @@ export type CurrentUser = {
   username: string;
   roles: string[];
   permissions: string[];
+  ui_dark_mode?: boolean;
+  ui_view_mode?: "compact" | "grouped";
 };
 
 export function getCurrentUserProfile() {
@@ -16,6 +18,8 @@ export function updateCurrentUserProfile(payload: {
   username?: string;
   current_password?: string;
   new_password?: string;
+  ui_dark_mode?: boolean;
+  ui_view_mode?: "compact" | "grouped";
 }) {
   return apiFetch<CurrentUser>("/auth/me/profile", {
     method: "PATCH",

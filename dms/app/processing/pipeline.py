@@ -36,6 +36,14 @@ _LILT_IMAGE_EXTENSIONS = {
     ".avif",
 }
 
+_INVOICE_REQUIRED_TAGS = (
+    "vendor",
+    "document_date",
+    "payment_due_date",
+    "grand_total",
+    "invoice_number",
+)
+
 
 def _can_run_lilt(filename: str | None) -> bool:
     suffix = Path(filename or "").suffix.lower()
@@ -87,6 +95,51 @@ def _label_studio_enabled() -> bool:
         "true",
         "yes",
     }
+
+
+def _is_invoice_classification(classification: DocumentClass | None) -> bool:
+    return classification in {
+        DocumentClass.INCOMING_INVOICE,
+        DocumentClass.OUTGOING_INVOICE,
+    }
+
+
+def _is_invoice_doc_type(document_type: DocumentType | None) -> bool:
+    return document_type in {
+        DocumentType.incoming_invoice,
+        DocumentType.outgoing_invoice,
+    }
+
+
+def _has_prefixed_tag(tags: list[str], prefix: str) -> bool:
+    return any(tag.startswith(f"{prefix}:") for tag in tags)
+
+
+def _ensure_invoice_required_tags(tags: list[str]) -> tuple[list[str], list[str]]:
+    """Normalize invoice tags and return (normalized_tags, missing_required_fields)."""
+    normalized = list(tags)
+
+    # Normalize legacy/alternate prefixes to required invoice schema.
+    # company:* -> vendor:*
+    vendor_from_company = next(
+        (t.split(":", 1)[1] for t in normalized if t.startswith("company:")),
+        None,
+    )
+    if vendor_from_company and not _has_prefixed_tag(normalized, "vendor"):
+        normalized.append(f"vendor:{vendor_from_company}")
+
+    # due_date:* -> payment_due_date:*
+    payment_due_from_due_date = next(
+        (t.split(":", 1)[1] for t in normalized if t.startswith("due_date:")),
+        None,
+    )
+    if payment_due_from_due_date and not _has_prefixed_tag(normalized, "payment_due_date"):
+        normalized.append(f"payment_due_date:{payment_due_from_due_date}")
+
+    missing = [
+        key for key in _INVOICE_REQUIRED_TAGS if not _has_prefixed_tag(normalized, key)
+    ]
+    return sorted(set(normalized)), missing
 
 
 def _notify_label_studio(*, document_id: str, filename: str, text: str) -> None:
@@ -220,9 +273,8 @@ def process_document(
 
         # ---- DUE DATE ----
         due_date = None
-        is_invoice = (
-            classification == DocumentClass.INCOMING_INVOICE
-            or version.document.document_type == DocumentType.incoming_invoice
+        is_invoice = _is_invoice_classification(classification) or _is_invoice_doc_type(
+            version.document.document_type
         )
 
         if is_invoice:
@@ -234,6 +286,8 @@ def process_document(
         if due_date:
             tags = [t for t in tags if not t.startswith("due_date:")]
             tags.append(f"due_date:{due_date.isoformat()}")
+            if not any(t.startswith("payment_due_date:") for t in tags):
+                tags.append(f"payment_due_date:{due_date.isoformat()}")
 
         # ---- PAGE COUNT ----
         page_count = extraction.metadata.get("page_count")
@@ -258,6 +312,11 @@ def process_document(
             if not any(tag.startswith(prefix) for tag in tags):
                 needs_review = True
                 break
+
+        if is_invoice:
+            tags, missing_invoice_fields = _ensure_invoice_required_tags(tags)
+            if missing_invoice_fields:
+                needs_review = True
 
         if needs_review:
             tags.append("needs_review")

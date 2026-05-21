@@ -10,7 +10,6 @@ import torch
 from transformers import LayoutLMv3Processor, LayoutLMv3ForTokenClassification
 from app.services.extraction.pdf import pdf_to_images
 
-
 # ---- DATA STRUCTURE ----
 
 
@@ -52,8 +51,8 @@ def _get_model_name() -> str:
 
 def _hf_auth_kwargs() -> dict[str, str]:
     token = (
-        os.getenv("HUGGINGFACE_HUB_TOKEN", "").strip()
-        or os.getenv("HF_TOKEN", "").strip()
+        os.getenv("HF_TOKEN", "").strip()
+        or os.getenv("HUGGINGFACE_HUB_TOKEN", "").strip()
     )
     return {"token": token} if token else {}
 

@@ -32,6 +32,8 @@ class User(Base):
     oidc_subject = Column(String, unique=True, index=True, nullable=True)
 
     is_active = Column(Boolean, default=True, nullable=False)
+    ui_dark_mode = Column(Boolean, default=False, nullable=False)
+    ui_view_mode = Column(String, default="compact", nullable=False)
 
     roles = relationship(
         "Role",

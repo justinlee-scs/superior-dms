@@ -25,14 +25,13 @@ interface WorkflowEditorProps {
   onOpenChange: (open: boolean) => void;
   onSave: (
     documentId: string,
-    workflow: "failed" | "pending" | "uploaded" | "needs review",
+    workflow: "failed" | "uploaded" | "needs review",
     notes: string,
   ) => Promise<void>;
 }
 
-const WORKFLOW_STAGES: Array<"failed" | "pending" | "uploaded" | "needs review"> = [
+const WORKFLOW_STAGES: Array<"failed" | "uploaded" | "needs review"> = [
   "failed",
-  "pending",
   "uploaded",
   "needs review",
 ];
@@ -44,18 +43,18 @@ export function WorkflowEditor({
   onSave,
 }: WorkflowEditorProps) {
   const [selectedWorkflow, setSelectedWorkflow] = useState<
-    "failed" | "pending" | "uploaded" | "needs review"
-  >("pending");
+    "failed" | "uploaded" | "needs review"
+  >("uploaded");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!document || !open) return;
     const wf = document.workflow.toLowerCase();
-    if (wf === "failed" || wf === "pending" || wf === "uploaded" || wf === "needs review") {
+    if (wf === "failed" || wf === "uploaded" || wf === "needs review") {
       setSelectedWorkflow(wf);
     } else {
-      setSelectedWorkflow("pending");
+      setSelectedWorkflow("uploaded");
     }
     setNotes(document.workflowNotes ?? "");
   }, [document, open]);
