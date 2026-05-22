@@ -18,20 +18,16 @@ interface TagEditorDialogProps {
   open: boolean;
   document: Document | null;
   availableTags: string[];
-  canDeletePoolTags?: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (payload: { tags: string[]; dueDate: string | null }) => Promise<void> | void;
-  onDeletePoolTag?: (tag: string) => Promise<void> | void;
 }
 
 export function TagEditorDialog({
   open,
   document,
   availableTags,
-  canDeletePoolTags,
   onOpenChange,
   onSave,
-  onDeletePoolTag,
 }: TagEditorDialogProps) {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState("");
@@ -97,39 +93,19 @@ export function TagEditorDialog({
 
           <div className="space-y-2">
             <p className="text-sm font-medium">Existing pool</p>
-            {!canDeletePoolTags && (
-              <p className="text-xs text-gray-500">
-                You can select tags, but deleting from pool requires tag delete/edit permission.
-              </p>
-            )}
             <div className="max-h-44 overflow-auto rounded-md border p-2">
               <div className="flex flex-wrap gap-2">
                 {visiblePool.map((tag) => {
                   const selected = selectedTags.includes(tag);
                   return (
-                    <div key={tag} className="inline-flex items-center gap-1">
-                      <Badge
-                        variant={selected ? "default" : "outline"}
-                        className="cursor-pointer"
-                        onClick={() => toggleTag(tag)}
-                      >
-                        {tag}
-                      </Badge>
-                      {canDeletePoolTags && onDeletePoolTag && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          className="h-6 px-2 text-xs text-red-600 hover:text-red-700"
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            await onDeletePoolTag(tag);
-                            setSelectedTags((prev) => prev.filter((item) => item !== tag));
-                          }}
-                        >
-                          x
-                        </Button>
-                      )}
-                    </div>
+                    <Badge
+                      key={tag}
+                      variant={selected ? "default" : "outline"}
+                      className="cursor-pointer"
+                      onClick={() => toggleTag(tag)}
+                    >
+                      {tag}
+                    </Badge>
                   );
                 })}
               </div>

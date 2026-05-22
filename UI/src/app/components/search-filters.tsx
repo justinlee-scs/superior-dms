@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Search, Calendar, User, Tag, X, ToggleLeft, ToggleRight, Plus } from "lucide-react";
+import { Search, Calendar, User, Tag, X, ToggleLeft, ToggleRight, Plus, Trash2 } from "lucide-react";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import { Badge } from "@/app/components/ui/badge";
@@ -31,6 +31,8 @@ interface SearchFiltersProps {
   availableTags: string[];
   availableAuthors: string[];
   onCreateTag?: (tag: string) => Promise<void> | void;
+  onDeleteTagFromPool?: (tag: string) => Promise<void> | void;
+  canDeleteTagFromPool?: boolean;
   darkMode?: boolean; // New: dark mode prop
 }
 
@@ -40,11 +42,14 @@ export function SearchFilters({
   availableTags,
   availableAuthors,
   onCreateTag,
+  onDeleteTagFromPool,
+  canDeleteTagFromPool,
   darkMode,
 }: SearchFiltersProps) {
   const [tagSearchText, setTagSearchText] = useState("");
   const [newTagText, setNewTagText] = useState("");
   const [authorSearchText, setAuthorSearchText] = useState("");
+  const [tagDeleteMode, setTagDeleteMode] = useState(false);
 
   const updateFilter = (key: keyof FilterState, value: any) => {
     onFiltersChange({ ...filters, [key]: value });
@@ -180,26 +185,51 @@ export function SearchFilters({
             <ToggleRight className="w-4 h-4 mr-1" />
             All
           </Button>
+          {canDeleteTagFromPool && onDeleteTagFromPool && (
+            <Button
+              variant={tagDeleteMode ? "default" : "outline"}
+              size="sm"
+              onClick={() => setTagDeleteMode((prev) => !prev)}
+              className="text-xs h-7 ml-auto"
+            >
+              {tagDeleteMode ? "Done" : "Manage Tags"}
+            </Button>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           {filteredAvailableTags.map((tag) => {
             const isSelected = filters.selectedTags.includes(tag);
             return (
-              <Badge
-                key={tag}
-                variant={isSelected ? "default" : "outline"}
-                className={`cursor-pointer rounded-full px-3 py-1 text-xs ${
-                  isSelected
-                    ? "bg-[#020825] text-white hover:bg-[#1a2248]"
-                    : darkMode
-                      ? "border-gray-600 text-gray-300 hover:bg-gray-700"
-                      : "border-gray-300 text-gray-700 hover:bg-gray-100"
-                }`}
-                onClick={() => toggleTag(tag)}
-              >
-                {tag}
-                {isSelected && <X className="w-3 h-3 ml-1" />}
-              </Badge>
+              <div key={tag} className="inline-flex items-center gap-1">
+                <Badge
+                  variant={isSelected ? "default" : "outline"}
+                  className={`cursor-pointer rounded-full px-3 py-1 text-xs ${
+                    isSelected
+                      ? "bg-[#020825] text-white hover:bg-[#1a2248]"
+                      : darkMode
+                        ? "border-gray-600 text-gray-300 hover:bg-gray-700"
+                        : "border-gray-300 text-gray-700 hover:bg-gray-100"
+                  }`}
+                  onClick={() => toggleTag(tag)}
+                >
+                  {tag}
+                  {isSelected && <X className="w-3 h-3 ml-1" />}
+                </Badge>
+                {tagDeleteMode && canDeleteTagFromPool && onDeleteTagFromPool && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-red-600 hover:text-red-700"
+                    title={`Delete '${tag}' from tag pool`}
+                    onClick={() => {
+                      void onDeleteTagFromPool(tag);
+                    }}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
             );
           })}
         </div>

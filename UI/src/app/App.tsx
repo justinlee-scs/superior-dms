@@ -907,6 +907,10 @@ function AppInner() {
           availableTags={availableTags}
           availableAuthors={availableAuthors}
           onCreateTag={handleCreateStandaloneTag}
+          onDeleteTagFromPool={handleDeletePoolTag}
+          canDeleteTagFromPool={
+            accessPermissions.has("tags.delete") || accessPermissions.has("tags.edit")
+          }
           darkMode={darkMode}
         />
 
@@ -1149,13 +1153,9 @@ function AppInner() {
             open={editingTagsDoc !== null}
             document={editingTagsDoc}
             availableTags={availableTags}
-            canDeletePoolTags={
-              accessPermissions.has("tags.delete") || accessPermissions.has("tags.edit")
-            }
             onOpenChange={(open) => {
               if (!open) setEditingTagsDoc(null);
             }}
-            onDeletePoolTag={handleDeletePoolTag}
             onSave={handleSaveDocumentTags}
           />
 
