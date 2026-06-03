@@ -1,15 +1,20 @@
 import os
+import logging
 from concurrent.futures import ThreadPoolExecutor
 import threading
 from uuid import UUID
 
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from app.processing.pipeline import process_document
 from app.db.repositories.documents import load_document_version_bytes
 from app.db.models.document_versions import DocumentVersion
 from app.db.models.enums import ProcessingStatus
 from app.db.session import SessionLocal
+
+
+logger = logging.getLogger(__name__)
 
 
 def process_document_version(db: Session, version_id: str | UUID) -> None:
@@ -25,7 +30,8 @@ def process_document_version(db: Session, version_id: str | UUID) -> None:
         return
 
     try:
-        # Commit immediately so UI does not remain at "pending" while OCR runs.
+        logger.info("Processing started version_id=%s", normalized_version_id)
+        # Commit immediately so UI does not remain on processing while OCR runs.
         version.processing_status = ProcessingStatus.processing
         db.commit()
 
@@ -37,12 +43,14 @@ def process_document_version(db: Session, version_id: str | UUID) -> None:
             file_bytes=file_bytes,
             commit=True,
         )
+        logger.info("Processing finished version_id=%s", normalized_version_id)
 
     except Exception:
         version = db.get(DocumentVersion, normalized_version_id)
         if version:
             version.processing_status = ProcessingStatus.failed
             db.commit()
+        logger.exception("Processing failed version_id=%s", normalized_version_id)
         raise
 
 
@@ -88,3 +96,45 @@ def enqueue_processing(version_id: str | UUID) -> None:
 def enqueue_document_processing(version_id: str | UUID) -> None:
     """Backward-compatible alias used by document upload endpoints."""
     enqueue_processing(version_id)
+
+
+def recover_stuck_processing_jobs() -> int:
+    """Requeue any versions left in processing after a crash or restart."""
+    db = SessionLocal()
+    try:
+        lock_key = 482_915_731_204_817
+        got_lock = db.execute(
+            text("SELECT pg_try_advisory_lock(:lock_key)"),
+            {"lock_key": lock_key},
+        ).scalar()
+        if not got_lock:
+            return 0
+
+        stale_versions = (
+            db.query(DocumentVersion.id)
+            .filter(
+                DocumentVersion.processing_status == ProcessingStatus.processing
+            )
+            .order_by(DocumentVersion.created_at.asc())
+            .all()
+        )
+
+        requeued = 0
+        for (version_id,) in stale_versions:
+            try:
+                enqueue_processing(version_id)
+                requeued += 1
+                logger.warning(
+                    "Requeued stale processing job version_id=%s", version_id
+                )
+            except RuntimeError as exc:
+                logger.warning(
+                    "Processing queue full while recovering version_id=%s: %s",
+                    version_id,
+                    exc,
+                )
+                break
+
+        return requeued
+    finally:
+        db.close()

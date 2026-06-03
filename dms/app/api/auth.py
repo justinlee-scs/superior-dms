@@ -1,6 +1,6 @@
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
@@ -65,6 +65,16 @@ class OIDCLoginStartResponse(BaseModel):
     authorization_url: str
 
 
+class DevLoginRequest(BaseModel):
+    email: EmailStr | None = None
+
+
+def _is_local_request(request: Request) -> bool:
+    host = (request.url.hostname or "").strip().lower()
+    client_host = (request.client.host if request.client else "").strip().lower()
+    return host in {"localhost", "127.0.0.1", "::1"} or client_host in {"localhost", "127.0.0.1", "::1"}
+
+
 @router.post("/login", response_model=TokenResponse)
 def login(data: LoginRequest, db: Session = Depends(get_db)):
     """Handle login.
@@ -99,6 +109,35 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
         "access_token": token,
         "token_type": "bearer",
     }
+
+
+@router.post("/dev-login", response_model=TokenResponse)
+def dev_login(
+    request: Request,
+    payload: DevLoginRequest | None = None,
+    db: Session = Depends(get_db),
+):
+    """Handle local-only developer login.
+
+    This endpoint is disabled in production and only intended for localhost testing.
+    """
+    if not settings.dev_auth_enabled:
+        raise HTTPException(status_code=403, detail="Dev login is disabled")
+    if request is None or not _is_local_request(request):
+        raise HTTPException(status_code=403, detail="Dev login is only allowed from localhost")
+
+    email = (payload.email if payload and payload.email else settings.dev_auth_email).strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="Dev login email is required")
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Dev login user not found")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Dev login user is inactive")
+
+    token = create_access_token(user.id)
+    return {"access_token": token, "token_type": "bearer"}
 
 @router.get("/me")
 def me(

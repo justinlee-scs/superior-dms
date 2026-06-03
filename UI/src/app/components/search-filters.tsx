@@ -165,6 +165,24 @@ export function SearchFilters({
             Create
           </Button>
         </div>
+        {canDeleteTagFromPool && onDeleteTagFromPool && (
+          <div className="flex justify-start">
+            <Button
+              variant={tagDeleteMode ? "default" : "outline"}
+              size="sm"
+              onClick={() => setTagDeleteMode((prev) => !prev)}
+              className={`h-7 text-xs ${
+                tagDeleteMode
+                  ? "bg-[#020825] text-gray-100 hover:bg-[#1a2248]"
+                  : darkMode
+                    ? "text-gray-100"
+                    : ""
+              }`}
+            >
+              {tagDeleteMode ? "Done" : "Manage Tags"}
+            </Button>
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <Label className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>Match:</Label>
           <Button
@@ -185,16 +203,6 @@ export function SearchFilters({
             <ToggleRight className="w-4 h-4 mr-1" />
             All
           </Button>
-          {canDeleteTagFromPool && onDeleteTagFromPool && (
-            <Button
-              variant={tagDeleteMode ? "default" : "outline"}
-              size="sm"
-              onClick={() => setTagDeleteMode((prev) => !prev)}
-              className="text-xs h-7 ml-auto"
-            >
-              {tagDeleteMode ? "Done" : "Manage Tags"}
-            </Button>
-          )}
         </div>
         <div className="flex flex-wrap gap-2">
           {filteredAvailableTags.map((tag) => {

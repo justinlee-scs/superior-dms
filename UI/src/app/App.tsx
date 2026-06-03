@@ -68,7 +68,16 @@ import {
 import { API_BASE_URL } from "@/lib/api";
 import { getMyAccess } from "@/lib/rbac";
 import { formatBytes } from "@/lib/format";
+import { normalizeWorkflowStatus } from "@/lib/dms";
+import { openLoadingPreviewWindow } from "@/lib/preview";
 import { getCurrentUserProfile, updateCurrentUserProfile } from "@/lib/profile";
+import { isOfficeFilename } from "@/lib/file-types";
+import { saveResponseAsFile } from "@/lib/file-transfer";
+import {
+  applyUiThemeClass,
+  persistUiPreferences,
+  readUiPreferences,
+} from "@/lib/ui-preferences";
 import RolesPage from "@/admin/roles-page";
 
 /**
@@ -112,7 +121,7 @@ function mapApiDocument(doc: any): Document {
     author: doc.author ?? "System",
     date: toLocalDateOnly(doc.created_at),
     tags,
-    workflow: doc.status ?? "uploaded",
+    workflow: normalizeWorkflowStatus(doc.status),
     project: getProjectFromTags(tags),
     documentType: doc.document_type ?? "Document",
     vendor: doc.vendor,
@@ -128,6 +137,7 @@ function mapApiDocument(doc: any): Document {
 }
 
 function AppInner() {
+  const initialUiPreferences = readUiPreferences();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [deletedQueue, setDeletedQueue] = useState<
     { doc: Document; timeoutId: ReturnType<typeof setTimeout> }[]
@@ -146,8 +156,12 @@ function AppInner() {
     null,
   );
   const [workflowEditorOpen, setWorkflowEditorOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<"compact" | "grouped">("compact");
-  const [darkMode, setDarkMode] = useState<boolean>(false);
+  const [viewMode, setViewMode] = useState<"compact" | "grouped">(
+    () => initialUiPreferences.viewMode,
+  );
+  const [darkMode, setDarkMode] = useState<boolean>(
+    () => initialUiPreferences.darkMode,
+  );
   const [isAdmin, setIsAdmin] = useState(false);
   const [versionModalDoc, setVersionModalDoc] = useState<Document | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -165,6 +179,7 @@ function AppInner() {
   const [liveSyncEnabled, setLiveSyncEnabled] = useState(true);
   const preferencesReadyRef = useRef(false);
   const skipNextPreferencePersistRef = useRef(false);
+  const searchTextRef = useRef("");
 
   const msUntilNextMidnight = () => {
     const now = new Date();
@@ -191,8 +206,8 @@ function AppInner() {
   /**
    * Load documents
    */
-  const refreshDocuments = async () => {
-    const apiDocs = (await listDocuments()) as any[];
+  const refreshDocuments = async (query = searchTextRef.current) => {
+    const apiDocs = (await listDocuments(query.trim() || undefined)) as any[];
     const baseDocs = apiDocs.map(mapApiDocument);
     setDocuments(baseDocs);
   };
@@ -241,6 +256,33 @@ function AppInner() {
     } finally {
       setDuePaymentsLoading(false);
     }
+  };
+
+  const pollDocumentStatus = async (documentId: string) => {
+    const maxAttempts = 45;
+    const delayMs = 2000;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const docs = (await listDocuments()) as any[];
+      const current = docs.find((doc) => doc.id === documentId);
+      if (!current) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
+      }
+
+      const next = mapApiDocument(current);
+      setDocuments((prev) =>
+        prev.map((doc) => (doc.id === documentId ? next : doc)),
+      );
+
+      if (normalizeWorkflowStatus(next.workflow).toLowerCase() !== "processing") {
+        return;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+
+    toast.info("Processing is still running in the background.");
   };
 
   useEffect(() => {
@@ -303,9 +345,16 @@ function AppInner() {
   useEffect(() => {
     getCurrentUserProfile()
       .then((user) => {
+        const nextDarkMode = Boolean(user.ui_dark_mode);
+        const nextViewMode = user.ui_view_mode === "grouped" ? "grouped" : "compact";
         skipNextPreferencePersistRef.current = true;
-        setDarkMode(Boolean(user.ui_dark_mode));
-        setViewMode(user.ui_view_mode === "grouped" ? "grouped" : "compact");
+        setDarkMode(nextDarkMode);
+        setViewMode(nextViewMode);
+        persistUiPreferences({
+          darkMode: nextDarkMode,
+          viewMode: nextViewMode,
+        });
+        applyUiThemeClass(nextDarkMode);
       })
       .finally(() => {
         preferencesReadyRef.current = true;
@@ -313,6 +362,9 @@ function AppInner() {
   }, []);
 
   useEffect(() => {
+    persistUiPreferences({ darkMode, viewMode });
+    applyUiThemeClass(darkMode);
+
     if (!preferencesReadyRef.current) return;
     if (skipNextPreferencePersistRef.current) {
       skipNextPreferencePersistRef.current = false;
@@ -323,6 +375,10 @@ function AppInner() {
       ui_view_mode: viewMode,
     }).catch(() => undefined);
   }, [darkMode, viewMode]);
+
+  useEffect(() => {
+    searchTextRef.current = filters.searchText;
+  }, [filters.searchText]);
 
   useEffect(() => {
     let timeoutId: number | null = null;
@@ -451,6 +507,17 @@ function AppInner() {
     [filteredDocuments],
   );
 
+  useEffect(() => {
+    if (!documents.length && !searchTextRef.current) return;
+
+    const timeoutId = window.setTimeout(() => {
+      refreshDocuments().catch(() => toast.error("Failed to load documents"));
+    }, 250);
+
+    return () => window.clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.searchText]);
+
   /**
    * Actions
    */
@@ -498,7 +565,7 @@ function AppInner() {
   const handleFileUpload = async (file: File) => {
     const loadingToastId = toast.loading(`Uploading ${file.name}...`);
     try {
-      await uploadDocument(file);
+      const uploaded = (await uploadDocument(file)) as { id?: string };
 
       // wait until backend actually returns the file
       const docs = await waitForDocument(file.name);
@@ -510,8 +577,12 @@ function AppInner() {
         await refreshDocuments();
       }
 
-      // refresh supporting data
-      await Promise.all([refreshTagPool(), refreshDuePayments()]);
+      if (uploaded.id) {
+        void pollDocumentStatus(uploaded.id);
+      }
+
+      // refresh supporting data without failing the upload toast if one panel is unavailable
+      await Promise.allSettled([refreshTagPool(), refreshDuePayments()]);
       toast.success(`${file.name} uploaded`);
     } catch (error) {
       toast.error(`Failed to upload ${file.name}`);
@@ -606,61 +677,33 @@ function AppInner() {
 
   const handlePreview = (doc: Document) => {
     const token = sessionStorage.getItem("access_token");
-    const newWindow = window.open("", "_blank");
-    if (!newWindow) {
+    const previewWindow = openLoadingPreviewWindow(doc.name);
+    if (!previewWindow) {
       toast.error("Popup blocked");
       return;
     }
-
-    newWindow.document.open();
-    newWindow.document.write(`
-      <html>
-        <head><title>${doc.name}</title></head>
-        <body style="margin:0;display:flex;align-items:center;justify-content:center;font-family:sans-serif;">
-          <div id="preview-loader" style="text-align:center;">
-            <div style="width:36px;height:36px;border:4px solid #d1d5db;border-top-color:#2563eb;border-radius:9999px;animation:spin 1s linear infinite;margin:0 auto 10px;"></div>
-            <div>Loading preview...</div>
-            <div id="elapsed" style="font-size:12px;color:#6b7280;margin-top:4px;">0s</div>
-          </div>
-          <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
-        </body>
-      </html>
-    `);
-    newWindow.document.close();
-
-    const startedAt = Date.now();
-    const timerId = window.setInterval(() => {
-      const elapsedEl = newWindow.document.getElementById("elapsed");
-      if (elapsedEl) elapsedEl.textContent = `${Math.floor((Date.now() - startedAt) / 1000)}s`;
-    }, 300);
 
     fetch(`${API_BASE_URL}/documents/${doc.id}/preview`, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     })
       .then(async (res) => {
+        if (res.status === 401) {
+          sessionStorage.removeItem("access_token");
+          previewWindow.fail();
+          window.location.reload();
+          return;
+        }
         if (!res.ok) throw new Error("Preview failed");
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        newWindow.document.open();
-        newWindow.document.write(`
-          <html>
-            <head><title>${doc.name}</title></head>
-            <body style="margin:0">
-              <iframe
-                src="${url}"
-                frameborder="0"
-                style="width:100%; height:100vh;">
-              </iframe>
-            </body>
-          </html>
-        `);
-        newWindow.document.close();
+        if (isOfficeFilename(doc.name)) {
+          previewWindow.finish(await res.text());
+          return;
+        }
+        previewWindow.finish(await res.blob());
       })
       .catch(() => {
-        newWindow.close();
+        previewWindow.fail();
         toast.error("Preview failed");
-      })
-      .finally(() => window.clearInterval(timerId));
+      });
   };
 
   const handlePreviewById = (documentId: string) => {
@@ -677,20 +720,17 @@ function AppInner() {
     const res = await fetch(`${API_BASE_URL}/documents/${doc.id}/download`, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     });
+    if (res.status === 401) {
+      sessionStorage.removeItem("access_token");
+      window.location.reload();
+      return;
+    }
     if (!res.ok) {
       toast.error("Download failed");
       return;
     }
 
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = doc.name;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(url);
+    await saveResponseAsFile(res, doc.name);
   };
 
   const handleReprocess = async (doc: Document) => {
@@ -772,7 +812,7 @@ function AppInner() {
         doc.id === documentId
           ? {
               ...doc,
-              workflow: response.status,
+              workflow: normalizeWorkflowStatus(response.status),
               workflowNotes: response.notes,
             }
           : doc,
@@ -780,7 +820,11 @@ function AppInner() {
     );
     setSelectedDocument((prev) =>
       prev && prev.id === documentId
-        ? { ...prev, workflow: response.status, workflowNotes: response.notes }
+        ? {
+            ...prev,
+            workflow: normalizeWorkflowStatus(response.status),
+            workflowNotes: response.notes,
+          }
         : prev,
     );
     toast.success("Workflow updated");

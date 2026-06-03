@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import hashlib
 import re
 from enum import Enum
 from functools import lru_cache
@@ -45,6 +46,8 @@ RESERVED_TAG_PREFIXES = (
     "company:",
     "due_date:",
 )
+
+MAX_TAG_LENGTH = 80
 
 
 @lru_cache(maxsize=1)
@@ -212,6 +215,11 @@ def normalize_tag(raw_tag: str) -> str:
     # Keep values stable and machine-friendly.
     tag = tag.replace(" ", "_")
     tag = re.sub(r"[^a-z0-9:_-]", "", tag)
+    if len(tag) > MAX_TAG_LENGTH:
+        digest = hashlib.sha1(tag.encode("utf-8")).hexdigest()[:8]
+        suffix = f"-{digest}"
+        prefix_len = max(1, MAX_TAG_LENGTH - len(suffix))
+        tag = f"{tag[:prefix_len].rstrip('_:-')}{suffix}"
     return tag
 
 

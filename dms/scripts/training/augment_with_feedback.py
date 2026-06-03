@@ -71,11 +71,18 @@ def main() -> int:
                     added_doc += 1
 
             final_tags = [t for t in (ev.final_tags or []) if isinstance(t, str) and t]
+            predicted_tags = [t for t in (ev.predicted_tags or []) if isinstance(t, str) and t]
             if final_tags:
                 merged = ",".join(sorted(set(final_tags)))
                 key = (text, merged)
                 if key not in tags_seen:
                     tags_rows.append([text, merged])
+                    tags_seen.add(key)
+                    added_tags += 1
+            elif ev.event_type == "tags_remove" and predicted_tags:
+                key = (text, "")
+                if key not in tags_seen:
+                    tags_rows.append([text, ""])
                     tags_seen.add(key)
                     added_tags += 1
     finally:

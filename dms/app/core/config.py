@@ -42,6 +42,8 @@ class Settings:
     access_token_expire_minutes: int
     cors_allow_origins: list[str]
     cors_allow_credentials: bool
+    dev_auth_enabled: bool
+    dev_auth_email: str
     google_oidc_enabled: bool
     google_oidc_client_id: str
     google_oidc_client_secret: str
@@ -82,6 +84,12 @@ def _build_settings() -> Settings:
         default=True,
     )
 
+    dev_auth_enabled = _parse_bool(
+        os.getenv("DEV_AUTH_ENABLED", "false"),
+        default=False,
+    )
+    dev_auth_email = os.getenv("DEV_AUTH_EMAIL", "justin.lee@scsgroup.ca").strip()
+
     google_oidc_enabled = _parse_bool(
         os.getenv("GOOGLE_OIDC_ENABLED", "false"),
         default=False,
@@ -100,6 +108,8 @@ def _build_settings() -> Settings:
         access_token_expire_minutes=access_token_expire_minutes,
         cors_allow_origins=cors_allow_origins,
         cors_allow_credentials=cors_allow_credentials,
+        dev_auth_enabled=dev_auth_enabled,
+        dev_auth_email=dev_auth_email,
         google_oidc_enabled=google_oidc_enabled,
         google_oidc_client_id=google_oidc_client_id,
         google_oidc_client_secret=google_oidc_client_secret,

@@ -1,4 +1,14 @@
-import { Download, FileText, Image, FileSpreadsheet, File, Archive } from "lucide-react";
+import {
+  CheckCircle2,
+  Download,
+  FileText,
+  Image,
+  FileSpreadsheet,
+  File,
+  Archive,
+  Clock3,
+  XCircle,
+} from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
 import {
@@ -8,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/app/components/ui/dropdown-menu";
 import { formatBytes, formatLocalDateFromDateOnly, formatPageCount } from "@/lib/format";
+import { normalizeWorkflowStatus } from "@/lib/dms";
 
 export interface Document {
   id: string;
@@ -53,22 +64,36 @@ const getFileIcon = (type: string) => {
 };
 
 const getWorkflowColor = (workflow: string) => {
-  switch (workflow.toLowerCase()) {
+  switch (normalizeWorkflowStatus(workflow).toLowerCase()) {
+    case "processing":
+      return "bg-amber-100 text-amber-800 border-amber-300";
     case "failed":
       return "bg-red-100 text-red-800 border-red-300";
     case "uploaded":
-      return "bg-sky-100 text-sky-800 border-sky-300";
+      return "bg-green-100 text-green-800 border-green-300";
     case "approved":
     case "published":
       return "bg-green-100 text-green-800 border-green-200";
     case "in review":
     case "needs review":
-    case "pending approval":
       return "bg-yellow-100 text-yellow-800 border-yellow-200";
     case "draft":
       return "bg-gray-100 text-gray-800 border-gray-200";
     default:
       return "bg-blue-100 text-blue-800 border-blue-200";
+  }
+};
+
+const getWorkflowIcon = (workflow: string) => {
+  switch (normalizeWorkflowStatus(workflow).toLowerCase()) {
+    case "processing":
+      return <Clock3 className="h-3.5 w-3.5" />;
+    case "failed":
+      return <XCircle className="h-3.5 w-3.5" />;
+    case "uploaded":
+      return <CheckCircle2 className="h-3.5 w-3.5" />;
+    default:
+      return null;
   }
 };
 
@@ -104,8 +129,12 @@ export function DocumentCard({
 
       {/* Workflow Badge */}
       <div className="flex-shrink-0">
-        <Badge variant="outline" className={`text-xs ${getWorkflowColor(document.workflow)}`}>
-          {document.workflow}
+        <Badge
+          variant="outline"
+          className={`text-xs inline-flex items-center gap-1 ${getWorkflowColor(document.workflow)}`}
+        >
+          {getWorkflowIcon(document.workflow)}
+          {normalizeWorkflowStatus(document.workflow)}
         </Badge>
       </div>
 

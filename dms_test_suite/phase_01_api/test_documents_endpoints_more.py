@@ -237,6 +237,15 @@ def test_versions_create_set_current_download_preview_tags(monkeypatch: pytest.M
     assert isinstance(docs_api.download_document_version(d.id, created.id, db=object()), StreamingResponse)
     assert isinstance(docs_api.preview_document_version(d.id, created.id, db=object()), StreamingResponse)
 
+    office_version = _version(document_id=d.id)
+    office_version.document.filename = "file.docx"
+    monkeypatch.setattr(docs_api, "get_document_version_by_id", lambda **_k: office_version)
+    monkeypatch.setattr(docs_api, "load_document_version_bytes", lambda **_k: b"office-bytes")
+    monkeypatch.setattr(docs_api, "extract_text_from_office_file", lambda *_a, **_k: "office text")
+    office_preview = docs_api.preview_document_version(d.id, created.id, db=object())
+    assert isinstance(office_preview, StreamingResponse)
+    assert office_preview.media_type == "text/html"
+
     monkeypatch.setattr(docs_api, "get_document_version_by_id", lambda **_k: None)
     with pytest.raises(HTTPException):
         docs_api.get_document_version_tags(d.id, created.id, db=object())

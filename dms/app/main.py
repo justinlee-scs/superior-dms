@@ -11,10 +11,14 @@ from app.api.admin_training import router as admin_training_router
 import app.db.models
 
 from fastapi import Depends
+import logging
 from app.auth.deps import get_current_user
 from app.db.models.user import User
 from app.core.config import settings
 from app.services.nightly_retrainer import start_nightly_retrainer
+from app.workers.processor import recover_stuck_processing_jobs
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="DMS API")
 
@@ -37,6 +41,9 @@ app.include_router(admin_training_router)
 @app.on_event("startup")
 def _startup_jobs() -> None:
     start_nightly_retrainer()
+    requeued = recover_stuck_processing_jobs()
+    if requeued:
+        logger.warning("Recovered %s stale processing job(s) on startup", requeued)
 
 @app.get("/")
 def root():

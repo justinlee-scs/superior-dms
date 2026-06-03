@@ -7,6 +7,7 @@ from uuid import UUID
 from app.db.models import Document, DocumentVersion
 from app.db.models.documents import DocumentType
 from app.db.models.user import User
+from app.db.models.training_feedback_event import TrainingFeedbackEvent
 from app.db.models.enums import ProcessingStatus, DocumentClass
 from app.services.extraction.tags import normalize_tag
 
@@ -96,7 +97,7 @@ def create_document_version(
         storage_size_bytes=storage_size_bytes
         or (len(file_bytes) if file_bytes is not None else None),
         version_number=version_number,
-        processing_status=ProcessingStatus.pending,
+        processing_status=ProcessingStatus.processing,
     )
 
     db.add(version)
@@ -233,13 +234,13 @@ def get_document(
     return get_document_by_id(db, document_id)
 
 
-def list_documents(db: Session):
+def list_documents(db: Session, query: str | None = None):
     """Return documents.
 
     Parameters:
         db (type=Session): Database session used for persistence operations.
     """
-    rows = (
+    rows_query = (
         db.query(
             Document,
             DocumentVersion.processing_status,
@@ -260,9 +261,22 @@ def list_documents(db: Session):
             User,
             Document.uploaded_by_user_id == User.id,
         )
-        .order_by(Document.created_at.desc())
-        .all()
     )
+
+    search = (query or "").strip()
+    if search:
+        pattern = f"%{search.lower()}%"
+        rows_query = rows_query.filter(
+            or_(
+                func.lower(Document.filename).like(pattern),
+                func.lower(User.username).like(pattern),
+                func.lower(func.coalesce(DocumentVersion.extracted_text, "")).like(
+                    pattern
+                ),
+            )
+        )
+
+    rows = rows_query.order_by(Document.created_at.desc()).all()
 
     document_ids = [doc.id for doc, *_ in rows]
     if not document_ids:
@@ -383,7 +397,7 @@ def reset_processing_state(
     version.tags = []
     version.due_date = None
     version.page_count = None
-    version.processing_status = ProcessingStatus.pending
+    version.processing_status = ProcessingStatus.processing
     db.commit()
     db.refresh(version)
     return version
@@ -451,6 +465,44 @@ def list_existing_tags(
                 if normalized:
                     values.add(normalized)
     return sorted(values)
+
+
+def list_rejected_tags(
+    db: Session,
+    *,
+    min_count: int = 1,
+) -> list[str]:
+    """Return tags users have removed from AI suggestions."""
+    removal_counts: dict[str, int] = {}
+    events = (
+        db.query(TrainingFeedbackEvent.predicted_tags, TrainingFeedbackEvent.final_tags)
+        .filter(TrainingFeedbackEvent.event_type == "tags_remove")
+        .filter(TrainingFeedbackEvent.include_in_training.is_(True))
+        .all()
+    )
+
+    for predicted_tags, final_tags in events:
+        predicted: set[str] = set()
+        final: set[str] = set()
+
+        for tag in predicted_tags or []:
+            if isinstance(tag, str):
+                normalized = normalize_tag(tag)
+                if normalized:
+                    predicted.add(normalized)
+
+        for tag in final_tags or []:
+            if isinstance(tag, str):
+                normalized = normalize_tag(tag)
+                if normalized:
+                    final.add(normalized)
+
+        for tag in predicted - final:
+            removal_counts[tag] = removal_counts.get(tag, 0) + 1
+
+    return sorted(
+        tag for tag, count in removal_counts.items() if count >= min_count
+    )
 
 
 def replace_document_version_tags(

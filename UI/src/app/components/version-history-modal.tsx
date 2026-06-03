@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Clock3, Download, Eye, Trash2, Upload, X } from "lucide-react";
+import { Clock3, Download, Eye, Loader2, Trash2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/app/components/ui/button";
@@ -7,13 +7,16 @@ import type { Document } from "@/app/components/document-card";
 import { getMyAccess } from "@/lib/rbac";
 import {
   deleteDocumentVersion,
-  downloadDocumentVersion,
   listDocumentVersions,
-  previewDocumentVersion,
   setCurrentDocumentVersion,
   uploadDocumentVersion,
+  normalizeWorkflowStatus,
   type DocumentVersion,
 } from "@/lib/dms";
+import { openLoadingPreviewWindow } from "@/lib/preview";
+import { isOfficeFilename } from "@/lib/file-types";
+import { saveResponseAsFile } from "@/lib/file-transfer";
+import { API_BASE_URL } from "@/lib/api";
 
 interface VersionHistoryModalProps {
   open: boolean;
@@ -42,6 +45,7 @@ export function VersionHistoryModal({
   const [uploading, setUploading] = useState(false);
   const [settingCurrentId, setSettingCurrentId] = useState<string | null>(null);
   const [deletingVersionId, setDeletingVersionId] = useState<string | null>(null);
+  const [previewingVersionId, setPreviewingVersionId] = useState<string | null>(null);
   const [canPreviewVersion, setCanPreviewVersion] = useState(false);
   const [canDeleteVersion, setCanDeleteVersion] = useState(false);
 
@@ -93,19 +97,20 @@ export function VersionHistoryModal({
   // Keep version download behavior aligned with regular document download flow.
   const onDownloadVersion = async (version: DocumentVersion) => {
     try {
-      const blob = await downloadDocumentVersion(document.id, version.id);
-      const url = window.URL.createObjectURL(blob);
-
-      const a = window.document.createElement("a");
-      a.href = url;
-
-      a.download = document.name;
-
-      window.document.body.appendChild(a);
-      a.click();
-      a.remove();
-
-      window.URL.revokeObjectURL(url);
+      const token = sessionStorage.getItem("access_token");
+      const response = await fetch(
+        `${API_BASE_URL}/documents/${document.id}/versions/${version.id}/download`,
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        },
+      );
+      if (response.status === 401) {
+        sessionStorage.removeItem("access_token");
+        window.location.reload();
+        return;
+      }
+      if (!response.ok) throw new Error("Download failed");
+      await saveResponseAsFile(response, document.name);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Download failed");
     }
@@ -131,14 +136,39 @@ export function VersionHistoryModal({
   };
 
   const onPreviewVersion = async (version: DocumentVersion) => {
+    setPreviewingVersionId(version.id);
+    const previewWindow = openLoadingPreviewWindow(document.name);
+    if (!previewWindow) {
+      toast.error("Popup blocked");
+      setPreviewingVersionId(null);
+      return;
+    }
+
     try {
-      const blob = await previewDocumentVersion(document.id, version.id);
-      const url = window.URL.createObjectURL(blob);
-      const previewWindow = window.open(url, "_blank");
-      if (!previewWindow) toast.error("Popup blocked");
-      window.setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
+      const token = sessionStorage.getItem("access_token");
+      const response = await fetch(
+        `${API_BASE_URL}/documents/${document.id}/versions/${version.id}/preview`,
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        },
+      );
+      if (response.status === 401) {
+        sessionStorage.removeItem("access_token");
+        previewWindow.fail();
+        window.location.reload();
+        return;
+      }
+      if (!response.ok) throw new Error("Preview failed");
+      if (isOfficeFilename(document.name)) {
+        previewWindow.finish(await response.text());
+      } else {
+        previewWindow.finish(await response.blob());
+      }
     } catch (error) {
+      previewWindow.fail();
       toast.error(error instanceof Error ? error.message : "Preview failed");
+    } finally {
+      setPreviewingVersionId(null);
     }
   };
 
@@ -279,14 +309,19 @@ export function VersionHistoryModal({
                           <Download className="h-4 w-4" />
                         </Button>
                         {canPreviewVersion && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => void onPreviewVersion(version)}
-                            title="Preview version"
-                          >
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={previewingVersionId === version.id}
+                          onClick={() => void onPreviewVersion(version)}
+                          title="Preview version"
+                        >
+                          {previewingVersionId === version.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
                             <Eye className="h-4 w-4" />
-                          </Button>
+                          )}
+                        </Button>
                         )}
                         {canDeleteVersion && (
                           <Button
@@ -311,7 +346,7 @@ export function VersionHistoryModal({
                       {formatBytes(version.size_bytes)}
                     </div>
                     <div className="mt-1 text-xs text-gray-500">
-                      Status: {version.processing_status}
+                      Status: {normalizeWorkflowStatus(version.processing_status)}
                     </div>
                   </div>
                 </div>

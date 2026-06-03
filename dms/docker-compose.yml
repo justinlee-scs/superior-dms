@@ -38,6 +38,18 @@ services:
       POSTGRES_USER: dms_user
       POSTGRES_PASSWORD: psqladminpass
       POSTGRES_DB: dms
+    command:
+      [
+        "postgres",
+        "-c",
+        "checkpoint_timeout=30min",
+        "-c",
+        "max_wal_size=2GB",
+        "-c",
+        "checkpoint_completion_target=0.9",
+        "-c",
+        "log_checkpoints=off",
+      ]
     ports:
       - "5432:5432"
     volumes:

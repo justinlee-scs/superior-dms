@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.db.models.document_versions import DocumentVersion
 from app.db.models.enums import ProcessingStatus, DocumentClass
 from app.db.models.documents import DocumentType
-from app.db.repositories.documents import list_existing_tags
+from app.db.repositories.documents import list_existing_tags, list_rejected_tags
 from app.db.repositories.tags import create_tag_pool_entry
 
 from app.services.extraction.handwriting import is_handwritten
@@ -189,12 +189,23 @@ def process_document(
         return
 
     try:
+        logger.info(
+            "Pipeline start version_id=%s filename=%s", version.id, version.document.filename
+        )
         version.processing_status = ProcessingStatus.processing
+        rejected_tags = set(list_rejected_tags(db))
 
         # ---- OCR EXTRACTION ----
+        logger.info("Pipeline stage=ocr_start version_id=%s", version.id)
         extraction = extract_text_with_metadata(
             file_bytes=file_bytes,
             filename=version.document.filename,
+        )
+        logger.info(
+            "Pipeline stage=ocr_done version_id=%s latency_ms=%s page_count=%s",
+            version.id,
+            extraction.latency_ms,
+            extraction.metadata.get("page_count") or extraction.metadata.get("pages"),
         )
 
         text = extraction.text
@@ -205,11 +216,17 @@ def process_document(
         lilt_status = "skipped_unsupported_type"
         if _can_run_lilt(version.document.filename):
             try:
+                logger.info("Pipeline stage=lilt_start version_id=%s", version.id)
                 lilt_result = run_lilt_model(
                     file_bytes=file_bytes,
                     filename=version.document.filename,
                 )
                 lilt_status = "used" if lilt_result else "empty_result"
+                logger.info(
+                    "Pipeline stage=lilt_done version_id=%s status=%s",
+                    version.id,
+                    lilt_status,
+                )
             except Exception as exc:
                 lilt_status = "failed_fallback"
                 logger.warning(
@@ -225,11 +242,18 @@ def process_document(
             confidence = lilt_result.confidence or confidence
 
         # ---- CLASSIFICATION ----
+        logger.info("Pipeline stage=classification_start version_id=%s", version.id)
         classification = classify_document(text)
+        logger.info(
+            "Pipeline stage=classification_done version_id=%s classification=%s",
+            version.id,
+            classification.value if hasattr(classification, "value") else classification,
+        )
 
-        existing_tags = list_existing_tags(db)
+        existing_tags = [tag for tag in list_existing_tags(db) if tag not in rejected_tags]
 
         # ---- TAG DERIVATION ----
+        logger.info("Pipeline stage=tag_derivation_start version_id=%s", version.id)
         derived_tags = set(
             derive_tags(
                 text,
@@ -238,24 +262,31 @@ def process_document(
                 filename=version.document.filename,
                 existing_tags=existing_tags,
             )
-        )
+        ) - rejected_tags
 
         # ---- FIELD EXTRACTION (LiLT PRIORITY) ----
+        logger.info("Pipeline stage=field_extraction_start version_id=%s", version.id)
         field_values = None
 
         if lilt_result and lilt_result.fields:
             field_values = lilt_result.fields
         else:
             field_values = extract_fields(file_bytes, version.document.filename)
+        logger.info(
+            "Pipeline stage=field_extraction_done version_id=%s has_fields=%s",
+            version.id,
+            bool(field_values),
+        )
 
         field_tags = set(fields_to_tags(field_values)) if field_values else set()
+        field_tags -= rejected_tags
 
         new_system_tags = derived_tags.union(field_tags)
 
         existing_tags_set = set(version.tags or [])
         user_tags = {t for t in existing_tags_set if not t.startswith("system:")}
 
-        tags = sorted(user_tags.union(new_system_tags))
+        tags = sorted(user_tags.union(new_system_tags) - rejected_tags)
 
         company_tag_from_lilt = _extract_company_tag_from_fields(
             lilt_result.fields if lilt_result else None
@@ -272,6 +303,7 @@ def process_document(
             tags = sorted(set(tags))
 
         # ---- DUE DATE ----
+        logger.info("Pipeline stage=due_date_start version_id=%s", version.id)
         due_date = None
         is_invoice = _is_invoice_classification(classification) or _is_invoice_doc_type(
             version.document.document_type
@@ -288,8 +320,14 @@ def process_document(
             tags.append(f"due_date:{due_date.isoformat()}")
             if not any(t.startswith("payment_due_date:") for t in tags):
                 tags.append(f"payment_due_date:{due_date.isoformat()}")
+        logger.info(
+            "Pipeline stage=due_date_done version_id=%s due_date=%s",
+            version.id,
+            due_date.isoformat() if due_date else "",
+        )
 
         # ---- PAGE COUNT ----
+        logger.info("Pipeline stage=page_count_start version_id=%s", version.id)
         page_count = extraction.metadata.get("page_count")
         if page_count is None:
             page_count = extraction.metadata.get("pages")
@@ -300,8 +338,14 @@ def process_document(
             page_count = int(page_count)
         else:
             page_count = None
+        logger.info(
+            "Pipeline stage=page_count_done version_id=%s page_count=%s",
+            version.id,
+            page_count,
+        )
 
         # ---- REVIEW FLAG ----
+        logger.info("Pipeline stage=review_flag_start version_id=%s", version.id)
         needs_review = False
 
         if confidence is not None and confidence < 0.75:
@@ -329,15 +373,23 @@ def process_document(
             tags.append("lilt_company_missing")
             if "needs_review" not in tags:
                 tags.append("needs_review")
+        logger.info(
+            "Pipeline stage=review_flag_done version_id=%s needs_review=%s",
+            version.id,
+            needs_review,
+        )
 
         # ---- TAG POOL ----
+        logger.info("Pipeline stage=tag_pool_start version_id=%s", version.id)
         for tag in tags:
             try:
                 create_tag_pool_entry(db=db, tag=tag)
             except ValueError:
                 continue
+        logger.info("Pipeline stage=tag_pool_done version_id=%s", version.id)
 
         # ---- ASSIGN ----
+        logger.info("Pipeline stage=assign_start version_id=%s", version.id)
         version.extracted_text = text
         version.classification = classification
         version.confidence = confidence
@@ -354,6 +406,12 @@ def process_document(
             version.storage_size_bytes = len(file_bytes)
 
         version.processing_status = ProcessingStatus.uploaded
+        logger.info(
+            "Pipeline stage=assign_done version_id=%s status=%s tags=%s",
+            version.id,
+            version.processing_status.value,
+            len(tags),
+        )
         logger.info(
             "Document processed version_id=%s filename=%s status=%s lilt=%s lilt_company_tag=%s classification=%s confidence=%s tags=%s company_tag=%s",
             version.id,
@@ -376,6 +434,7 @@ def process_document(
             filename=version.document.filename,
             text=text,
         )
+        logger.info("Pipeline stage=label_studio_done version_id=%s", version.id)
 
     except Exception:
         version.processing_status = ProcessingStatus.failed
@@ -383,9 +442,11 @@ def process_document(
             db.commit()
         else:
             db.flush()
+        logger.exception("Pipeline failed version_id=%s", version.id)
         raise
 
     if commit:
         db.commit()
     else:
         db.flush()
+    logger.info("Pipeline commit_complete version_id=%s", version.id)

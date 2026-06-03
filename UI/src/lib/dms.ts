@@ -1,8 +1,10 @@
 // File: dms.ts
 import { apiFetch } from "./api";
 
-export function listDocuments() {
-  return apiFetch("/documents/");
+export function listDocuments(query?: string) {
+  const q = query?.trim();
+  const suffix = q ? `?q=${encodeURIComponent(q)}` : "";
+  return apiFetch(`/documents/${suffix}`);
 }
 
 export function getDocument(id: string) {
@@ -51,6 +53,10 @@ export type WorkflowUpdateResponse = {
   status: "failed" | "uploaded" | "needs review";
   notes: string | null;
 };
+
+export function normalizeWorkflowStatus(status?: string | null) {
+  return status ?? "uploaded";
+}
 
 export type RetrainSchedule = {
   enabled: boolean;

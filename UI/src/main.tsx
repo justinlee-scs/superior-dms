@@ -1,8 +1,12 @@
 
-  import { createRoot } from "react-dom/client";
-  //import App from "./app/App.js";
-  import AuthGate from "./auth/AuthGate.js";
-  import "./styles/index.css";
+import { createRoot } from "react-dom/client";
+//import App from "./app/App.js";
+import AuthGate from "./auth/AuthGate.js";
+import { applyUiThemeClass, readUiPreferences } from "./lib/ui-preferences";
+import "./styles/index.css";
 
-  createRoot(document.getElementById("root")!).render(<AuthGate />);
+const { darkMode } = readUiPreferences();
+applyUiThemeClass(darkMode);
+
+createRoot(document.getElementById("root")!).render(<AuthGate />);
   

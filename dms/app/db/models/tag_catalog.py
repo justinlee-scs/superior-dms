@@ -18,5 +18,5 @@ class TagCatalog(Base):
     __tablename__ = "tag_catalog"
 
     id = sa.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = sa.Column(sa.String(128), unique=True, nullable=False, index=True)
+    name = sa.Column(sa.String(255), unique=True, nullable=False, index=True)
     created_at = sa.Column(sa.DateTime, nullable=False, default=datetime.utcnow)

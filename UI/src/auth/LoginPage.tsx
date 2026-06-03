@@ -11,6 +11,10 @@ import {
 } from "@/app/components/ui/card";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
+const DEV_AUTH_EMAIL = import.meta.env.VITE_DEV_AUTH_EMAIL?.trim() ?? "justin.lee@scsgroup.ca";
+const IS_LOCALHOST =
+  typeof window !== "undefined" &&
+  ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
 
 interface LoginPageProps {
   onSuccess: (token: string) => void;
@@ -78,6 +82,46 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
     }
   }
 
+  async function handleDevLogin() {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const devEmail = email.trim() || DEV_AUTH_EMAIL;
+      const res = await fetch(`${API_BASE_URL}/auth/dev-login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: devEmail ? JSON.stringify({ email: devEmail }) : JSON.stringify({}),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.detail ?? "Dev login failed");
+      }
+
+      const data = await res.json();
+      if (!data?.access_token) {
+        throw new Error("No access token returned from server");
+      }
+
+      sessionStorage.setItem("access_token", data.access_token);
+
+      const meRes = await fetch(`${API_BASE_URL}/auth/me`, {
+        headers: { Authorization: `Bearer ${data.access_token}` },
+      });
+      const user = await meRes.json();
+      sessionStorage.setItem("user", JSON.stringify(user));
+
+      onSuccess(data.access_token);
+    } catch (err: any) {
+      setError(err.message ?? "Unexpected error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleGoogleSignIn() {
     setGoogleLoading(true);
     setError(null);
@@ -102,8 +146,8 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <Card className="w-full max-w-sm shadow-lg">
+    <div className="min-h-screen flex items-center justify-center bg-background text-foreground">
+      <Card className="w-full max-w-sm border-border bg-card text-card-foreground shadow-lg">
         <CardHeader>
           <CardTitle className="text-xl">Sign in to DMS</CardTitle>
         </CardHeader>
@@ -138,7 +182,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
               </div>
             </div>
 
-            {error && <div className="text-sm text-red-600">{error}</div>}
+            {error && <div className="text-sm text-destructive">{error}</div>}
 
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Signing in…" : "Sign in"}
@@ -152,6 +196,21 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
             >
               {googleLoading ? "Redirecting to Google…" : "Continue with Google"}
             </Button>
+            {IS_LOCALHOST && (
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full"
+                disabled={loading}
+                onClick={() => void handleDevLogin()}
+              >
+                {loading
+                  ? "Signing in…"
+                  : DEV_AUTH_EMAIL
+                    ? `Continue as ${DEV_AUTH_EMAIL}`
+                    : "Continue as local test user"}
+              </Button>
+            )}
           </form>
         </CardContent>
       </Card>

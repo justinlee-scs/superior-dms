@@ -11,6 +11,7 @@ import zipfile
 from datetime import datetime, timezone, date, timedelta
 from pathlib import Path
 import os
+import html
 
 from PIL import Image, UnidentifiedImageError
 
@@ -75,7 +76,11 @@ from app.schemas.tags import (
 )
 from app.processing.pipeline import process_document
 from app.services.extraction.tags import normalize_tag
-from app.services.extraction.office import OFFICE_EXTENSIONS, is_valid_office_file
+from app.services.extraction.office import (
+    OFFICE_EXTENSIONS,
+    is_valid_office_file,
+    extract_text_from_office_file,
+)
 from app.storage.backends import build_object_storage_from_env
 from app.services.training_feedback import capture_feedback_event
 
@@ -163,6 +168,54 @@ def _object_storage_enabled() -> bool:
         "true",
         "yes",
     }
+
+
+def _office_preview_response(filename: str, content: bytes) -> StreamingResponse:
+    extracted_text = extract_text_from_office_file(content, filename)
+    escaped_title = html.escape(filename or "document")
+    escaped_text = html.escape(extracted_text)
+    html_content = f"""<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>{escaped_title}</title>
+    <style>
+      body {{
+        font-family: Arial, sans-serif;
+        margin: 20px;
+        line-height: 1.6;
+        color: #333;
+      }}
+      .preview-header {{
+        border-bottom: 2px solid #ddd;
+        padding-bottom: 10px;
+        margin-bottom: 20px;
+      }}
+      .preview-content {{
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        background-color: #f5f5f5;
+        padding: 15px;
+        border-radius: 5px;
+      }}
+    </style>
+  </head>
+  <body>
+    <div class="preview-header">
+      <h2>Preview: {escaped_title}</h2>
+    </div>
+    <div class="preview-content">{escaped_text}</div>
+  </body>
+</html>
+"""
+    return StreamingResponse(
+        io.BytesIO(html_content.encode("utf-8")),
+        media_type="text/html",
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.post(
@@ -265,6 +318,7 @@ async def upload_document(
 
 @router.get("/", response_model=list[DocumentResponse])
 def get_documents(
+    q: str | None = None,
     db: Session = Depends(get_db),
     # _=Depends(require_role("viewer")), #what if we comment out the viewing thing real quick one time
     _=Depends(require_permission(Permissions.DOCUMENT_READ)),
@@ -275,7 +329,7 @@ def get_documents(
         db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
         _ (default=Depends(require_permission(Permissions.DOCUMENT_READ))): Dependency-injection placeholder argument required by FastAPI.
     """
-    rows = list_documents(db=db)
+    rows = list_documents(db=db, query=q)
 
     return [
         DocumentResponse(
@@ -358,6 +412,41 @@ def delete_tag_pool(
     if not delete_tag_pool_entry(db=db, tag=tag_name):
         raise HTTPException(status_code=404, detail="Tag not found in pool")
     return TagPoolDeleteResponse(tag=normalize_tag(tag_name))
+
+
+@router.get("/upcoming-due-payments", response_model=list[DuePaymentItem])
+def get_upcoming_due_payments(
+    days_ahead: int = 30,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permissions.DOCUMENT_DUE_PAYMENTS)),
+):
+    """Return upcoming due payments for incoming invoices."""
+    if days_ahead < 0:
+        raise HTTPException(status_code=400, detail="days_ahead must be >= 0")
+    if limit <= 0:
+        raise HTTPException(status_code=400, detail="limit must be > 0")
+
+    start = date.today()
+    end = start + timedelta(days=days_ahead)
+
+    rows = list_upcoming_due_payments(
+        db=db,
+        start_date=start,
+        end_date=end,
+        limit=min(limit, 200),
+    )
+
+    return [
+        DuePaymentItem(
+            document_id=doc.id,
+            version_id=version.id,
+            filename=doc.filename,
+            due_date=version.due_date,
+        )
+        for doc, version in rows
+        if version.due_date is not None
+    ]
 
 
 @router.post("/bulk-download")
@@ -524,7 +613,9 @@ def set_document_type(
                 current_version.extracted_text if current_version else None
             ),
             model_confidence=current_version.confidence if current_version else None,
-            model_version=current_version.ocr_model_version if current_version else None,
+            model_version=(
+                current_version.ocr_model_version if current_version else None
+            ),
         )
     except Exception:
         pass
@@ -558,10 +649,10 @@ def set_document_workflow(
     db: Session = Depends(get_db),
     _=Depends(require_permission(Permissions.WORKFLOW_ASSIGN)),
 ):
-    if payload.status in {ProcessingStatus.pending, ProcessingStatus.processing}:
+    if payload.status == ProcessingStatus.processing:
         raise HTTPException(
             status_code=400,
-            detail="Workflow status 'pending'/'processing' is system-managed and cannot be set manually",
+            detail="Workflow status must be failed, uploaded, or needs review",
         )
     version = update_document_workflow(
         db=db,
@@ -596,7 +687,22 @@ def get_document_output(
     version = get_document_version(db=db, document_id=document_id)
     if not version:
         raise HTTPException(status_code=404, detail="No processed version available")
-    return version
+    return DocumentVersionResponse(
+        id=version.id,
+        document_id=version.document_id,
+        processing_status=version.processing_status,
+        extracted_text=version.extracted_text,
+        classification=version.classification,
+        confidence=version.confidence,
+        ocr_raw_confidence=version.ocr_raw_confidence,
+        ocr_engine=version.ocr_engine,
+        ocr_model_version=version.ocr_model_version,
+        ocr_latency_ms=version.ocr_latency_ms,
+        tags=version.tags or [],
+        created_at=version.created_at,
+        due_date=version.due_date,
+        page_count=version.page_count,
+    )
 
 
 @router.delete("/{document_id}", status_code=204)
@@ -666,6 +772,16 @@ def preview_document(
         raise HTTPException(status_code=404, detail="File not found")
 
     filename = version.document.filename
+    content = load_document_version_bytes(db=db, version_id=version.id)
+
+    # Handle Office files by extracting text for preview
+    if filename.lower().endswith(tuple(OFFICE_EXTENSIONS)):
+        try:
+            return _office_preview_response(filename, content)
+        except Exception:
+            # If extraction fails, fall through to binary download behavior
+            pass
+
     mime_type, _ = mimetypes.guess_type(filename)
     # force common previewable types
     if not mime_type:
@@ -678,7 +794,6 @@ def preview_document(
         else:
             mime_type = "application/octet-stream"
 
-    content = load_document_version_bytes(db=db, version_id=version.id)
     return StreamingResponse(
         io.BytesIO(content),
         media_type=mime_type,
@@ -727,41 +842,6 @@ def get_document_versions(
             page_count=version.page_count,
         )
         for index, version in enumerate(versions)
-    ]
-
-
-@router.get("/upcoming-due-payments", response_model=list[DuePaymentItem])
-def get_upcoming_due_payments(
-    days_ahead: int = 30,
-    limit: int = 50,
-    db: Session = Depends(get_db),
-    _=Depends(require_permission(Permissions.DOCUMENT_DUE_PAYMENTS)),
-):
-    """Return upcoming due payments for incoming invoices."""
-    if days_ahead < 0:
-        raise HTTPException(status_code=400, detail="days_ahead must be >= 0")
-    if limit <= 0:
-        raise HTTPException(status_code=400, detail="limit must be > 0")
-
-    start = date.today()
-    end = start + timedelta(days=days_ahead)
-
-    rows = list_upcoming_due_payments(
-        db=db,
-        start_date=start,
-        end_date=end,
-        limit=min(limit, 200),
-    )
-
-    return [
-        DuePaymentItem(
-            document_id=doc.id,
-            version_id=version.id,
-            filename=doc.filename,
-            due_date=version.due_date,
-        )
-        for doc, version in rows
-        if version.due_date is not None
     ]
 
 
@@ -925,6 +1005,13 @@ def preview_document_version(
     mime_type = mime_type or "application/octet-stream"
 
     content = load_document_version_bytes(db=db, version_id=version.id)
+
+    if filename.lower().endswith(tuple(OFFICE_EXTENSIONS)):
+        try:
+            return _office_preview_response(filename, content)
+        except Exception:
+            pass
+
     return StreamingResponse(
         io.BytesIO(content),
         media_type=mime_type,
@@ -951,7 +1038,8 @@ def delete_document_version(
         try:
             storage = build_object_storage_from_env()
             storage.delete(
-                bucket=version.storage_bucket or os.getenv("OBJECT_STORAGE_BUCKET", "dms"),
+                bucket=version.storage_bucket
+                or os.getenv("OBJECT_STORAGE_BUCKET", "dms"),
                 key=version.storage_key,
             )
         except Exception:
@@ -1172,7 +1260,9 @@ def move_document_project(
     if not normalized:
         raise HTTPException(status_code=400, detail="Invalid project_name")
 
-    project_tag = normalized if normalized.startswith("project:") else f"project:{normalized}"
+    project_tag = (
+        normalized if normalized.startswith("project:") else f"project:{normalized}"
+    )
 
     existing_tags = list(version.tags or [])
     next_tags = [tag for tag in existing_tags if not tag.startswith("project:")]

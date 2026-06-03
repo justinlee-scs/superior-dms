@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 import requests
 
-from app.db.repositories.documents import list_existing_tags
+from app.db.repositories.documents import list_existing_tags, list_rejected_tags
 from app.db.repositories.tags import list_tag_pool
 from app.db.session import get_db
 from app.services.extraction.classify import classify_document_with_score, clear_classifier_cache
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 _train_lock = threading.Lock()
 _train_timer: threading.Timer | None = None
 _train_in_progress = False
-_train_pending = False
+_train_scheduled = False
 _last_train_requested_at = 0.0
 _last_train_started_at = 0.0
 _last_train_finished_at = 0.0
@@ -54,7 +54,8 @@ def _choice_result(*, from_name: str, to_name: str, choices: list[str]) -> dict[
 def _build_existing_tag_pool(db: Session) -> list[str]:
     pool = set(list_tag_pool(db=db))
     pool.update(list_existing_tags(db=db))
-    return sorted(pool)
+    rejected = set(list_rejected_tags(db=db))
+    return sorted(pool - rejected)
 
 
 def _extract_text(data: dict[str, Any]) -> str:
@@ -208,14 +209,14 @@ def _apply_default_model_paths() -> None:
 
 
 def _run_training_job() -> None:
-    global _train_in_progress, _train_pending, _last_train_started_at, _last_train_finished_at
+    global _train_in_progress, _train_scheduled, _last_train_started_at, _last_train_finished_at
     global _last_train_status, _last_train_return_code, _next_train_scheduled_at
     with _train_lock:
         if _train_in_progress:
-            _train_pending = True
+            _train_scheduled = True
             return
         _train_in_progress = True
-        _train_pending = False
+        _train_scheduled = False
         _last_train_started_at = time.time()
         _next_train_scheduled_at = None
 
@@ -258,8 +259,8 @@ def _run_training_job() -> None:
         with _train_lock:
             _train_in_progress = False
             _last_train_finished_at = time.time()
-            if _train_pending:
-                _train_pending = False
+            if _train_scheduled:
+                _train_scheduled = False
                 _schedule_training()
 
 
@@ -302,7 +303,7 @@ def _snapshot_state() -> dict[str, Any]:
     with _train_lock:
         return {
             "in_progress": _train_in_progress,
-            "pending": _train_pending,
+            "scheduled": _train_scheduled,
             "last_requested_at": _last_train_requested_at or None,
             "last_started_at": _last_train_started_at or None,
             "last_finished_at": _last_train_finished_at or None,
@@ -345,7 +346,7 @@ def train(payload: dict[str, Any]) -> dict[str, Any]:
         return {"status": "disabled", "detail": "training disabled by LABELSTUDIO_TRAIN_ENABLED"}
     _schedule_training()
     state = _snapshot_state()
-    return {"status": "queued", "detail": "training scheduled (debounced)", "state": state}
+    return {"status": "scheduled", "detail": "training scheduled (debounced)", "state": state}
 
 
 @router.get("/train/status")
@@ -360,4 +361,4 @@ def webhook(payload: dict[str, Any]) -> dict[str, Any]:
     if not enabled:
         return {"status": "disabled", "detail": "training disabled by LABELSTUDIO_TRAIN_ENABLED"}
     _schedule_training()
-    return {"status": "queued", "detail": "training scheduled (debounced)", "state": _snapshot_state()}
+    return {"status": "scheduled", "detail": "training scheduled (debounced)", "state": _snapshot_state()}

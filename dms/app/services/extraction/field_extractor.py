@@ -63,6 +63,42 @@ FIELD_TAG_MAP: dict[str, str] = {
     "Subject Line": "subject",
 }
 
+ALLOWED_FIELD_TAG_PREFIXES = set(FIELD_TAG_MAP.values())
+DATE_FIELD_TAG_PREFIXES = {"due_date", "document_date", "service_date"}
+NUMERIC_FIELD_TAG_PREFIXES = {
+    "grand_total",
+    "posttax_total",
+    "pretax_total",
+    "unit_price",
+    "subtotal",
+    "discount",
+    "quantity",
+    "account_number",
+    "po_number",
+    "invoice_number",
+    "docket_number",
+    "equipment_number",
+    "store_number",
+    "gst_number",
+    "pst_number",
+}
+
+
+def _looks_like_junk_text(value: str) -> bool:
+    cleaned = re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+    if not cleaned:
+        return True
+    tokens = cleaned.split()
+    if len(tokens) == 1:
+        return len(tokens[0]) < 3
+    if len(set(tokens)) < len(tokens):
+        return True
+    if len(tokens) <= 2 and any(len(token) <= 2 for token in tokens) and not any(
+        ch.isdigit() for ch in value
+    ):
+        return True
+    return False
+
 
 def _clean_value(value: str) -> str:
     return re.sub(r"\s+", " ", (value or "").strip())
@@ -112,13 +148,24 @@ def fields_to_tags(fields: dict[str, str]) -> list[str]:
         value = _clean_value(raw_value)
         if not value:
             continue
-        prefix = FIELD_TAG_MAP.get(field) or _snake(field)
-        if prefix in {"due_date", "document_date", "service_date"}:
+        prefix = FIELD_TAG_MAP.get(field)
+        if not prefix or prefix not in ALLOWED_FIELD_TAG_PREFIXES:
+            continue
+
+        if prefix in DATE_FIELD_TAG_PREFIXES:
             parsed = _parse_date(value)
             if not parsed:
                 continue
             tag = f"{prefix}:{parsed.isoformat()}"
+        elif prefix in NUMERIC_FIELD_TAG_PREFIXES:
+            if not re.search(r"[0-9]", value):
+                continue
+            if _looks_like_junk_text(value):
+                continue
+            tag = f"{prefix}:{value}"
         else:
+            if _looks_like_junk_text(value):
+                continue
             tag = f"{prefix}:{value}"
         normalized = normalize_tag(tag)
         if normalized:

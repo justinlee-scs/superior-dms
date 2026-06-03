@@ -1,17 +1,19 @@
 import { useMemo, useState } from "react";
 import {
+  CheckCircle2,
   Archive,
   ArrowUpDown,
   Bookmark,
   BookmarkCheck,
   ChevronDown,
   ChevronRight,
-  Download,
+  Clock3,
   File,
   FileSpreadsheet,
   FileText,
   Image,
   MoreVertical,
+  XCircle,
 } from "lucide-react";
 
 import { Badge } from "@/app/components/ui/badge";
@@ -26,6 +28,7 @@ import type { Document } from "@/app/components/document-card";
 import { SelectionCheckbox } from "@/app/components/selection-checkbox";
 import { useSelection } from "@/app/selection/selection-context";
 import { formatBytes, formatLocalDateFromDateOnly, formatPageCount } from "@/lib/format";
+import { normalizeWorkflowStatus } from "@/lib/dms";
 
 interface CompactProjectViewProps {
   documents: Document[];
@@ -53,22 +56,36 @@ const getFileIcon = (type: string) => {
 const getWorkflowColor = (workflow: string, darkMode?: boolean) => {
   const base =
     "border text-xs font-medium rounded-md px-2 py-0.5 whitespace-nowrap";
-  switch (workflow.toLowerCase()) {
+  switch (normalizeWorkflowStatus(workflow).toLowerCase()) {
+    case "processing":
+      return `${base} ${darkMode ? "bg-amber-900/35 text-amber-300 border-amber-800" : "bg-amber-100 text-amber-800 border-amber-300"}`;
     case "failed":
       return `${base} ${darkMode ? "bg-red-950/50 text-red-300 border-red-700" : "bg-red-100 text-red-800 border-red-300"}`;
     case "uploaded":
-      return `${base} ${darkMode ? "bg-sky-900/35 text-sky-300 border-sky-700" : "bg-sky-100 text-sky-800 border-sky-300"}`;
+      return `${base} ${darkMode ? "bg-green-900/35 text-green-300 border-green-800" : "bg-green-100 text-green-800 border-green-300"}`;
     case "approved":
     case "published":
       return `${base} ${darkMode ? "bg-green-900/30 text-green-300 border-green-800" : "bg-green-100 text-green-800 border-green-200"}`;
     case "in review":
     case "needs review":
-    case "pending approval":
       return `${base} ${darkMode ? "bg-yellow-900/30 text-yellow-300 border-yellow-800" : "bg-yellow-100 text-yellow-800 border-yellow-200"}`;
     case "draft":
       return `${base} ${darkMode ? "bg-gray-800 text-gray-300 border-gray-700" : "bg-gray-100 text-gray-800 border-gray-200"}`;
     default:
       return `${base} ${darkMode ? "bg-blue-900/30 text-blue-300 border-blue-800" : "bg-blue-100 text-blue-800 border-blue-200"}`;
+  }
+};
+
+const getWorkflowIcon = (workflow: string) => {
+  switch (normalizeWorkflowStatus(workflow).toLowerCase()) {
+    case "processing":
+      return <Clock3 className="h-3.5 w-3.5" />;
+    case "failed":
+      return <XCircle className="h-3.5 w-3.5" />;
+    case "uploaded":
+      return <CheckCircle2 className="h-3.5 w-3.5" />;
+    default:
+      return null;
   }
 };
 
@@ -321,12 +338,13 @@ export function CompactProjectView({
 
                             <div className="w-32">
                               <span
-                                className={getWorkflowColor(
+                                className={`inline-flex items-center gap-1 ${getWorkflowColor(
                                   doc.workflow,
                                   darkMode,
-                                )}
+                                )}`}
                               >
-                                {doc.workflow}
+                                {getWorkflowIcon(doc.workflow)}
+                                {normalizeWorkflowStatus(doc.workflow)}
                               </span>
                             </div>
 
@@ -348,12 +366,11 @@ export function CompactProjectView({
                                   >
                                     Preview
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => onDownload(doc)}
-                                  >
-                                    <Download className="w-4 h-4 mr-2" />
-                                    Download
-                                  </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => onDownload(doc)}
+                                >
+                                  Download
+                                </DropdownMenuItem>
                                   <DropdownMenuItem
                                     onClick={() => onDelete(doc)}
                                   >

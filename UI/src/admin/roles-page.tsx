@@ -759,7 +759,7 @@ export default function RolesPage({
                 <div className="text-xl font-semibold">Roles</div>
                 <div className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-500"}`}>{roles.length} role(s)</div>
               </div>
-              <Button className="rounded-xl bg-[#020825] px-4 text-sm" onClick={onCreateRole} disabled={loading}>
+              <Button className="rounded-xl bg-[#020825] px-4 text-sm text-gray-100" onClick={onCreateRole} disabled={loading}>
                 <Plus className="mr-1 h-4 w-4" />
                 New
               </Button>
@@ -802,7 +802,7 @@ export default function RolesPage({
                 <div className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-500"}`}>{users.length} user(s)</div>
               </div>
               <Button
-                className="rounded-xl bg-[#020825] px-4 text-sm"
+                className="rounded-xl bg-[#020825] px-4 text-sm text-gray-100"
                 onClick={() => setCreateUserOpen(true)}
                 disabled={loading}
               >
@@ -868,7 +868,9 @@ export default function RolesPage({
                 </div>
                 <div className="flex items-center gap-2">
                   <select
-                    className="h-10 rounded-xl border border-gray-300 px-3 text-sm"
+                    className={`h-10 rounded-xl border border-gray-300 px-3 text-sm ${
+                      darkMode ? "border-gray-600 bg-gray-800 text-gray-100" : ""
+                    }`}
                     value={copySourceRoleId}
                     onChange={(event) => setCopySourceRoleId(event.target.value)}
                     disabled={loading}
@@ -1416,10 +1418,10 @@ export default function RolesPage({
 
                   <div>
                     <Button
-                      className="rounded-xl bg-[#020825] px-4 text-sm"
-                      disabled={loading}
-                      onClick={onSaveRetrainSchedule}
-                    >
+                    className="rounded-xl bg-[#020825] px-4 text-sm text-gray-100"
+                    disabled={loading}
+                    onClick={onSaveRetrainSchedule}
+                  >
                       Save Schedule
                     </Button>
                   </div>

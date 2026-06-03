@@ -165,7 +165,7 @@ def downgrade() -> None:
             sa.Column(
                 "status",
                 postgresql.ENUM(
-                    "pending", "processing", "uploaded", "failed", name="processing_status"
+                    "processing", "uploaded", "failed", name="processing_status"
                 ),
                 autoincrement=False,
                 nullable=False,

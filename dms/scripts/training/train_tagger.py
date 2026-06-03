@@ -24,11 +24,9 @@ def main() -> int:
         for row in reader:
             text = (row.get("text") or "").strip()
             tags_raw = (row.get("tags") or "").strip()
-            if not text or not tags_raw:
+            if not text:
                 continue
-            tags = [t for t in (tag.strip() for tag in tags_raw.split(",")) if t]
-            if not tags:
-                continue
+            tags = [t for t in (tag.strip() for tag in tags_raw.split(",")) if t] if tags_raw else []
             texts.append(text)
             labels.append(tags)
             tag_set.update(tags)

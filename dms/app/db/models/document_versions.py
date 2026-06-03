@@ -82,7 +82,7 @@ class DocumentVersion(Base):
             native_enum=True,
         ),
         nullable=False,
-        default=ProcessingStatus.pending,
+        default=ProcessingStatus.processing,
     )
 
     layout_json = Column(sa.JSON, nullable=True)
