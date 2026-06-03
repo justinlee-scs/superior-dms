@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/app/components/ui/select";
+import { cn } from "@/app/components/ui/utils";
 
 export interface FilterState {
   searchText: string;
@@ -34,6 +35,8 @@ interface SearchFiltersProps {
   onDeleteTagFromPool?: (tag: string) => Promise<void> | void;
   canDeleteTagFromPool?: boolean;
   darkMode?: boolean; // New: dark mode prop
+  className?: string;
+  variant?: "sidebar" | "drawer";
 }
 
 export function SearchFilters({
@@ -45,6 +48,8 @@ export function SearchFilters({
   onDeleteTagFromPool,
   canDeleteTagFromPool,
   darkMode,
+  className,
+  variant = "sidebar",
 }: SearchFiltersProps) {
   const [tagSearchText, setTagSearchText] = useState("");
   const [newTagText, setNewTagText] = useState("");
@@ -102,7 +107,16 @@ export function SearchFilters({
   };
 
   return (
-    <div className={`w-80 h-screen overflow-y-auto border-r p-6 space-y-6 ${darkMode ? "bg-gray-900 border-gray-700" : "bg-gray-50"}`}>
+    <div
+      className={cn(
+        "space-y-6 border-r",
+        variant === "sidebar"
+          ? "h-screen w-80 overflow-y-auto p-6"
+          : "h-full w-full overflow-y-auto border-r-0 p-4 sm:p-6",
+        darkMode ? "bg-gray-900 border-gray-700" : "bg-gray-50 border-gray-200",
+        className,
+      )}
+    >
       <div className="flex items-center justify-between">
         <h2 className={`font-semibold ${darkMode ? "text-gray-100" : ""}`}>Filters</h2>
         {hasActiveFilters && (

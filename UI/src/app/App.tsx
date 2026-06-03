@@ -27,6 +27,10 @@ import {
 
 import { Button } from "@/app/components/ui/button";
 import {
+  Drawer,
+  DrawerContent,
+} from "@/app/components/ui/drawer";
+import {
   Tabs,
   TabsContent,
   TabsList,
@@ -46,6 +50,7 @@ import {
   AlertTriangle,
   Shield,
   UserCircle2,
+  SlidersHorizontal,
 } from "lucide-react";
 
 import { toast } from "sonner";
@@ -165,6 +170,7 @@ function AppInner() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [versionModalDoc, setVersionModalDoc] = useState<Document | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"documents" | "workspace" | "upload" | "admin">(
     "documents",
   );
@@ -943,25 +949,48 @@ function AppInner() {
   return (
     <DndProvider backend={HTML5Backend}>
       <div
-        className={`flex h-screen ${darkMode ? "bg-gray-900 text-white" : ""}`}
+        className={`flex min-h-screen w-full overflow-x-hidden ${darkMode ? "bg-gray-900 text-white" : ""}`}
       >
-        <SearchFilters
-          filters={filters}
-          onFiltersChange={setFilters}
-          availableTags={availableTags}
-          availableAuthors={availableAuthors}
-          onCreateTag={handleCreateStandaloneTag}
-          onDeleteTagFromPool={handleDeletePoolTag}
-          canDeleteTagFromPool={
-            accessPermissions.has("tags.delete") || accessPermissions.has("tags.edit")
-          }
-          darkMode={darkMode}
-        />
+        <div className="hidden shrink-0 lg:block">
+          <SearchFilters
+            filters={filters}
+            onFiltersChange={setFilters}
+            availableTags={availableTags}
+            availableAuthors={availableAuthors}
+            onCreateTag={handleCreateStandaloneTag}
+            onDeleteTagFromPool={handleDeletePoolTag}
+            canDeleteTagFromPool={
+              accessPermissions.has("tags.delete") ||
+              accessPermissions.has("tags.edit")
+            }
+            darkMode={darkMode}
+            variant="sidebar"
+          />
+        </div>
 
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <Drawer open={filtersOpen} onOpenChange={setFiltersOpen} direction="left">
+          <DrawerContent className="p-0">
+            <SearchFilters
+              filters={filters}
+              onFiltersChange={setFilters}
+              availableTags={availableTags}
+              availableAuthors={availableAuthors}
+              onCreateTag={handleCreateStandaloneTag}
+              onDeleteTagFromPool={handleDeletePoolTag}
+              canDeleteTagFromPool={
+                accessPermissions.has("tags.delete") ||
+                accessPermissions.has("tags.edit")
+              }
+              darkMode={darkMode}
+              variant="drawer"
+            />
+          </DrawerContent>
+        </Drawer>
+
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {/* Header */}
-          <div className="border-b p-6">
-            <div className="flex items-center justify-between">
+          <div className="border-b px-4 py-4 sm:px-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <FileText className="w-8 h-8 text-blue-600" />
                 <div>
@@ -972,7 +1001,15 @@ function AppInner() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  className="lg:hidden"
+                  onClick={() => setFiltersOpen(true)}
+                >
+                  <SlidersHorizontal className="mr-2 h-4 w-4" />
+                  Show Filters
+                </Button>
                 <Button
                   variant={viewMode === "compact" ? "default" : "outline"}
                   onClick={() => setViewMode("compact")}
@@ -1021,8 +1058,8 @@ function AppInner() {
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-auto p-6 pb-24">
-            <div className="flex flex-col gap-6 xl:flex-row">
+          <div className="flex-1 overflow-x-hidden overflow-y-auto px-4 py-4 pb-24 sm:px-6">
+            <div className="flex min-w-0 flex-col gap-6 lg:flex-row lg:items-start">
               <div className="min-w-0 flex-1">
                 <Tabs
                   value={activeTab}
@@ -1030,7 +1067,7 @@ function AppInner() {
                     setActiveTab(value as "documents" | "workspace" | "upload" | "admin")
                   }
                 >
-                  <TabsList>
+                  <TabsList className="w-full flex-wrap sm:w-fit">
                     <TabsTrigger value="documents">
                       <FileText className="w-4 h-4 mr-2" />
                       Documents
@@ -1161,8 +1198,8 @@ function AppInner() {
               </div>
 
               {activeTab === "documents" && (
-                <div className="xl:w-80">
-                  <div className="xl:sticky xl:top-6">
+                <div className="w-full lg:w-80 lg:shrink-0">
+                  <div className="lg:sticky lg:top-6">
                     <UpcomingDuePaymentsPanel
                       items={duePayments}
                       loading={duePaymentsLoading}

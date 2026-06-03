@@ -19,6 +19,14 @@ import {
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/app/components/ui/table";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -289,119 +297,152 @@ export function CompactProjectView({
                       </button>
                     </div>
 
-                    {!isTypeCollapsed &&
-                      sortedDocs.map((doc) => {
-                        const FileIcon = getFileIcon(doc.type);
-                        const checked = selection.isSelected(doc.id);
-
-                        return (
-                          <div
-                            key={doc.id}
-                            className={`flex items-center gap-3 pl-20 pr-4 py-2 border-t group transition-colors ${
-                              darkMode
-                                ? "border-gray-800 hover:bg-gray-800/60"
-                                : "border-gray-200 hover:bg-blue-50"
+                    {!isTypeCollapsed && (
+                      <Table className="min-w-[860px]">
+                        <TableHeader>
+                          <TableRow
+                            className={`border-t ${
+                              darkMode ? "border-gray-800" : "border-gray-200"
                             }`}
                           >
-                            <SelectionCheckbox
-                              checked={checked}
-                              onToggle={() => selection.toggle(doc)}
-                            />
+                            <TableHead className="w-12" />
+                            <TableHead className="min-w-0">File</TableHead>
+                            <TableHead className="hidden md:table-cell w-32">
+                              Date
+                            </TableHead>
+                            <TableHead className="hidden lg:table-cell w-44">
+                              Owner
+                            </TableHead>
+                            <TableHead className="w-36">Status</TableHead>
+                            <TableHead className="hidden xl:table-cell w-28 text-right">
+                              Size
+                            </TableHead>
+                            <TableHead className="w-16 text-right">
+                              Actions
+                            </TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {sortedDocs.map((doc) => {
+                            const FileIcon = getFileIcon(doc.type);
+                            const checked = selection.isSelected(doc.id);
 
-                            <FileIcon className="w-4 h-4 text-gray-500" />
-
-                            <div className="flex-1 min-w-0">
-                              <span className="text-sm truncate block">
-                                {doc.name}
-                              </span>
-                              <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
-                                <span className="rounded bg-gray-100 px-1.5 py-0.5">
-                                  v{doc.currentVersionNumber ?? 1}
-                                </span>
-                                <button
-                                  type="button"
-                                  className="text-blue-600 hover:underline"
-                                  onClick={() => onOpenVersions?.(doc)}
-                                >
-                                  {doc.versionCount ?? 1} ver.
-                                </button>
-                              </div>
-                            </div>
-
-                            <div className="w-28 text-xs text-gray-500">
-                              {formatLocalDateFromDateOnly(doc.date)}
-                            </div>
-
-                            <div className="w-36 text-xs text-gray-600 dark:text-gray-400 truncate">
-                              {doc.author}
-                            </div>
-
-                            <div className="w-32">
-                              <span
-                                className={`inline-flex items-center gap-1 ${getWorkflowColor(
-                                  doc.workflow,
-                                  darkMode,
-                                )}`}
+                            return (
+                              <TableRow
+                                key={doc.id}
+                                className={`group transition-colors ${
+                                  darkMode
+                                    ? "border-gray-800 hover:bg-gray-800/60"
+                                    : "border-gray-200 hover:bg-blue-50"
+                                }`}
                               >
-                                {getWorkflowIcon(doc.workflow)}
-                                {normalizeWorkflowStatus(doc.workflow)}
-                              </span>
-                            </div>
+                                <TableCell className="w-12 align-top">
+                                  <SelectionCheckbox
+                                    checked={checked}
+                                    onToggle={() => selection.toggle(doc)}
+                                  />
+                                </TableCell>
 
-                            <div className="w-32 text-xs text-right text-gray-500">
-                              <div>{formatPageCount(doc.pageCount)}</div>
-                              <div>{formatBytes(doc.sizeBytes)}</div>
-                            </div>
+                                <TableCell className="min-w-0 align-top whitespace-normal">
+                                  <div className="flex min-w-0 items-start gap-3">
+                                    <FileIcon className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />
+                                    <div className="min-w-0">
+                                      <span className="block truncate text-sm font-medium">
+                                        {doc.name}
+                                      </span>
+                                      <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
+                                        <span className="rounded bg-gray-100 px-1.5 py-0.5">
+                                          v{doc.currentVersionNumber ?? 1}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          className="text-blue-600 hover:underline"
+                                          onClick={() => onOpenVersions?.(doc)}
+                                        >
+                                          {doc.versionCount ?? 1} ver.
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </TableCell>
 
-                            <div className="opacity-0 group-hover:opacity-100">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="sm">
-                                    ⋯
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem
-                                    onClick={() => onPreview(doc)}
+                                <TableCell className="hidden md:table-cell w-32 align-top text-xs text-gray-500">
+                                  {formatLocalDateFromDateOnly(doc.date)}
+                                </TableCell>
+
+                                <TableCell className="hidden lg:table-cell w-44 align-top text-xs text-gray-600 dark:text-gray-400">
+                                  <div className="truncate">{doc.author}</div>
+                                </TableCell>
+
+                                <TableCell className="w-36 align-top">
+                                  <span
+                                    className={`inline-flex items-center gap-1 ${getWorkflowColor(
+                                      doc.workflow,
+                                      darkMode,
+                                    )}`}
                                   >
-                                    Preview
-                                  </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => onDownload(doc)}
-                                >
-                                  Download
-                                </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => onDelete(doc)}
-                                  >
-                                    Delete
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => onEditWorkflow(doc)}
-                                  >
-                                    Edit Workflow
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => onEditTags?.(doc)}
-                                  >
-                                    Edit Tags
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => onMoveProject?.(doc)}
-                                  >
-                                    Move Project
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => onReprocess?.(doc)}
-                                  >
-                                    Reprocess
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          </div>
-                        );
-                      })}
+                                    {getWorkflowIcon(doc.workflow)}
+                                    {normalizeWorkflowStatus(doc.workflow)}
+                                  </span>
+                                </TableCell>
+
+                                <TableCell className="hidden xl:table-cell w-28 align-top text-right text-xs text-gray-500">
+                                  <div>{formatPageCount(doc.pageCount)}</div>
+                                  <div>{formatBytes(doc.sizeBytes)}</div>
+                                </TableCell>
+
+                                <TableCell className="w-16 align-top text-right">
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="sm">
+                                        ⋯
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem
+                                        onClick={() => onPreview(doc)}
+                                      >
+                                        Preview
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        onClick={() => onDownload(doc)}
+                                      >
+                                        Download
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        onClick={() => onDelete(doc)}
+                                      >
+                                        Delete
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        onClick={() => onEditWorkflow(doc)}
+                                      >
+                                        Edit Workflow
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        onClick={() => onEditTags?.(doc)}
+                                      >
+                                        Edit Tags
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        onClick={() => onMoveProject?.(doc)}
+                                      >
+                                        Move Project
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        onClick={() => onReprocess?.(doc)}
+                                      >
+                                        Reprocess
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    )}
                   </div>
                 );
               })}
