@@ -20,6 +20,7 @@ interface TagEditorDialogProps {
   availableTags: string[];
   onOpenChange: (open: boolean) => void;
   onSave: (payload: { tags: string[]; dueDate: string | null }) => Promise<void> | void;
+  darkMode?: boolean;
 }
 
 export function TagEditorDialog({
@@ -28,6 +29,7 @@ export function TagEditorDialog({
   availableTags,
   onOpenChange,
   onSave,
+  darkMode,
 }: TagEditorDialogProps) {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState("");
@@ -64,36 +66,38 @@ export function TagEditorDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className={`sm:max-w-2xl ${darkMode ? "bg-gray-900 text-white border-gray-700" : ""}`}>
         <DialogHeader>
-          <DialogTitle>Document Details</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className={darkMode ? "text-white" : ""}>Document Details</DialogTitle>
+          <DialogDescription className={darkMode ? "text-gray-400" : ""}>
             {document ? `Update tags and due date for ${document.name}` : "Update details"}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <p className="text-sm font-medium">Due date</p>
+            <p className={`text-sm font-medium ${darkMode ? "text-gray-300" : ""}`}>Due date</p>
             <Input
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
+              className={darkMode ? "bg-gray-800 border-gray-700 text-white" : ""}
             />
           </div>
 
           <div className="space-y-2">
-            <p className="text-sm font-medium">Find tags</p>
+            <p className={`text-sm font-medium ${darkMode ? "text-gray-300" : ""}`}>Find tags</p>
             <Input
               value={searchTag}
               onChange={(e) => setSearchTag(e.target.value)}
               placeholder="Search existing tags..."
+              className={darkMode ? "bg-gray-800 border-gray-700 text-white placeholder:text-gray-500" : ""}
             />
           </div>
 
           <div className="space-y-2">
-            <p className="text-sm font-medium">Existing pool</p>
-            <div className="max-h-44 overflow-auto rounded-md border p-2">
+            <p className={`text-sm font-medium ${darkMode ? "text-gray-300" : ""}`}>Existing pool</p>
+            <div className={`max-h-44 overflow-auto rounded-md border p-2 ${darkMode ? "border-gray-700 bg-gray-800" : ""}`}>
               <div className="flex flex-wrap gap-2">
                 {visiblePool.map((tag) => {
                   const selected = selectedTags.includes(tag);
@@ -101,7 +105,7 @@ export function TagEditorDialog({
                     <Badge
                       key={tag}
                       variant={selected ? "default" : "outline"}
-                      className="cursor-pointer"
+                      className={`cursor-pointer ${!selected && darkMode ? "border-gray-500 text-gray-300" : ""}`}
                       onClick={() => toggleTag(tag)}
                     >
                       {tag}
@@ -113,22 +117,25 @@ export function TagEditorDialog({
           </div>
 
           <div className="space-y-2">
-            <p className="text-sm font-medium">Create and add a new tag</p>
+            <p className={`text-sm font-medium ${darkMode ? "text-gray-300" : ""}`}>Create and add a new tag</p>
             <div className="flex gap-2">
               <Input
                 value={newTag}
                 onChange={(e) => setNewTag(e.target.value)}
                 placeholder="e.g. project:apollo"
+                className={darkMode ? "bg-gray-800 border-gray-700 text-white placeholder:text-gray-500" : ""}
               />
-              <Button type="button" variant="outline" onClick={addNewTag} disabled={!newTag.trim()}>
+              <Button type="button" variant="outline" onClick={addNewTag} disabled={!newTag.trim()}
+                className={darkMode ? "border-gray-600 text-gray-300 hover:bg-gray-700" : ""}
+              >
                 Add
               </Button>
             </div>
           </div>
 
           <div className="space-y-2">
-            <p className="text-sm font-medium">Selected for this document</p>
-            <div className="rounded-md border p-2 min-h-12">
+            <p className={`text-sm font-medium ${darkMode ? "text-gray-300" : ""}`}>Selected for this document</p>
+            <div className={`rounded-md border p-2 min-h-12 ${darkMode ? "border-gray-700 bg-gray-800" : ""}`}>
               <div className="flex flex-wrap gap-2">
                 {selectedTags.map((tag) => (
                   <Badge key={tag}>{tag}</Badge>
@@ -139,7 +146,9 @@ export function TagEditorDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}
+            className={darkMode ? "text-gray-300 hover:bg-gray-700" : ""}
+          >
             Cancel
           </Button>
           <Button

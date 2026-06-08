@@ -1227,6 +1227,7 @@ function AppInner() {
             document={versionModalDoc}
             onClose={() => setVersionModalDoc(null)}
             onUpdated={refreshDocuments}
+            darkMode={darkMode}
           />
 
           <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
@@ -1238,6 +1239,7 @@ function AppInner() {
               if (!open) setEditingTagsDoc(null);
             }}
             onSave={handleSaveDocumentTags}
+            darkMode={darkMode}
           />
 
           <Toaster />

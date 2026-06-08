@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Clock3, Download, Eye, Loader2, Trash2, Upload, X } from "lucide-react";
+import {
+  Clock3,
+  Download,
+  Eye,
+  Loader2,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/app/components/ui/button";
@@ -23,6 +31,7 @@ interface VersionHistoryModalProps {
   document: Document | null;
   onClose: () => void;
   onUpdated: () => Promise<void>;
+  darkMode?: boolean;
 }
 
 function formatBytes(bytes: number): string {
@@ -38,14 +47,20 @@ export function VersionHistoryModal({
   document,
   onClose,
   onUpdated,
+  darkMode,
 }: VersionHistoryModalProps) {
+  console.log("version history modal dakrmode", darkMode);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [settingCurrentId, setSettingCurrentId] = useState<string | null>(null);
-  const [deletingVersionId, setDeletingVersionId] = useState<string | null>(null);
-  const [previewingVersionId, setPreviewingVersionId] = useState<string | null>(null);
+  const [deletingVersionId, setDeletingVersionId] = useState<string | null>(
+    null,
+  );
+  const [previewingVersionId, setPreviewingVersionId] = useState<string | null>(
+    null,
+  );
   const [canPreviewVersion, setCanPreviewVersion] = useState(false);
   const [canDeleteVersion, setCanDeleteVersion] = useState(false);
 
@@ -66,8 +81,12 @@ export function VersionHistoryModal({
   useEffect(() => {
     getMyAccess()
       .then((access) => {
-        setCanPreviewVersion(access.permissions.includes("document_version.preview"));
-        setCanDeleteVersion(access.permissions.includes("document_version.delete"));
+        setCanPreviewVersion(
+          access.permissions.includes("document_version.preview"),
+        );
+        setCanDeleteVersion(
+          access.permissions.includes("document_version.delete"),
+        );
       })
       .catch(() => {
         setCanPreviewVersion(false);
@@ -193,26 +212,38 @@ export function VersionHistoryModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4">
-      <div className="w-full max-w-2xl rounded-xl border bg-white shadow-xl">
-        <div className="flex items-start justify-between border-b px-6 py-4">
+      <div
+        className={`w-full max-w-2xl rounded-xl border shadow-xl ${darkMode ? "bg-gray-900 border-gray-700 text-white" : "bg-white"}`}
+      >
+        <div
+          className={`flex items-start justify-between border-b px-6 py-4 ${darkMode ? "border-gray-700" : ""}`}
+        >
           <div>
             <div className="flex items-center gap-2 text-2xl font-semibold">
               <Clock3 className="h-5 w-5 text-blue-600" />
               Version History
             </div>
-            <div className="mt-2 text-lg text-gray-700">{document.name}</div>
+            <div
+              className={`mt-2 text-lg ${darkMode ? "text-gray-300" : "text-gray-700"}`}
+            >
+              {document.name}
+            </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 hover:bg-gray-100"
+            className={`rounded p-1 ${darkMode ? "hover:bg-gray-700" : "hover:bg-gray-100"}`}
           >
-            <X className="h-5 w-5 text-gray-500" />
+            <X
+              className={`h-5 w-5 ${darkMode ? "text-gray-400" : "text-gray-500"}`}
+            />
           </button>
         </div>
 
         <div className="flex items-center justify-between px-6 py-4">
-          <div className="text-sm text-gray-600">
+          <div
+            className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}
+          >
             {versions.length} version(s)
           </div>
           <div>
@@ -229,7 +260,10 @@ export function VersionHistoryModal({
             <Button
               onClick={() => inputRef.current?.click()}
               disabled={uploading}
-              className="bg-slate-900 hover:bg-slate-800"
+              className={darkMode
+                ? "bg-blue-600 hover:bg-blue-500 text-white"
+                : "bg-slate-900 hover:bg-slate-800"
+              }
             >
               <Upload className="mr-2 h-4 w-4" />
               Upload New Version
@@ -239,12 +273,16 @@ export function VersionHistoryModal({
 
         <div className="max-h-[460px] overflow-auto px-6 pb-6">
           {loading && (
-            <div className="py-8 text-center text-sm text-gray-500">
+            <div
+              className={`py-8 text-center text-sm ${darkMode ? "text-gray-400" : "text-gray-500"}`}
+            >
               Loading versions...
             </div>
           )}
           {!loading && sortedVersions.length === 0 && (
-            <div className="py-8 text-center text-sm text-gray-500">
+            <div
+              className={`py-8 text-center text-sm ${darkMode ? "text-gray-400" : "text-gray-500"}`}
+            >
               No versions found
             </div>
           )}
@@ -255,25 +293,31 @@ export function VersionHistoryModal({
               return (
                 <div key={version.id} className="relative pl-16">
                   {index < sortedVersions.length - 1 && (
-                    <div className="absolute left-[22px] top-10 h-[calc(100%+8px)] w-px bg-gray-200" />
+                    <div
+                      className={`absolute left-[22px] top-10 h-[calc(100%+8px)] w-px ${darkMode ? "bg-gray-700" : "bg-gray-200"}`}
+                    />
                   )}
 
                   <div
-                    className={`absolute left-0 top-2 flex h-11 w-11 items-center justify-center rounded-full text-sm font-semibold ${
-                      isCurrent
-                        ? "bg-blue-600 text-white"
+                    className={`absolute left-0 top-2 flex h-11 w-11 items-center justify-center rounded-full text-sm font-semibold ${isCurrent
+                      ? "bg-blue-600 text-white"
+                      : darkMode
+                        ? "bg-gray-700 text-gray-400"
                         : "bg-gray-100 text-gray-500"
-                    }`}
+                      }`}
                   >
                     v{version.version_number}
                   </div>
 
                   <div
-                    className={`rounded-xl border px-4 py-3 ${
-                      isCurrent
-                        ? "border-blue-200 bg-blue-50/70"
+                    className={`rounded-xl border px-4 py-3 ${isCurrent
+                      ? darkMode
+                        ? "border-blue-800 bg-blue-950/50"
+                        : "border-blue-200 bg-blue-50/70"
+                      : darkMode
+                        ? "border-gray-700 bg-gray-800"
                         : "border-gray-200 bg-white"
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
@@ -309,19 +353,19 @@ export function VersionHistoryModal({
                           <Download className="h-4 w-4" />
                         </Button>
                         {canPreviewVersion && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          disabled={previewingVersionId === version.id}
-                          onClick={() => void onPreviewVersion(version)}
-                          title="Preview version"
-                        >
-                          {previewingVersionId === version.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Eye className="h-4 w-4" />
-                          )}
-                        </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            disabled={previewingVersionId === version.id}
+                            onClick={() => void onPreviewVersion(version)}
+                            title="Preview version"
+                          >
+                            {previewingVersionId === version.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Eye className="h-4 w-4" />
+                            )}
+                          </Button>
                         )}
                         {canDeleteVersion && (
                           <Button
@@ -340,13 +384,18 @@ export function VersionHistoryModal({
                       </div>
                     </div>
 
-                    <div className="mt-2 text-sm text-gray-600">
+                    <div
+                      className={`mt-2 text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}
+                    >
                       Upload date:{" "}
                       {new Date(version.created_at).toLocaleString()} ·{" "}
                       {formatBytes(version.size_bytes)}
                     </div>
-                    <div className="mt-1 text-xs text-gray-500">
-                      Status: {normalizeWorkflowStatus(version.processing_status)}
+                    <div
+                      className={`mt-1 text-xs ${darkMode ? "text-gray-500" : "text-gray-500"}`}
+                    >
+                      Status:{" "}
+                      {normalizeWorkflowStatus(version.processing_status)}
                     </div>
                   </div>
                 </div>
