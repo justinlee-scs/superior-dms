@@ -1230,6 +1230,7 @@ function AppInner() {
                         }
                         onReprocess={handleReprocess}
                         onToggleWorkspace={handleWorkspaceToggle}
+                        availableTags={availableTags}
                         darkMode={darkMode}
                       />
                     ) : (
@@ -1245,9 +1246,10 @@ function AppInner() {
                             onEditTags={() => setEditingTagsDoc(doc)}
                             onMoveProject={
                               accessPermissions.has("document.project_move")
-                                ? () => handleMoveProject(doc)
+                                ? handleMoveProject
                                 : undefined
                             }
+                            availableTags={availableTags}
                           />
                         ))}
                       </div>

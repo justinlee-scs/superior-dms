@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   CheckCircle2,
   Download,
@@ -19,6 +20,7 @@ import {
 } from "@/app/components/ui/dropdown-menu";
 import { formatBytes, formatLocalDateFromDateOnly, formatPageCount } from "@/lib/format";
 import { normalizeWorkflowStatus } from "@/lib/dms";
+import { MoveProjectDialog } from "@/app/components/move-project-dialog";
 
 export interface Document {
   id: string;
@@ -50,8 +52,9 @@ interface DocumentCardProps {
   onDelete?: (doc: Document) => void;
   onEditWorkflow?: (doc: Document) => void;
   onEditTags?: (doc: Document) => void;
-  onMoveProject?: (doc: Document) => void;
+  onMoveProject?: (doc: Document, projectName: string) => Promise<void>;
   onReprocess?: (doc: Document) => void;
+  availableTags?: string[];
   darkMode?: boolean;
 }
 
@@ -106,58 +109,79 @@ export function DocumentCard({
   onEditTags,
   onMoveProject,
   onReprocess,
+  availableTags = [],
   darkMode,
 }: DocumentCardProps) {
   const FileIcon = getFileIcon(document.type);
+  const [moveProjectOpen, setMoveProjectOpen] = useState(false);
 
   return (
-    <div
-      className={`flex items-center gap-3 p-4 border rounded-lg transition-colors ${
-        darkMode ? "bg-gray-800 border-gray-700 hover:bg-gray-750" : "bg-white border-gray-200 hover:bg-blue-50"
-      }`}
-    >
-      {/* File Icon */}
-      <FileIcon className={`w-5 h-5 flex-shrink-0 ${darkMode ? "text-gray-400" : "text-gray-500"}`} />
+    <>
+      <div
+        className={`flex items-center gap-3 p-4 border rounded-lg transition-colors ${
+          darkMode ? "bg-gray-800 border-gray-700 hover:bg-gray-750" : "bg-white border-gray-200 hover:bg-blue-50"
+        }`}
+      >
+        {/* File Icon */}
+        <FileIcon className={`w-5 h-5 flex-shrink-0 ${darkMode ? "text-gray-400" : "text-gray-500"}`} />
 
-      {/* File Info */}
-      <div className="flex-1 min-w-0">
-        <div className={`font-medium truncate ${darkMode ? "text-gray-200" : ""}`}>{document.name}</div>
-        <div className={`text-xs truncate ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
-          {document.author} • {formatLocalDateFromDateOnly(document.date)} • {formatPageCount(document.pageCount)} • {formatBytes(document.sizeBytes)}
+        {/* File Info */}
+        <div className="flex-1 min-w-0">
+          <div className={`font-medium truncate ${darkMode ? "text-gray-200" : ""}`}>{document.name}</div>
+          <div className={`text-xs truncate ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+            {document.author} • {formatLocalDateFromDateOnly(document.date)} • {formatPageCount(document.pageCount)} • {formatBytes(document.sizeBytes)}
+          </div>
+        </div>
+
+        {/* Workflow Badge */}
+        <div className="flex-shrink-0">
+          <Badge
+            variant="outline"
+            className={`text-xs inline-flex items-center gap-1 ${getWorkflowColor(document.workflow)}`}
+          >
+            {getWorkflowIcon(document.workflow)}
+            {normalizeWorkflowStatus(document.workflow)}
+          </Badge>
+        </div>
+
+        {/* Actions Dropdown */}
+        <div className="flex-shrink-0">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                <span className="sr-only">Open menu</span>
+                <span className="text-xs">⋯</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {onPreview && <DropdownMenuItem onClick={() => onPreview(document)}>Preview</DropdownMenuItem>}
+              {onDownload && <DropdownMenuItem onClick={() => onDownload(document)}>Download</DropdownMenuItem>}
+              {onDelete && <DropdownMenuItem onClick={() => onDelete(document)}>Delete</DropdownMenuItem>}
+              {onEditWorkflow && <DropdownMenuItem onClick={() => onEditWorkflow(document)}>Edit Workflow</DropdownMenuItem>}
+              {onEditTags && <DropdownMenuItem onClick={() => onEditTags(document)}>Edit Tags</DropdownMenuItem>}
+              {onMoveProject && (
+                <DropdownMenuItem onClick={() => setMoveProjectOpen(true)}>
+                  Move Project
+                </DropdownMenuItem>
+              )}
+              {onReprocess && <DropdownMenuItem onClick={() => onReprocess(document)}>Reprocess</DropdownMenuItem>}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
-      {/* Workflow Badge */}
-      <div className="flex-shrink-0">
-        <Badge
-          variant="outline"
-          className={`text-xs inline-flex items-center gap-1 ${getWorkflowColor(document.workflow)}`}
-        >
-          {getWorkflowIcon(document.workflow)}
-          {normalizeWorkflowStatus(document.workflow)}
-        </Badge>
-      </div>
-
-      {/* Actions Dropdown */}
-      <div className="flex-shrink-0">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-              <span className="sr-only">Open menu</span>
-              <span className="text-xs">⋯</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {onPreview && <DropdownMenuItem onClick={() => onPreview(document)}>Preview</DropdownMenuItem>}
-            {onDownload && (<DropdownMenuItem onClick={() => onDownload(document)}>Download</DropdownMenuItem>)}
-            {onDelete && <DropdownMenuItem onClick={() => onDelete(document)}>Delete</DropdownMenuItem>}
-            {onEditWorkflow && <DropdownMenuItem onClick={() => onEditWorkflow(document)}>Edit Workflow</DropdownMenuItem>}
-            {onEditTags && <DropdownMenuItem onClick={() => onEditTags(document)}>Edit Tags</DropdownMenuItem>}
-            {onMoveProject && <DropdownMenuItem onClick={() => onMoveProject(document)}>Move Project</DropdownMenuItem>}
-            {onReprocess && <DropdownMenuItem onClick={() => onReprocess(document)}>Reprocess</DropdownMenuItem>}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </div>
+      {onMoveProject && (
+        <MoveProjectDialog
+          open={moveProjectOpen}
+          onOpenChange={setMoveProjectOpen}
+          availableTags={availableTags}
+          darkMode={darkMode}
+          onApply={async (projectName) => {
+            await onMoveProject(document, projectName);
+            setMoveProjectOpen(false);
+          }}
+        />
+      )}
+    </>
   );
 }
