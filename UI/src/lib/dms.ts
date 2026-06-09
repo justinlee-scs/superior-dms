@@ -54,6 +54,12 @@ export type WorkflowUpdateResponse = {
   notes: string | null;
 };
 
+export type DocumentVersionTagsResponse = {
+  document_id: string;
+  version_id: string;
+  tags: string[];
+};
+
 export function normalizeWorkflowStatus(status?: string | null) {
   return status ?? "uploaded";
 }
@@ -187,10 +193,40 @@ export function replaceDocumentVersionTags(
   versionId: string,
   tags: string[],
 ) {
-  return apiFetch<{ document_id: string; version_id: string; tags: string[] }>(
+  return apiFetch<DocumentVersionTagsResponse>(
     `/documents/${documentId}/versions/${versionId}/tags`,
     {
       method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tags }),
+    },
+  );
+}
+
+export function addDocumentVersionTags(
+  documentId: string,
+  versionId: string,
+  tags: string[],
+) {
+  return apiFetch<DocumentVersionTagsResponse>(
+    `/documents/${documentId}/versions/${versionId}/tags/add`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tags }),
+    },
+  );
+}
+
+export function removeDocumentVersionTags(
+  documentId: string,
+  versionId: string,
+  tags: string[],
+) {
+  return apiFetch<DocumentVersionTagsResponse>(
+    `/documents/${documentId}/versions/${versionId}/tags/remove`,
+    {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tags }),
     },

@@ -37,6 +37,7 @@ import { SelectionCheckbox } from "@/app/components/selection-checkbox";
 import { useSelection } from "@/app/selection/selection-context";
 import { formatBytes, formatLocalDateFromDateOnly, formatPageCount } from "@/lib/format";
 import { normalizeWorkflowStatus } from "@/lib/dms";
+import { MoveProjectDialog } from "@/app/components/move-project-dialog";
 
 interface CompactProjectViewProps {
   documents: Document[];
@@ -45,10 +46,11 @@ interface CompactProjectViewProps {
   onDelete: (doc: Document) => void;
   onEditWorkflow: (doc: Document) => void;
   onEditTags?: (doc: Document) => void;
-  onMoveProject?: (doc: Document) => void;
+  onMoveProject?: (doc: Document, projectName: string) => Promise<void>;
   onReprocess?: (doc: Document) => void;
   onOpenVersions?: (doc: Document) => void;
   onToggleWorkspace?: (doc: Document) => void;
+  availableTags?: string[];
   darkMode?: boolean;
 }
 
@@ -110,6 +112,7 @@ export function CompactProjectView({
   onReprocess,
   onOpenVersions,
   onToggleWorkspace,
+  availableTags = [],
   darkMode,
 }: CompactProjectViewProps) {
   const formatDate = (value?: string | null) =>
@@ -122,6 +125,9 @@ export function CompactProjectView({
   );
   const [collapsedTypes, setCollapsedTypes] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<Record<string, SortOption>>({});
+
+  // Track which doc has the Move Project dialog open
+  const [moveProjectDoc, setMoveProjectDoc] = useState<Document | null>(null);
 
   const selection = useSelection();
 
@@ -168,287 +174,310 @@ export function CompactProjectView({
   };
 
   return (
-    <div className="space-y-4">
-      {Object.entries(groupedDocuments).map(([project, types]) => {
-        const projectDocs = Object.values(types).flat();
-        const projectSel = selectionState(projectDocs);
-        const isProjectCollapsed = collapsedProjects.has(project);
-        const currentSort = sortBy[project] || "date";
+    <>
+      <div className="space-y-4">
+        {Object.entries(groupedDocuments).map(([project, types]) => {
+          const projectDocs = Object.values(types).flat();
+          const projectSel = selectionState(projectDocs);
+          const isProjectCollapsed = collapsedProjects.has(project);
+          const currentSort = sortBy[project] || "date";
 
-        return (
-          <div
-            key={project}
-            className={`border rounded-lg overflow-hidden ${
-              darkMode
-                ? "border-gray-800 bg-gray-900"
-                : "border-gray-200 bg-white"
-            }`}
-          >
-            {/* Project header */}
+          return (
             <div
-              className={`px-4 py-3 flex justify-between border-b ${
+              key={project}
+              className={`border rounded-lg overflow-hidden ${
                 darkMode
-                  ? "bg-gray-800 border-gray-700"
-                  : "bg-gray-50 border-gray-200"
+                  ? "border-gray-800 bg-gray-900"
+                  : "border-gray-200 bg-white"
               }`}
             >
-              <div className="flex items-center gap-3">
-                <SelectionCheckbox
-                  checked={projectSel.checked}
-                  indeterminate={projectSel.indeterminate}
-                  onToggle={() => toggleMany(projectDocs)}
-                />
+              {/* Project header */}
+              <div
+                className={`px-4 py-3 flex justify-between border-b ${
+                  darkMode
+                    ? "bg-gray-800 border-gray-700"
+                    : "bg-gray-50 border-gray-200"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <SelectionCheckbox
+                    checked={projectSel.checked}
+                    indeterminate={projectSel.indeterminate}
+                    onToggle={() => toggleMany(projectDocs)}
+                  />
 
-                <button
-                  onClick={() =>
-                    setCollapsedProjects((prev) => {
-                      const next = new Set(prev);
-                      next.has(project)
-                        ? next.delete(project)
-                        : next.add(project);
-                      return next;
-                    })
-                  }
-                  className="flex items-center gap-2"
-                >
-                  {isProjectCollapsed ? <ChevronRight /> : <ChevronDown />}
-                  <span className="font-semibold">{project}</span>
-                  <span className="text-sm text-gray-500 dark:text-gray-400">
-                    ({projectDocs.length} files)
-                  </span>
-                </button>
+                  <button
+                    onClick={() =>
+                      setCollapsedProjects((prev) => {
+                        const next = new Set(prev);
+                        next.has(project)
+                          ? next.delete(project)
+                          : next.add(project);
+                        return next;
+                      })
+                    }
+                    className="flex items-center gap-2"
+                  >
+                    {isProjectCollapsed ? <ChevronRight /> : <ChevronDown />}
+                    <span className="font-semibold">{project}</span>
+                    <span className="text-sm text-gray-500 dark:text-gray-400">
+                      ({projectDocs.length} files)
+                    </span>
+                  </button>
+                </div>
+
+                {!isProjectCollapsed && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm">
+                        <ArrowUpDown className="w-3 h-3 mr-1" />
+                        Sort
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() =>
+                          setSortBy({ ...sortBy, [project]: "date" })
+                        }
+                      >
+                        Date {currentSort === "date" && "✓"}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          setSortBy({ ...sortBy, [project]: "name" })
+                        }
+                      >
+                        Name {currentSort === "name" && "✓"}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          setSortBy({ ...sortBy, [project]: "size" })
+                        }
+                      >
+                        Size {currentSort === "size" && "✓"}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </div>
 
-              {!isProjectCollapsed && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm">
-                      <ArrowUpDown className="w-3 h-3 mr-1" />
-                      Sort
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      onClick={() =>
-                        setSortBy({ ...sortBy, [project]: "date" })
-                      }
-                    >
-                      Date {currentSort === "date" && "✓"}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() =>
-                        setSortBy({ ...sortBy, [project]: "name" })
-                      }
-                    >
-                      Name {currentSort === "name" && "✓"}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() =>
-                        setSortBy({ ...sortBy, [project]: "size" })
-                      }
-                    >
-                      Size {currentSort === "size" && "✓"}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-            </div>
+              {!isProjectCollapsed &&
+                Object.entries(types).map(([docType, docs]) => {
+                  const typeKey = `${project}-${docType}`;
+                  const isTypeCollapsed = collapsedTypes.has(typeKey);
+                  const sortedDocs = getSortedDocuments(project, docs);
+                  const typeSel = selectionState(sortedDocs);
 
-            {!isProjectCollapsed &&
-              Object.entries(types).map(([docType, docs]) => {
-                const typeKey = `${project}-${docType}`;
-                const isTypeCollapsed = collapsedTypes.has(typeKey);
-                const sortedDocs = getSortedDocuments(project, docs);
-                const typeSel = selectionState(sortedDocs);
-
-                return (
-                  <div key={typeKey}>
-                    {/* Type header */}
-                    <div
-                      className={`flex items-center gap-3 px-8 py-2 text-sm ${
-                        darkMode
-                          ? "bg-gray-800 border-gray-700"
-                          : "bg-gray-50 border-gray-200"
-                      }`}
-                    >
-                      <SelectionCheckbox
-                        checked={typeSel.checked}
-                        indeterminate={typeSel.indeterminate}
-                        onToggle={() => toggleMany(sortedDocs)}
-                      />
-
-                      <button
-                        onClick={() =>
-                          setCollapsedTypes((prev) => {
-                            const next = new Set(prev);
-                            next.has(typeKey)
-                              ? next.delete(typeKey)
-                              : next.add(typeKey);
-                            return next;
-                          })
-                        }
-                        className="flex items-center gap-2"
+                  return (
+                    <div key={typeKey}>
+                      {/* Type header */}
+                      <div
+                        className={`flex items-center gap-3 px-8 py-2 text-sm ${
+                          darkMode
+                            ? "bg-gray-800 border-gray-700"
+                            : "bg-gray-50 border-gray-200"
+                        }`}
                       >
-                        {isTypeCollapsed ? <ChevronRight /> : <ChevronDown />}
-                        <span className="font-medium">{docType}</span>
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
-                          ({sortedDocs.length})
-                        </span>
-                      </button>
-                    </div>
+                        <SelectionCheckbox
+                          checked={typeSel.checked}
+                          indeterminate={typeSel.indeterminate}
+                          onToggle={() => toggleMany(sortedDocs)}
+                        />
 
-                    {!isTypeCollapsed && (
-                      <Table className="min-w-[860px]">
-                        <TableHeader>
-                          <TableRow
-                            className={`border-t ${
-                              darkMode ? "border-gray-800" : "border-gray-200"
-                            }`}
-                          >
-                            <TableHead className="w-12" />
-                            <TableHead className="min-w-0">File</TableHead>
-                            <TableHead className="hidden md:table-cell w-32">
-                              Date
-                            </TableHead>
-                            <TableHead className="hidden lg:table-cell w-44">
-                              Owner
-                            </TableHead>
-                            <TableHead className="w-36">Status</TableHead>
-                            <TableHead className="hidden xl:table-cell w-28 text-right">
-                              Size
-                            </TableHead>
-                            <TableHead className="w-16 text-right">
-                              Actions
-                            </TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {sortedDocs.map((doc) => {
-                            const FileIcon = getFileIcon(doc.type);
-                            const checked = selection.isSelected(doc.id);
+                        <button
+                          onClick={() =>
+                            setCollapsedTypes((prev) => {
+                              const next = new Set(prev);
+                              next.has(typeKey)
+                                ? next.delete(typeKey)
+                                : next.add(typeKey);
+                              return next;
+                            })
+                          }
+                          className="flex items-center gap-2"
+                        >
+                          {isTypeCollapsed ? <ChevronRight /> : <ChevronDown />}
+                          <span className="font-medium">{docType}</span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            ({sortedDocs.length})
+                          </span>
+                        </button>
+                      </div>
 
-                            return (
-                              <TableRow
-                                key={doc.id}
-                                className={`group transition-colors ${
-                                  darkMode
-                                    ? "border-gray-800 hover:bg-gray-800/60"
-                                    : "border-gray-200 hover:bg-blue-50"
-                                }`}
-                              >
-                                <TableCell className="w-12 align-top">
-                                  <SelectionCheckbox
-                                    checked={checked}
-                                    onToggle={() => selection.toggle(doc)}
-                                  />
-                                </TableCell>
+                      {!isTypeCollapsed && (
+                        <Table className="min-w-[860px]">
+                          <TableHeader>
+                            <TableRow
+                              className={`border-t ${
+                                darkMode ? "border-gray-800" : "border-gray-200"
+                              }`}
+                            >
+                              <TableHead className="w-12" />
+                              <TableHead className="min-w-0">File</TableHead>
+                              <TableHead className="hidden md:table-cell w-32">
+                                Date
+                              </TableHead>
+                              <TableHead className="hidden lg:table-cell w-44">
+                                Owner
+                              </TableHead>
+                              <TableHead className="w-36">Status</TableHead>
+                              <TableHead className="hidden xl:table-cell w-28 text-right">
+                                Size
+                              </TableHead>
+                              <TableHead className="w-16 text-right">
+                                Actions
+                              </TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {sortedDocs.map((doc) => {
+                              const FileIcon = getFileIcon(doc.type);
+                              const checked = selection.isSelected(doc.id);
 
-                                <TableCell className="min-w-0 align-top whitespace-normal">
-                                  <div className="flex min-w-0 items-start gap-3">
-                                    <FileIcon className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />
-                                    <div className="min-w-0">
-                                      <span className="block truncate text-sm font-medium">
-                                        {doc.name}
-                                      </span>
-                                      <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
-                                        <span className="rounded bg-gray-100 px-1.5 py-0.5">
-                                          v{doc.currentVersionNumber ?? 1}
+                              return (
+                                <TableRow
+                                  key={doc.id}
+                                  className={`group transition-colors ${
+                                    darkMode
+                                      ? "border-gray-800 hover:bg-gray-800/60"
+                                      : "border-gray-200 hover:bg-blue-50"
+                                  }`}
+                                >
+                                  <TableCell className="w-12 align-top">
+                                    <SelectionCheckbox
+                                      checked={checked}
+                                      onToggle={() => selection.toggle(doc)}
+                                    />
+                                  </TableCell>
+
+                                  <TableCell className="min-w-0 align-top whitespace-normal">
+                                    <div className="flex min-w-0 items-start gap-3">
+                                      <FileIcon className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />
+                                      <div className="min-w-0">
+                                        <span className="block truncate text-sm font-medium">
+                                          {doc.name}
                                         </span>
-                                        <button
-                                          type="button"
-                                          className="text-blue-600 hover:underline"
-                                          onClick={() => onOpenVersions?.(doc)}
-                                        >
-                                          {doc.versionCount ?? 1} ver.
-                                        </button>
+                                        <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
+                                          <span className="rounded bg-gray-100 px-1.5 py-0.5">
+                                            v{doc.currentVersionNumber ?? 1}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            className="text-blue-600 hover:underline"
+                                            onClick={() => onOpenVersions?.(doc)}
+                                          >
+                                            {doc.versionCount ?? 1} ver.
+                                          </button>
+                                        </div>
                                       </div>
                                     </div>
-                                  </div>
-                                </TableCell>
+                                  </TableCell>
 
-                                <TableCell className="hidden md:table-cell w-32 align-top text-xs text-gray-500">
-                                  {formatLocalDateFromDateOnly(doc.date)}
-                                </TableCell>
+                                  <TableCell className="hidden md:table-cell w-32 align-top text-xs text-gray-500">
+                                    {formatLocalDateFromDateOnly(doc.date)}
+                                  </TableCell>
 
-                                <TableCell className="hidden lg:table-cell w-44 align-top text-xs text-gray-600 dark:text-gray-400">
-                                  <div className="truncate">{doc.author}</div>
-                                </TableCell>
+                                  <TableCell className="hidden lg:table-cell w-44 align-top text-xs text-gray-600 dark:text-gray-400">
+                                    <div className="truncate">{doc.author}</div>
+                                  </TableCell>
 
-                                <TableCell className="w-36 align-top">
-                                  <span
-                                    className={`inline-flex items-center gap-1 ${getWorkflowColor(
-                                      doc.workflow,
-                                      darkMode,
-                                    )}`}
-                                  >
-                                    {getWorkflowIcon(doc.workflow)}
-                                    {normalizeWorkflowStatus(doc.workflow)}
-                                  </span>
-                                </TableCell>
+                                  <TableCell className="w-36 align-top">
+                                    <span
+                                      className={`inline-flex items-center gap-1 ${getWorkflowColor(
+                                        doc.workflow,
+                                        darkMode,
+                                      )}`}
+                                    >
+                                      {getWorkflowIcon(doc.workflow)}
+                                      {normalizeWorkflowStatus(doc.workflow)}
+                                    </span>
+                                  </TableCell>
 
-                                <TableCell className="hidden xl:table-cell w-28 align-top text-right text-xs text-gray-500">
-                                  <div>{formatPageCount(doc.pageCount)}</div>
-                                  <div>{formatBytes(doc.sizeBytes)}</div>
-                                </TableCell>
+                                  <TableCell className="hidden xl:table-cell w-28 align-top text-right text-xs text-gray-500">
+                                    <div>{formatPageCount(doc.pageCount)}</div>
+                                    <div>{formatBytes(doc.sizeBytes)}</div>
+                                  </TableCell>
 
-                                <TableCell className="w-16 align-top text-right">
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" size="sm">
-                                        ⋯
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <DropdownMenuItem
-                                        onClick={() => onPreview(doc)}
-                                      >
-                                        Preview
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        onClick={() => onDownload(doc)}
-                                      >
-                                        Download
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        onClick={() => onDelete(doc)}
-                                      >
-                                        Delete
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        onClick={() => onEditWorkflow(doc)}
-                                      >
-                                        Edit Workflow
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        onClick={() => onEditTags?.(doc)}
-                                      >
-                                        Edit Tags
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        onClick={() => onMoveProject?.(doc)}
-                                      >
-                                        Move Project
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        onClick={() => onReprocess?.(doc)}
-                                      >
-                                        Reprocess
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
-                    )}
-                  </div>
-                );
-              })}
-          </div>
-        );
-      })}
-    </div>
+                                  <TableCell className="w-16 align-top text-right">
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button variant="ghost" size="sm">
+                                          ⋯
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end">
+                                        <DropdownMenuItem
+                                          onClick={() => onPreview(doc)}
+                                        >
+                                          Preview
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          onClick={() => onDownload(doc)}
+                                        >
+                                          Download
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          onClick={() => onDelete(doc)}
+                                        >
+                                          Delete
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          onClick={() => onEditWorkflow(doc)}
+                                        >
+                                          Edit Workflow
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          onClick={() => onEditTags?.(doc)}
+                                        >
+                                          Edit Tags
+                                        </DropdownMenuItem>
+                                        {onMoveProject && (
+                                          <DropdownMenuItem
+                                            onClick={() => setMoveProjectDoc(doc)}
+                                          >
+                                            Move Project
+                                          </DropdownMenuItem>
+                                        )}
+                                        <DropdownMenuItem
+                                          onClick={() => onReprocess?.(doc)}
+                                        >
+                                          Reprocess
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Move Project dialog — rendered once outside the table to avoid
+          nested dialog issues and re-mounting on every row render */}
+      {onMoveProject && (
+        <MoveProjectDialog
+          open={moveProjectDoc !== null}
+          onOpenChange={(open) => {
+            if (!open) setMoveProjectDoc(null);
+          }}
+          availableTags={availableTags}
+          darkMode={darkMode}
+          onApply={async (projectName) => {
+            if (moveProjectDoc) {
+              await onMoveProject(moveProjectDoc, projectName);
+              setMoveProjectDoc(null);
+            }
+          }}
+        />
+      )}
+    </>
   );
 }

@@ -55,6 +55,7 @@ import {
 
 import { toast } from "sonner";
 import {
+  addDocumentVersionTags,
   bulkDownloadDocuments,
   createTagPool,
   deleteTagPool,
@@ -64,6 +65,7 @@ import {
   reprocessDocument,
   listTagPool,
   moveDocumentProject,
+  removeDocumentVersionTags,
   replaceDocumentVersionTags,
   updateDocumentVersionDueDate,
   updateDocumentWorkflow,
@@ -799,6 +801,98 @@ function AppInner() {
     await refreshTagPool();
   };
 
+  const handleBulkAddTags = async (tags: string[]) => {
+    const selectedDocs = Array.from(selection.selected.values());
+    const results = await Promise.allSettled(
+      selectedDocs
+        .filter((doc) => doc.currentVersionId)
+        .map((doc) =>
+          addDocumentVersionTags(doc.id, doc.currentVersionId!, tags),
+        ),
+    );
+    const successCount = results.filter((r) => r.status === "fulfilled").length;
+    const failCount = results.length - successCount;
+
+    await refreshDocuments();
+    await refreshTagPool();
+
+    if (failCount === 0) {
+      toast.success(`Added ${tags.length} tag(s) to ${successCount} document(s)`);
+    } else {
+      toast.error(`Added to ${successCount}, failed for ${failCount} document(s)`);
+    }
+  };
+
+  const handleBulkRemoveTags = async (tags: string[]) => {
+    const selectedDocs = Array.from(selection.selected.values());
+    const results = await Promise.allSettled(
+      selectedDocs
+        .filter((doc) => doc.currentVersionId)
+        .map((doc) =>
+          removeDocumentVersionTags(doc.id, doc.currentVersionId!, tags),
+        ),
+    );
+    const successCount = results.filter((r) => r.status === "fulfilled").length;
+    const failCount = results.length - successCount;
+
+    await refreshDocuments();
+    await refreshTagPool();
+
+    if (failCount === 0) {
+      toast.success(`Removed ${tags.length} tag(s) from ${successCount} document(s)`);
+    } else {
+      toast.error(`Removed from ${successCount}, failed for ${failCount} document(s)`);
+    }
+  };
+
+  const handleBulkSetWorkflow = async (
+    status: "failed" | "uploaded" | "needs review",
+  ) => {
+    const selectedDocs = Array.from(selection.selected.values());
+    const results = await Promise.allSettled(
+      selectedDocs.map((doc) =>
+        updateDocumentWorkflow(doc.id, { status, notes: "" }),
+      ),
+    );
+    const successCount = results.filter((r) => r.status === "fulfilled").length;
+    const failCount = results.length - successCount;
+
+    // Optimistically update UI for succeeded docs; a full refresh would
+    // overwrite notes fields so we only patch the workflow status locally.
+    setDocuments((prev) =>
+      prev.map((doc) =>
+        selection.selected.has(doc.id)
+          ? { ...doc, workflow: normalizeWorkflowStatus(status) }
+          : doc,
+      ),
+    );
+
+    if (failCount === 0) {
+      toast.success(`Workflow set to "${status}" for ${successCount} document(s)`);
+    } else {
+      toast.error(`Updated ${successCount}, failed for ${failCount} document(s)`);
+    }
+  };
+
+  const handleBulkMoveProject = async (projectName: string) => {
+    const selectedDocs = Array.from(selection.selected.values());
+    const results = await Promise.allSettled(
+      selectedDocs.map((doc) => moveDocumentProject(doc.id, projectName)),
+    );
+    const successCount = results.filter((r) => r.status === "fulfilled").length;
+    const failCount = results.length - successCount;
+
+    await refreshDocuments();
+
+    if (failCount === 0) {
+      toast.success(`Moved ${successCount} document(s) to project: ${projectName}`);
+    } else {
+      toast.error(`Moved ${successCount}, failed for ${failCount} document(s)`);
+    }
+
+    selection.clear();
+  };
+
   const handleEditWorkflow = (doc: Document) => {
     setSelectedDocument(doc);
     setWorkflowEditorOpen(true);
@@ -857,19 +951,13 @@ function AppInner() {
     }
   };
 
-  const handleMoveProject = async (doc: Document) => {
+  const handleMoveProject = async (doc: Document, projectName: string) => {
     if (!accessPermissions.has("document.project_move")) {
       toast.error("You do not have permission to move projects");
       return;
     }
-    const nextProject = window.prompt(
-      "Enter project tag name (without project: prefix)",
-      doc.project === "unassigned" ? "" : doc.project,
-    );
-    if (!nextProject || !nextProject.trim()) return;
-
     try {
-      const response = await moveDocumentProject(doc.id, nextProject.trim());
+      const response = await moveDocumentProject(doc.id, projectName.trim());
       setDocuments((prev) =>
         prev.map((item) =>
           item.id === doc.id ? { ...item, tags: response.tags } : item,
@@ -1085,6 +1173,8 @@ function AppInner() {
                   <BulkActionBar
                     count={selection.selected.size}
                     darkMode={darkMode}
+                    availableTags={availableTags}
+                    canDelete={accessPermissions.has("document.delete")}
                     onDownload={() => {
                       void handleBulkDownload();
                     }}
@@ -1098,6 +1188,10 @@ function AppInner() {
                       selection.clear();
                     }}
                     onClear={selection.clear}
+                    onBulkAddTags={handleBulkAddTags}
+                    onBulkRemoveTags={handleBulkRemoveTags}
+                    onBulkSetWorkflow={handleBulkSetWorkflow}
+                    onBulkMoveProject={handleBulkMoveProject}
                     documents={[]}
                   />
 
@@ -1118,6 +1212,7 @@ function AppInner() {
                         onReprocess={handleReprocess}
                         onOpenVersions={(doc) => setVersionModalDoc(doc)}
                         onToggleWorkspace={handleWorkspaceToggle}
+                        availableTags={availableTags}
                         darkMode={darkMode}
                       />
                     ) : viewMode === "grouped" ? (
@@ -1175,6 +1270,7 @@ function AppInner() {
                       onReprocess={handleReprocess}
                       onOpenVersions={(doc) => setVersionModalDoc(doc)}
                       onToggleWorkspace={handleWorkspaceToggle}
+                      availableTags={availableTags}
                       darkMode={darkMode}
                     />
                   </TabsContent>
