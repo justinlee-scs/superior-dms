@@ -80,6 +80,7 @@ class DocumentVersion(Base):
             ProcessingStatus,
             name="processing_status_enum",
             native_enum=True,
+            values_callable=lambda x: [e.value for e in x],
         ),
         nullable=False,
         default=ProcessingStatus.processing,

@@ -15,6 +15,7 @@ import { BulkActionBar } from "@/app/components/bulk-action-bar";
 import { VersionHistoryModal } from "@/app/components/version-history-modal";
 import { ProfileDialog } from "@/app/components/profile-dialog";
 import { TagEditorDialog } from "@/app/components/tag-editor-dialog";
+import { PDFAnnotationModal } from "@/app/components/pdf-annotation-modal";
 import {
   UpcomingDuePaymentsPanel,
   type DuePayment,
@@ -78,7 +79,7 @@ import { formatBytes } from "@/lib/format";
 import { normalizeWorkflowStatus } from "@/lib/dms";
 import { openLoadingPreviewWindow } from "@/lib/preview";
 import { getCurrentUserProfile, updateCurrentUserProfile } from "@/lib/profile";
-import { isOfficeFilename } from "@/lib/file-types";
+import { isOfficeFilename, isPdfFilename } from "@/lib/file-types";
 import { saveResponseAsFile } from "@/lib/file-transfer";
 import {
   applyUiThemeClass,
@@ -178,6 +179,7 @@ function AppInner() {
   );
   const [tagPool, setTagPool] = useState<string[]>([]);
   const [editingTagsDoc, setEditingTagsDoc] = useState<Document | null>(null);
+  const [pdfAnnotationDoc, setPdfAnnotationDoc] = useState<Document | null>(null);
   const [duePayments, setDuePayments] = useState<DuePayment[]>([]);
   const [duePaymentsLoading, setDuePaymentsLoading] = useState(false);
   const [accessPermissions, setAccessPermissions] = useState<Set<string>>(
@@ -188,6 +190,7 @@ function AppInner() {
   const preferencesReadyRef = useRef(false);
   const skipNextPreferencePersistRef = useRef(false);
   const searchTextRef = useRef("");
+  const barRef = useRef<HTMLDivElement>(null);
 
   const msUntilNextMidnight = () => {
     const now = new Date();
@@ -326,7 +329,8 @@ function AppInner() {
   }, [accessPermissions, duePaymentsWindowDays]);
 
   useEffect(() => {
-    if (!liveSyncEnabled) return;
+    // Disable live sync when PDF annotation modal is open
+    if (!liveSyncEnabled || pdfAnnotationDoc) return;
 
     const intervalId = window.setInterval(() => {
       refreshDocuments().catch(() => undefined);
@@ -348,7 +352,7 @@ function AppInner() {
       window.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
     };
-  }, [liveSyncEnabled]);
+  }, [liveSyncEnabled, pdfAnnotationDoc]);
 
   useEffect(() => {
     getCurrentUserProfile()
@@ -517,6 +521,8 @@ function AppInner() {
 
   useEffect(() => {
     if (!documents.length && !searchTextRef.current) return;
+    // Don't refresh when PDF annotation modal is open
+    if (pdfAnnotationDoc) return;
 
     const timeoutId = window.setTimeout(() => {
       refreshDocuments().catch(() => toast.error("Failed to load documents"));
@@ -524,7 +530,7 @@ function AppInner() {
 
     return () => window.clearTimeout(timeoutId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.searchText]);
+  }, [filters.searchText, pdfAnnotationDoc]);
 
   /**
    * Actions
@@ -684,6 +690,12 @@ function AppInner() {
   // };
 
   const handlePreview = (doc: Document) => {
+    // Open PDF annotator for PDF files
+    if (isPdfFilename(doc.name)) {
+      setPdfAnnotationDoc(doc);
+      return;
+    }
+
     const token = sessionStorage.getItem("access_token");
     const previewWindow = openLoadingPreviewWindow(doc.name);
     if (!previewWindow) {
@@ -1037,9 +1049,10 @@ function AppInner() {
   return (
     <DndProvider backend={HTML5Backend}>
       <div
-        className={`flex min-h-screen w-full overflow-x-hidden ${darkMode ? "bg-gray-900 text-white" : ""}`}
+        className={`flex h-screen w-full overflow-hidden ${darkMode ? "bg-gray-900 text-white" : ""}`}
       >
-        <div className="hidden shrink-0 lg:block">
+        {/* Sidebar — fixed height, independent scroll */}
+        <div className="hidden shrink-0 lg:flex lg:flex-col h-full">
           <SearchFilters
             filters={filters}
             onFiltersChange={setFilters}
@@ -1075,9 +1088,10 @@ function AppInner() {
           </DrawerContent>
         </Drawer>
 
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        {/* Main content — independent scroll */}
+        <div className="flex min-w-0 flex-1 flex-col h-full overflow-y-auto">
           {/* Header */}
-          <div className="border-b px-4 py-4 sm:px-6">
+          <div className="border-b px-4 py-4 sm:px-6 shrink-0">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <FileText className="w-8 h-8 text-blue-600" />
@@ -1128,7 +1142,11 @@ function AppInner() {
                 {isAdmin && (
                   <Button
                     variant="outline"
-                    onClick={() => setActiveTab("admin")}
+                    onClick={() =>
+                      setActiveTab((prev) =>
+                        prev === "admin" ? "documents" : "admin",
+                      )
+                    }
                   >
                     <Shield className="mr-2 h-4 w-4" />
                     Admin
@@ -1146,7 +1164,7 @@ function AppInner() {
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-x-hidden overflow-y-auto px-4 py-4 pb-24 sm:px-6">
+          <div className="flex-1 px-4 py-4 pb-24 sm:px-6">
             <div className="flex min-w-0 flex-col gap-6 lg:flex-row lg:items-start">
               <div className="min-w-0 flex-1">
                 <Tabs
@@ -1175,12 +1193,8 @@ function AppInner() {
                     darkMode={darkMode}
                     availableTags={availableTags}
                     canDelete={accessPermissions.has("document.delete")}
-                    onDownload={() => {
-                      void handleBulkDownload();
-                    }}
-                    onReprocess={() => {
-                      void handleBulkReprocess();
-                    }}
+                    onDownload={() => { void handleBulkDownload(); }}
+                    onReprocess={() => { void handleBulkReprocess(); }}
                     onDelete={async () => {
                       for (const doc of selection.selected.values()) {
                         await handleDelete(doc);
@@ -1192,6 +1206,13 @@ function AppInner() {
                     onBulkRemoveTags={handleBulkRemoveTags}
                     onBulkSetWorkflow={handleBulkSetWorkflow}
                     onBulkMoveProject={handleBulkMoveProject}
+                    barRef={barRef}
+                    onEscapeToTable={() => {
+                      const el = selection.focusedId
+                        ? document.querySelector<HTMLElement>(`[data-doc-id="${selection.focusedId}"]`)
+                        : document.querySelector<HTMLElement>("[data-doc-id]");
+                      el?.focus();
+                    }}
                     documents={[]}
                   />
 
@@ -1213,6 +1234,7 @@ function AppInner() {
                         onOpenVersions={(doc) => setVersionModalDoc(doc)}
                         onToggleWorkspace={handleWorkspaceToggle}
                         availableTags={availableTags}
+                        barRef={barRef}
                         darkMode={darkMode}
                       />
                     ) : viewMode === "grouped" ? (
@@ -1273,6 +1295,7 @@ function AppInner() {
                       onOpenVersions={(doc) => setVersionModalDoc(doc)}
                       onToggleWorkspace={handleWorkspaceToggle}
                       availableTags={availableTags}
+                      barRef={barRef}
                       darkMode={darkMode}
                     />
                   </TabsContent>
@@ -1337,6 +1360,14 @@ function AppInner() {
               if (!open) setEditingTagsDoc(null);
             }}
             onSave={handleSaveDocumentTags}
+            darkMode={darkMode}
+          />
+
+          <PDFAnnotationModal
+            open={pdfAnnotationDoc !== null}
+            document={pdfAnnotationDoc}
+            onClose={() => setPdfAnnotationDoc(null)}
+            onVersionSaved={refreshDocuments}
             darkMode={darkMode}
           />
 

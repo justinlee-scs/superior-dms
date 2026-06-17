@@ -658,21 +658,18 @@ export default function RolesPage({
 
   return (
     <div
-      className={`mt-6 overflow-hidden rounded-xl border ${
-        darkMode ? "border-gray-700 bg-gray-900 text-gray-100" : "border-gray-200 bg-[#f3f4f6]"
-      }`}
+      className={`mt-6 overflow-hidden rounded-xl border ${darkMode ? "border-gray-700 bg-gray-900 text-gray-100" : "border-gray-200 bg-[#f3f4f6]"
+        }`}
     >
       <div
-        className={`grid min-h-[72vh] ${
-          section === "hierarchy" || section === "training"
+        className={`grid min-h-[72vh] ${section === "hierarchy" || section === "training"
             ? "grid-cols-[230px_1fr]"
             : "grid-cols-[230px_320px_1fr]"
-        }`}
+          }`}
       >
         <aside
-          className={`border-r px-4 py-4 ${
-            darkMode ? "border-gray-700 bg-gray-900" : "border-gray-200 bg-[#f3f4f6]"
-          }`}
+          className={`border-r px-4 py-4 ${darkMode ? "border-gray-700 bg-gray-900" : "border-gray-200 bg-[#f3f4f6]"
+            }`}
         >
           <div className="mb-5 flex items-center justify-between">
             <div className="flex items-center gap-3 text-base font-semibold">
@@ -683,9 +680,8 @@ export default function RolesPage({
 
           <Button
             variant="outline"
-            className={`mb-5 w-full justify-start rounded-xl text-sm ${
-              darkMode ? "border-gray-600 bg-gray-800 text-gray-100 hover:bg-gray-700" : "border-gray-300 bg-transparent"
-            }`}
+            className={`mb-5 w-full justify-start rounded-xl text-sm ${darkMode ? "border-gray-600 bg-gray-800 text-gray-100 hover:bg-gray-700" : "border-gray-300 bg-transparent"
+              }`}
             onClick={() => onBackToDocuments?.()}
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
@@ -696,13 +692,12 @@ export default function RolesPage({
             <button
               type="button"
               onClick={() => setSection("roles")}
-              className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold ${
-                section === "roles"
+              className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold ${section === "roles"
                   ? "bg-[#020825] text-white"
                   : darkMode
                     ? "text-gray-100 hover:bg-gray-800"
                     : "text-black hover:bg-gray-200"
-              }`}
+                }`}
             >
               <Shield className="h-5 w-5" />
               Roles
@@ -710,13 +705,12 @@ export default function RolesPage({
             <button
               type="button"
               onClick={() => setSection("users")}
-              className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold ${
-                section === "users"
+              className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold ${section === "users"
                   ? "bg-[#020825] text-white"
                   : darkMode
                     ? "text-gray-100 hover:bg-gray-800"
                     : "text-black hover:bg-gray-200"
-              }`}
+                }`}
             >
               <Users className="h-5 w-5" />
               Users
@@ -724,13 +718,12 @@ export default function RolesPage({
             <button
               type="button"
               onClick={() => setSection("hierarchy")}
-              className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold ${
-                section === "hierarchy"
+              className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold ${section === "hierarchy"
                   ? "bg-[#020825] text-white"
                   : darkMode
                     ? "text-gray-100 hover:bg-gray-800"
                     : "text-black hover:bg-gray-200"
-              }`}
+                }`}
             >
               <GitBranch className="h-5 w-5" />
               Hierarchy
@@ -738,13 +731,12 @@ export default function RolesPage({
             <button
               type="button"
               onClick={() => setSection("training")}
-              className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold ${
-                section === "training"
+              className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold ${section === "training"
                   ? "bg-[#020825] text-white"
                   : darkMode
                     ? "text-gray-100 hover:bg-gray-800"
                     : "text-black hover:bg-gray-200"
-              }`}
+                }`}
             >
               <Clock3 className="h-5 w-5" />
               Training
@@ -759,7 +751,13 @@ export default function RolesPage({
                 <div className="text-xl font-semibold">Roles</div>
                 <div className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-500"}`}>{roles.length} role(s)</div>
               </div>
-              <Button className="rounded-xl bg-[#020825] px-4 text-sm text-gray-100" onClick={onCreateRole} disabled={loading}>
+              <Button className={`rounded-xl px-4 text-sm ${darkMode
+                ? "bg-gray-900 text-white hover:bg-gray-600"
+                : "bg-gray-900 text-white hover:bg-gray-600"
+                }`}
+                onClick={onCreateRole}
+                disabled={loading}
+              >
                 <Plus className="mr-1 h-4 w-4" />
                 New
               </Button>
@@ -771,13 +769,12 @@ export default function RolesPage({
                   key={role.id}
                   type="button"
                   onClick={() => setSelectedRoleId(role.id)}
-                  className={`w-full rounded-xl border px-3 py-2 text-left ${
-                    role.id === selectedRoleId
+                  className={`w-full rounded-xl border px-3 py-2 text-left ${role.id === selectedRoleId
                       ? "border-blue-300 bg-blue-50/40"
                       : darkMode
                         ? "border-transparent hover:bg-gray-700"
                         : "border-transparent hover:bg-gray-100"
-                  }`}
+                    }`}
                 >
                   <div className="text-lg font-semibold">{role.name}</div>
                   <div className={`mt-1 text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>{role.description || "No description"}</div>
@@ -801,9 +798,11 @@ export default function RolesPage({
                 <div className="text-xl font-semibold">Users</div>
                 <div className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-500"}`}>{users.length} user(s)</div>
               </div>
-              <Button
-                className="rounded-xl bg-[#020825] px-4 text-sm text-gray-100"
-                onClick={() => setCreateUserOpen(true)}
+              <Button className={`rounded-xl px-4 text-sm ${darkMode
+                ? "bg-gray-900 text-white hover:bg-gray-600"
+                : "bg-gray-900 text-white hover:bg-gray-600"
+                }`}
+                onClick={onCreateRole}
                 disabled={loading}
               >
                 <Plus className="mr-1 h-4 w-4" />
@@ -817,23 +816,21 @@ export default function RolesPage({
                   key={user.id}
                   type="button"
                   onClick={() => setSelectedUserId(user.id)}
-                  className={`w-full rounded-xl border px-3 py-2 text-left ${
-                    user.id === selectedUserId
+                  className={`w-full rounded-xl border px-3 py-2 text-left ${user.id === selectedUserId
                       ? "border-blue-300 bg-blue-50/40"
                       : darkMode
                         ? "border-transparent hover:bg-gray-700"
                         : "border-transparent hover:bg-gray-100"
-                  }`}
+                    }`}
                 >
                   <div className="text-lg font-semibold">{user.username}</div>
                   <div className={`mt-1 text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>{user.email}</div>
                   <div className="mt-2">
                     <span
-                      className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${
-                        user.is_active
+                      className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${user.is_active
                           ? "bg-emerald-100 text-emerald-700"
                           : "bg-amber-100 text-amber-700"
-                      }`}
+                        }`}
                     >
                       {user.is_active ? "Active" : "Inactive"}
                     </span>
@@ -868,9 +865,8 @@ export default function RolesPage({
                 </div>
                 <div className="flex items-center gap-2">
                   <select
-                    className={`h-10 rounded-xl border border-gray-300 px-3 text-sm ${
-                      darkMode ? "border-gray-600 bg-gray-800 text-gray-100" : ""
-                    }`}
+                    className={`h-10 rounded-xl border border-gray-300 px-3 text-sm ${darkMode ? "border-gray-600 bg-gray-800 text-gray-100" : ""
+                      }`}
                     value={copySourceRoleId}
                     onChange={(event) => setCopySourceRoleId(event.target.value)}
                     disabled={loading}
@@ -941,11 +937,10 @@ export default function RolesPage({
                     <div className={`mt-1 text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>{selectedUser.email}</div>
                     <div className="mt-2">
                       <span
-                        className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${
-                          selectedUser.is_active
+                        className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${selectedUser.is_active
                             ? "bg-emerald-100 text-emerald-700"
                             : "bg-amber-100 text-amber-700"
-                        }`}
+                          }`}
                       >
                         {selectedUser.is_active ? "Active" : "Inactive"}
                       </span>
@@ -967,22 +962,20 @@ export default function RolesPage({
                   <button
                     type="button"
                     onClick={() => setUserTab("roles")}
-                    className={`border-b-2 py-3 text-base font-semibold ${
-                      userTab === "roles"
+                    className={`border-b-2 py-3 text-base font-semibold ${userTab === "roles"
                         ? "border-blue-600 text-blue-600"
                         : "border-transparent text-gray-700"
-                    }`}
+                      }`}
                   >
                     Roles
                   </button>
                   <button
                     type="button"
                     onClick={() => setUserTab("permissions")}
-                    className={`border-b-2 py-3 text-base font-semibold ${
-                      userTab === "permissions"
+                    className={`border-b-2 py-3 text-base font-semibold ${userTab === "permissions"
                         ? "border-blue-600 text-blue-600"
                         : "border-transparent text-gray-700"
-                    }`}
+                      }`}
                   >
                     Permissions
                   </button>
@@ -1046,9 +1039,8 @@ export default function RolesPage({
                             return (
                               <label
                                 key={permission.id}
-                                className={`flex items-start gap-3 rounded-lg px-2 py-1 ${
-                                  highlighted ? "bg-blue-50" : ""
-                                }`}
+                                className={`flex items-start gap-3 rounded-lg px-2 py-1 ${highlighted ? "bg-blue-50" : ""
+                                  }`}
                               >
                                 <Checkbox
                                   className="mt-1"
@@ -1090,9 +1082,8 @@ export default function RolesPage({
               </p>
 
               <div
-                className={`mt-4 rounded-xl border p-4 ${
-                  darkMode ? "border-gray-700 bg-gray-800" : "border-gray-200 bg-[#f8f8f9]"
-                }`}
+                className={`mt-4 rounded-xl border p-4 ${darkMode ? "border-gray-700 bg-gray-800" : "border-gray-200 bg-[#f8f8f9]"
+                  }`}
               >
                 <div className="mb-3 text-lg font-semibold">Edit Hierarchy</div>
                 <div className="mb-4 grid gap-3">
@@ -1242,9 +1233,8 @@ export default function RolesPage({
                   return (
                     <div
                       key={role.id}
-                      className={`rounded-xl border p-4 ${
-                        darkMode ? "border-gray-700 bg-gray-800" : "border-gray-200 bg-[#f8f8f9]"
-                      }`}
+                      className={`rounded-xl border p-4 ${darkMode ? "border-gray-700 bg-gray-800" : "border-gray-200 bg-[#f8f8f9]"
+                        }`}
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex items-start gap-3">
@@ -1275,9 +1265,8 @@ export default function RolesPage({
                                   <label key={managedRole.id} className="flex items-center gap-2 text-sm">
                                     <span className={`${darkMode ? "text-blue-300" : "text-blue-500"}`}>›</span>
                                     <span
-                                      className={`inline-flex rounded px-2 py-0.5 font-medium ${
-                                        darkMode ? "bg-gray-700 text-gray-100" : "bg-gray-100 text-gray-800"
-                                      }`}
+                                      className={`inline-flex rounded px-2 py-0.5 font-medium ${darkMode ? "bg-gray-700 text-gray-100" : "bg-gray-100 text-gray-800"
+                                        }`}
                                     >
                                       {managedRole.name}
                                     </span>
@@ -1315,9 +1304,8 @@ export default function RolesPage({
                                   <label key={managedUser.id} className="flex items-center gap-2 text-sm">
                                     <span className={`${darkMode ? "text-blue-300" : "text-blue-500"}`}>›</span>
                                     <span
-                                      className={`inline-flex rounded px-2 py-0.5 font-medium ${
-                                        darkMode ? "bg-gray-700 text-gray-100" : "bg-gray-100 text-gray-800"
-                                      }`}
+                                      className={`inline-flex rounded px-2 py-0.5 font-medium ${darkMode ? "bg-gray-700 text-gray-100" : "bg-gray-100 text-gray-800"
+                                        }`}
                                     >
                                       {managedUser.username}
                                     </span>
@@ -1368,9 +1356,8 @@ export default function RolesPage({
               </p>
 
               <div
-                className={`mt-4 max-w-xl rounded-xl border p-4 ${
-                  darkMode ? "border-gray-700 bg-gray-800" : "border-gray-200 bg-[#f8f8f9]"
-                }`}
+                className={`mt-4 max-w-xl rounded-xl border p-4 ${darkMode ? "border-gray-700 bg-gray-800" : "border-gray-200 bg-[#f8f8f9]"
+                  }`}
               >
                 <div className="grid gap-3">
                   <label className="flex items-center gap-3 text-sm font-medium">
@@ -1418,10 +1405,10 @@ export default function RolesPage({
 
                   <div>
                     <Button
-                    className="rounded-xl bg-[#020825] px-4 text-sm text-gray-100"
-                    disabled={loading}
-                    onClick={onSaveRetrainSchedule}
-                  >
+                      className="rounded-xl bg-[#020825] px-4 text-sm text-gray-100"
+                      disabled={loading}
+                      onClick={onSaveRetrainSchedule}
+                    >
                       Save Schedule
                     </Button>
                   </div>

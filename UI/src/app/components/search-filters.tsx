@@ -222,10 +222,10 @@ export function SearchFilters({
           {filteredAvailableTags.map((tag) => {
             const isSelected = filters.selectedTags.includes(tag);
             return (
-              <div key={tag} className="inline-flex items-center gap-1">
+              <div key={tag} className="inline-flex items-center gap-1 min-w-0">
                 <Badge
                   variant={isSelected ? "default" : "outline"}
-                  className={`cursor-pointer rounded-full px-3 py-1 text-xs ${
+                  className={`cursor-pointer rounded-full px-3 py-1 text-xs max-w-[140px] inline-flex items-center ${
                     isSelected
                       ? "bg-[#020825] text-white hover:bg-[#1a2248]"
                       : darkMode
@@ -234,8 +234,8 @@ export function SearchFilters({
                   }`}
                   onClick={() => toggleTag(tag)}
                 >
-                  {tag}
-                  {isSelected && <X className="w-3 h-3 ml-1" />}
+                  <span className="truncate min-w-0">{tag}</span>
+                  {isSelected && <X className="w-3 h-3 ml-1 shrink-0" />}
                 </Badge>
                 {tagDeleteMode && canDeleteTagFromPool && onDeleteTagFromPool && (
                   <Button

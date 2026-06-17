@@ -412,7 +412,7 @@ def update_document_workflow(
     version = get_document_version(db=db, document_id=document_id)
     if not version:
         return None
-    version.processing_status = status
+    version.processing_status = status.value
     version.workflow_notes = notes.strip() if notes else None
     db.commit()
     db.refresh(version)

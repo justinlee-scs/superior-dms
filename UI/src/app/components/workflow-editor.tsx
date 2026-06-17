@@ -86,7 +86,7 @@ export function WorkflowEditor({
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label htmlFor="workflow">Workflow Status</Label>
-            <Select value={selectedWorkflow} onValueChange={setSelectedWorkflow}>
+            <Select value={selectedWorkflow} onValueChange={(v) => setSelectedWorkflow(v as "failed" | "uploaded" | "needs review")}>
               <SelectTrigger id="workflow">
                 <SelectValue />
               </SelectTrigger>

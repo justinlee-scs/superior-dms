@@ -49,3 +49,6 @@ class ProcessingStatus(str, enum.Enum):
     uploaded = "uploaded"
     needs_review = "needs review"
     failed = "failed"
+    
+    def __str__(self):
+        return self.value

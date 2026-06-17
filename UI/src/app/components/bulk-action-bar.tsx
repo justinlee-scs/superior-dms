@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/app/components/ui/button";
 import {
   Popover,
@@ -54,6 +54,10 @@ interface BulkActionBarProps {
   onBulkRemoveTags: (tags: string[]) => Promise<void>;
   onBulkSetWorkflow: (status: WorkflowStatus) => Promise<void>;
   onBulkMoveProject: (projectName: string) => Promise<void>;
+  /** Ref exposed so CompactProjectView can call .focus() on the bar */
+  barRef?: React.RefObject<HTMLDivElement | null>;
+  /** Called when Escape is pressed inside the bar */
+  onEscapeToTable?: () => void;
 }
 
 // ─── Tag Popover ─────────────────────────────────────────────────────────────
@@ -425,17 +429,71 @@ export function BulkActionBar({
   onBulkRemoveTags,
   onBulkSetWorkflow,
   onBulkMoveProject,
+  barRef,
+  onEscapeToTable,
 }: BulkActionBarProps) {
   const inactive = count === 0;
+  const internalRef = useRef<HTMLDivElement>(null);
+  const ref = barRef ?? internalRef;
 
   const handleTagApply = async (toAdd: string[], toRemove: string[]) => {
     if (toAdd.length) await onBulkAddTags(toAdd);
     if (toRemove.length) await onBulkRemoveTags(toRemove);
   };
 
+  // Arrow Left/Right roving focus between bar buttons
+  const handleBarKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onEscapeToTable?.();
+      return;
+    }
+
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+
+    const bar = ref.current;
+    if (!bar) return;
+
+    const focusable = Array.from(
+      bar.querySelectorAll<HTMLElement>(
+        "button:not([disabled]), [role='button']:not([disabled])"
+      )
+    );
+    if (!focusable.length) return;
+
+    const current = document.activeElement as HTMLElement;
+    const idx = focusable.indexOf(current);
+    if (idx === -1) {
+      focusable[0].focus();
+      return;
+    }
+
+    e.preventDefault();
+    const next =
+      e.key === "ArrowRight"
+        ? focusable[(idx + 1) % focusable.length]
+        : focusable[(idx - 1 + focusable.length) % focusable.length];
+    next.focus();
+  }, [ref, onEscapeToTable]);
+
   return (
     <div
-      className={`hidden 2xl:flex flex-wrap items-center gap-2 px-4 py-2 text-sm transition-opacity sm:px-8 ${
+      ref={ref}
+      onKeyDown={handleBarKeyDown}
+      // Makes the bar itself focusable so B-key jump lands here,
+      // then immediately moves to first button via focus delegation below
+      tabIndex={-1}
+      onFocus={(e) => {
+        // If focus landed on the bar container itself (not a child button),
+        // forward it to the first focusable button
+        if (e.target === e.currentTarget) {
+          const first = e.currentTarget.querySelector<HTMLElement>(
+            "button:not([disabled])"
+          );
+          first?.focus();
+        }
+      }}
+      className={`hidden md:flex flex-nowrap overflow-x-auto items-center gap-2 px-4 py-2 text-sm transition-opacity sm:px-8 rounded-2xl ${
         darkMode
           ? "border-gray-600 bg-gray-800/60"
           : "border-gray-300 bg-gray-100"
@@ -450,29 +508,20 @@ export function BulkActionBar({
       </span>
 
       {/* Divider */}
-      <span
-        className={`h-4 w-px ${darkMode ? "bg-gray-600" : "bg-gray-300"}`}
-      />
+      <span className={`h-4 w-px ${darkMode ? "bg-gray-600" : "bg-gray-300"}`} />
 
       <Button size="sm" className="gap-1.5" onClick={onDownload}>
         <Download className="h-3.5 w-3.5" />
         Download
       </Button>
 
-      <Button
-        size="sm"
-        variant="outline"
-        className="gap-1.5"
-        onClick={onReprocess}
-      >
+      <Button size="sm" variant="outline" className="gap-1.5" onClick={onReprocess}>
         <RefreshCw className="h-3.5 w-3.5" />
         Reprocess
       </Button>
 
       {/* Divider */}
-      <span
-        className={`h-4 w-px ${darkMode ? "bg-gray-600" : "bg-gray-300"}`}
-      />
+      <span className={`h-4 w-px ${darkMode ? "bg-gray-600" : "bg-gray-300"}`} />
 
       <TagPopover
         availableTags={availableTags}
@@ -495,9 +544,7 @@ export function BulkActionBar({
       />
 
       {/* Divider */}
-      <span
-        className={`h-4 w-px ${darkMode ? "bg-gray-600" : "bg-gray-300"}`}
-      />
+      <span className={`h-4 w-px ${darkMode ? "bg-gray-600" : "bg-gray-300"}`} />
 
       {canDelete && (
         <DeleteConfirmDialog
@@ -508,7 +555,7 @@ export function BulkActionBar({
       )}
 
       <Button size="sm" variant="ghost" onClick={onClear}>
-        Clear
+        Unselect All
       </Button>
     </div>
   );

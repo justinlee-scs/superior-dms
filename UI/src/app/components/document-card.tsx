@@ -9,6 +9,7 @@ import {
   Archive,
   Clock3,
   XCircle,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
@@ -93,6 +94,8 @@ const getWorkflowIcon = (workflow: string) => {
       return <Clock3 className="h-3.5 w-3.5" />;
     case "failed":
       return <XCircle className="h-3.5 w-3.5" />;
+    case "needs review":
+      return <AlertTriangle className="h-3.5 w-3.5" />;
     case "uploaded":
       return <CheckCircle2 className="h-3.5 w-3.5" />;
     default:

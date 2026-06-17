@@ -348,10 +348,11 @@ export function moveDocumentProject(documentId: string, projectName: string) {
 
 export function updateDocumentWorkflow(
   documentId: string,
-  payload: { status: "failed" | "uploaded" | "needs review"; notes: string },
+  payload: { status: "failed" | "uploaded" | "needs review"; notes: string | null },
 ) {
   return apiFetch<WorkflowUpdateResponse>(`/documents/${documentId}/workflow`, {
     method: "PATCH",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 }

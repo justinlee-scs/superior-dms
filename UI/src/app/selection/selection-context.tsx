@@ -8,6 +8,9 @@ export interface SelectionContextValue {
   remove: (doc: Document) => void;
   clear: () => void;
   isSelected: (id: string) => boolean;
+  selectRange: (docs: Document[], fromId: string, toId: string) => void;
+  focusedId: string | null;
+  setFocusedId: (id: string | null) => void;
 }
 
 const SelectionContext = createContext<SelectionContextValue | null>(null);
@@ -20,6 +23,7 @@ export function useSelection(): SelectionContextValue {
 
 export function SelectionProvider({ children }: { children: ReactNode }) {
   const [selected, setSelected] = useState<Map<string, Document>>(new Map());
+  const [focusedId, setFocusedId] = useState<string | null>(null);
 
   const toggle = (doc: Document) => {
     setSelected((prev) => {
@@ -46,8 +50,27 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
 
   const isSelected = (id: string) => selected.has(id);
 
+  // Selects all docs between fromId and toId (inclusive) in the provided
+  // ordered flat list of all visible docs.
+  const selectRange = (docs: Document[], fromId: string, toId: string) => {
+    const fromIdx = docs.findIndex((d) => d.id === fromId);
+    const toIdx = docs.findIndex((d) => d.id === toId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const start = Math.min(fromIdx, toIdx);
+    const end = Math.max(fromIdx, toIdx);
+    setSelected((prev) => {
+      const next = new Map(prev);
+      for (let i = start; i <= end; i++) {
+        next.set(docs[i].id, docs[i]);
+      }
+      return next;
+    });
+  };
+
   return (
-    <SelectionContext.Provider value={{ selected, toggle, add, remove, clear, isSelected }}>
+    <SelectionContext.Provider
+      value={{ selected, toggle, add, remove, clear, isSelected, selectRange, focusedId, setFocusedId }}
+    >
       {children}
     </SelectionContext.Provider>
   );
