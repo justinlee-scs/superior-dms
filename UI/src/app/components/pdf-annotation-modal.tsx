@@ -13,6 +13,20 @@ interface PDFAnnotationModalProps {
   darkMode?: boolean;
 }
 
+// Reads the cached user object that ProfileDialog (and login) stores in
+// sessionStorage under "user", and pulls out a display name for stamps.
+// Falls back to email, then a generic label, if username isn't set.
+function getCurrentUserName(): string {
+  try {
+    const raw = sessionStorage.getItem("user");
+    if (!raw) return "Unknown User";
+    const user = JSON.parse(raw);
+    return user.username || user.email || "Unknown User";
+  } catch {
+    return "Unknown User";
+  }
+}
+
 export function PDFAnnotationModal({
   open,
   document,
@@ -124,6 +138,7 @@ export function PDFAnnotationModal({
         onClose={onClose}
         onSaveVersion={handleSaveVersion}
         darkMode={darkMode}
+        currentUserName={getCurrentUserName()}
       />
     </div>
   );

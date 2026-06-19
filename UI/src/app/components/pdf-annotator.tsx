@@ -34,6 +34,7 @@ interface PDFAnnotatorProps {
   onClose: () => void;
   onSaveVersion: (annotatedPdfBlob: Blob) => Promise<void>;
   darkMode?: boolean;
+  currentUserName: string;
 }
 
 // "select" is the neutral/no-drawing state — pointer behaves like a normal
@@ -53,6 +54,7 @@ export function PDFAnnotator({
   onClose,
   onSaveVersion,
   darkMode = false,
+  currentUserName,
 }: PDFAnnotatorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -254,30 +256,62 @@ export function PDFAnnotator({
     };
   }, [toolMode, penColor, penWidth, selectedStamp]);
 
-  // Helper function to draw stamp text on canvas
+  // Helper function to draw stamp text on canvas, including the author
+  // name and current system date as additional lines beneath the main
+  // stamp label (e.g. "POSTED" / "Justin Lee" / "06/18/2026").
   const drawStamp = (ctx: CanvasRenderingContext2D, stampText: string, x: number, y: number, size: number) => {
+    const now = new Date();
+    const dateStr = `${String(now.getMonth() + 1).padStart(2, "0")}/${String(now.getDate()).padStart(2, "0")}/${now.getFullYear()}`;
+
+    const titleFontSize = 20 + size * 2;
+    const subFontSize = Math.max(10, Math.round(titleFontSize * 0.5));
+
+    const lines = [
+      { text: stampText, font: `bold ${titleFontSize}px Arial` },
+      { text: currentUserName, font: `${subFontSize}px Arial` },
+      { text: dateStr, font: `${subFontSize}px Arial` },
+    ];
+
     ctx.globalCompositeOperation = "source-over";
-    ctx.fillStyle = penColor;
-    ctx.font = `bold ${20 + size * 2}px Arial`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
-    // Add a subtle background
-    const metrics = ctx.measureText(stampText);
-    const width = metrics.width + 10;
-    const height = 20 + size * 2 + 5;
+    // Measure the widest line and total stacked height first, so the
+    // background box fits all three lines.
+    let maxWidth = 0;
+    for (const line of lines) {
+      ctx.font = line.font;
+      const w = ctx.measureText(line.text).width;
+      if (w > maxWidth) maxWidth = w;
+    }
+
+    const lineHeight = subFontSize + 6;
+    const titleHeight = titleFontSize + 4;
+    const totalHeight = titleHeight + lineHeight * 2;
+
+    const boxWidth = maxWidth + 16;
+    const boxHeight = totalHeight + 10;
 
     ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
-    ctx.fillRect(x - width / 2, y - height / 2, width, height);
+    ctx.fillRect(x - boxWidth / 2, y - boxHeight / 2, boxWidth, boxHeight);
 
-    ctx.fillStyle = penColor;
     ctx.strokeStyle = penColor;
     ctx.lineWidth = 2;
-    ctx.strokeRect(x - width / 2, y - height / 2, width, height);
+    ctx.strokeRect(x - boxWidth / 2, y - boxHeight / 2, boxWidth, boxHeight);
 
+    // Draw each line, stacked top-to-bottom, vertically centered as a group.
+    let cursorY = y - totalHeight / 2 + titleHeight / 2;
     ctx.fillStyle = penColor;
-    ctx.font = `bold ${20 + size * 2}px Arial`;
-    ctx.fillText(stampText, x, y);
+    ctx.font = lines[0].font;
+    ctx.fillText(lines[0].text, x, cursorY);
+
+    cursorY += titleHeight / 2 + lineHeight / 2;
+    ctx.font = lines[1].font;
+    ctx.fillText(lines[1].text, x, cursorY);
+
+    cursorY += lineHeight;
+    ctx.font = lines[2].font;
+    ctx.fillText(lines[2].text, x, cursorY);
   };
 
   // Save current color to favorites
@@ -339,36 +373,49 @@ export function PDFAnnotator({
   };
 
   // Build a full multi-page PDF: for every page, re-render the PDF page at
-  // full quality, composite that page's annotation layer (current page uses
-  // the live canvas; other pages use their stored snapshot) on top, and embed
+  // export quality (scale 1.0), composite that page's annotation layer
+  // (captured at display scale 1.5) on top scaled down to match, and embed
   // the result as a page in a new pdf-lib document.
-  const buildAnnotatedPdf = async (): Promise<Uint8Array> => {
+  // Using EXPORT_SCALE=1.0 prevents scale from compounding on each save
+  // round-trip (the previous bug: saving at 1.5× each time → 1.5^n zoom).
+  const buildAnnotatedPdf = async (): Promise<Uint8Array<ArrayBuffer>> => {
     if (!pdfdocRef.current) throw new Error("PDF not loaded");
 
     // Make sure the page we're currently viewing is captured too.
     captureAnnotations(currentPageRef.current);
 
+    const EXPORT_SCALE = 1.0; // keep at 1.0 — display scale (1.5) must NOT be used here
+
     const outPdf = await PDFDocument.create();
 
     for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
       const page = await pdfdocRef.current.getPage(pageNum);
-      const viewport = page.getViewport({ scale: 1.5 });
 
-      // Render the base PDF page into an offscreen canvas.
-      const baseCanvas = document.createElement("canvas");
-      baseCanvas.width = viewport.width;
-      baseCanvas.height = viewport.height;
+      // Export at 1:1 — this is what gets embedded in the PDF.
+      const exportViewport = page.getViewport({ scale: EXPORT_SCALE });
+
+      const baseCanvas = window.document.createElement("canvas");
+      baseCanvas.width = exportViewport.width;
+      baseCanvas.height = exportViewport.height;
       const baseCtx = baseCanvas.getContext("2d");
       if (!baseCtx) throw new Error("Failed to get canvas context");
-      await page.render({ canvasContext: baseCtx, viewport }).promise;
 
-      // Composite that page's annotation layer on top, if any exists.
+      await page.render({ canvasContext: baseCtx, viewport: exportViewport }).promise;
+
+      // Composite annotation snapshot — it was captured at display scale (1.5×),
+      // so draw it scaled down to fit the export canvas dimensions exactly.
       const snapshot = annotationsRef.current[pageNum];
       if (snapshot) {
         await new Promise<void>((resolve) => {
           const img = new Image();
           img.onload = () => {
-            baseCtx.drawImage(img, 0, 0, baseCanvas.width, baseCanvas.height);
+            baseCtx.drawImage(
+              img,
+              0, 0,
+              img.naturalWidth, img.naturalHeight,  // source: full display-size snapshot
+              0, 0,
+              exportViewport.width, exportViewport.height  // dest: export-size canvas
+            );
             resolve();
           };
           img.onerror = () => resolve();
@@ -380,16 +427,25 @@ export function PDFAnnotator({
       const pngBytes = await fetch(pngDataUrl).then((r) => r.arrayBuffer());
       const embeddedImage = await outPdf.embedPng(pngBytes);
 
-      const outPage = outPdf.addPage([baseCanvas.width, baseCanvas.height]);
+      const outPage = outPdf.addPage([exportViewport.width, exportViewport.height]);
       outPage.drawImage(embeddedImage, {
         x: 0,
         y: 0,
-        width: baseCanvas.width,
-        height: baseCanvas.height,
+        width: exportViewport.width,
+        height: exportViewport.height,
       });
     }
 
-    return outPdf.save();
+    const pdfBytes = await outPdf.save();
+    // pdf-lib's return type is Uint8Array<ArrayBufferLike>, which TS treats
+    // as possibly SharedArrayBuffer-backed. The DOM's BlobPart type requires
+    // an ArrayBuffer-backed view specifically, and merely re-wrapping with
+    // `new Uint8Array(pdfBytes)` does NOT narrow the type (TS still infers
+    // ArrayBufferLike from the source). Instead, copy the bytes into a
+    // freshly-allocated, explicitly-typed ArrayBuffer.
+    const arrayBuffer = new ArrayBuffer(pdfBytes.byteLength);
+    new Uint8Array(arrayBuffer).set(pdfBytes);
+    return new Uint8Array(arrayBuffer);
   };
 
   const handleDownloadAnnotated = async () => {
@@ -661,7 +717,7 @@ export function PDFAnnotator({
       </div>
 
       {/* PDF Canvas Container */}
-      <div className="flex-1 overflow-auto flex items-center justify-center" ref={containerRef}>
+      <div className="flex-1 overflow-auto flex items-start justify-center" ref={containerRef}>
         <div className="relative">
           <canvas
             ref={pageCanvasRef}
