@@ -30,6 +30,7 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     auth_provider = Column(String, nullable=False, default="local")
     oidc_subject = Column(String, unique=True, index=True, nullable=True)
+    full_name = Column(String, nullable=True)
 
     is_active = Column(Boolean, default=True, nullable=False)
     ui_dark_mode = Column(Boolean, default=False, nullable=False)

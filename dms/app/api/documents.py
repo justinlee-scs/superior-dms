@@ -302,7 +302,7 @@ async def upload_document(
     return DocumentResponse(
         id=document.id,
         filename=document.filename,
-        author=current_user.username,
+        author=current_user.full_name or current_user.username,
         status=version.processing_status,
         document_type=document.document_type,
         confidence=version.confidence,
@@ -545,7 +545,7 @@ def get_document(
         id=document.id,
         filename=document.filename,
         author=(
-            document.uploaded_by_user.username
+            (document.uploaded_by_user.full_name or document.uploaded_by_user.username)
             if document.uploaded_by_user
             else "System"
         ),
@@ -624,7 +624,7 @@ def set_document_type(
         id=document.id,
         filename=document.filename,
         author=(
-            document.uploaded_by_user.username
+            (document.uploaded_by_user.full_name or document.uploaded_by_user.username)
             if document.uploaded_by_user
             else "System"
         ),

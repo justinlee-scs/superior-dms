@@ -4,6 +4,7 @@ export type CurrentUser = {
   id: string;
   email: string;
   username: string;
+  full_name?: string;
   roles: string[];
   permissions: string[];
   ui_dark_mode?: boolean;

@@ -145,11 +145,18 @@ def _random_unusable_password(length: int = 32) -> str:
 def find_or_create_user_from_google_identity(db: Session, identity: dict[str, str | bool]) -> User:
     oidc_subject = str(identity["sub"])
     email = str(identity["email"]).strip().lower()
+    full_name = str(identity.get("name") or "").strip()
 
     user = db.query(User).filter(User.oidc_subject == oidc_subject).first()
     if user:
+        changed = False
         if user.email != email:
             user.email = email
+            changed = True
+        if full_name and user.full_name != full_name:
+            user.full_name = full_name
+            changed = True
+        if changed:
             db.commit()
             db.refresh(user)
         return user
@@ -157,6 +164,8 @@ def find_or_create_user_from_google_identity(db: Session, identity: dict[str, st
     user = db.query(User).filter(User.email == email).first()
     if user:
         user.oidc_subject = oidc_subject
+        if full_name and not user.full_name:
+            user.full_name = full_name
         # Keep existing auth provider for previously-created local users
         # so dev/admin password login continues to work unchanged.
         if not user.auth_provider:
@@ -169,6 +178,7 @@ def find_or_create_user_from_google_identity(db: Session, identity: dict[str, st
     user = User(
         email=email,
         username=username,
+        full_name=full_name,
         hashed_password=hash_password(_random_unusable_password()),
         auth_provider="google",
         oidc_subject=oidc_subject,

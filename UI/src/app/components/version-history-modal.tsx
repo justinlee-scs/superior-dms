@@ -49,7 +49,7 @@ export function VersionHistoryModal({
   onUpdated,
   darkMode,
 }: VersionHistoryModalProps) {
-  console.log("version history modal dakrmode", darkMode);
+  console.log("version history modal darkmode", darkMode);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
   const [loading, setLoading] = useState(false);

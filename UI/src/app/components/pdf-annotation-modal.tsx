@@ -21,7 +21,7 @@ function getCurrentUserName(): string {
     const raw = sessionStorage.getItem("user");
     if (!raw) return "Unknown User";
     const user = JSON.parse(raw);
-    return user.username || user.email || "Unknown User";
+    return user.full_name || user.username || user.email || "Unknown User";
   } catch {
     return "Unknown User";
   }

@@ -251,7 +251,7 @@ def list_documents(db: Session, query: str | None = None):
             DocumentVersion.page_count,
             DocumentVersion.storage_size_bytes,
             DocumentVersion.workflow_notes,
-            User.username,
+            func.coalesce(User.full_name, User.username),
         )
         .outerjoin(
             DocumentVersion,
@@ -270,6 +270,7 @@ def list_documents(db: Session, query: str | None = None):
             or_(
                 func.lower(Document.filename).like(pattern),
                 func.lower(User.username).like(pattern),
+                func.lower(func.coalesce(User.full_name, "")).like(pattern),
                 func.lower(func.coalesce(DocumentVersion.extracted_text, "")).like(
                     pattern
                 ),
