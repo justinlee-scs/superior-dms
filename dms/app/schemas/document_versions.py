@@ -33,6 +33,7 @@ class DocumentVersionResponse(BaseModel):
     ocr_model_version: str | None = None
     ocr_latency_ms: int | None = None
     tags: list[str] = Field(default_factory=list)
+    layout_json: dict | None = None
     created_at: datetime
     due_date: date | None = None
     page_count: int | None = None
@@ -54,6 +55,7 @@ class DocumentVersionListItem(BaseModel):
         ocr_engine (type=str | None): Name of the OCR engine used for extraction.
         ocr_model_version (type=str | None): Version string of the OCR model used.
         tags (type=list[str]): Normalized tags associated with the document/version.
+        author (type=str): User display name for the person who created the version.
         created_at (type=datetime): Timestamp indicating when the record was created.
         size_bytes (type=int): File size of the version in bytes.
     """
@@ -67,6 +69,7 @@ class DocumentVersionListItem(BaseModel):
     ocr_engine: str | None = None
     ocr_model_version: str | None = None
     tags: list[str] = Field(default_factory=list)
+    author: str = "System"
     created_at: datetime
     size_bytes: int
     due_date: date | None = None

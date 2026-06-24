@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { PDFAnnotator } from "@/app/components/pdf-annotator";
 import type { Document } from "@/app/components/document-card";
-import { uploadDocumentVersion } from "@/lib/dms";
+import { getDocumentOutput, uploadDocumentVersion } from "@/lib/dms";
+import { getMyAccess } from "@/lib/rbac";
 import { API_BASE_URL } from "@/lib/api";
 import { toast } from "sonner";
 
@@ -27,6 +28,10 @@ function getCurrentUserName(): string {
   }
 }
 
+type AnnotationLayoutJson = {
+  customStamps?: string[];
+};
+
 export function PDFAnnotationModal({
   open,
   document,
@@ -35,7 +40,29 @@ export function PDFAnnotationModal({
   darkMode = false,
 }: PDFAnnotationModalProps) {
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
+  const [layoutJson, setLayoutJson] = useState<AnnotationLayoutJson | null>(null);
   const [loading, setLoading] = useState(false);
+  const [canAccessStamps, setCanAccessStamps] = useState(false);
+  const [canCreateStampLabels, setCanCreateStampLabels] = useState(false);
+  const [canAccessTextBoxes, setCanAccessTextBoxes] = useState(false);
+
+  useEffect(() => {
+    getMyAccess()
+      .then((access) => {
+        setCanAccessStamps(access.permissions.includes("document_version.stamp_access"));
+        setCanCreateStampLabels(
+          access.permissions.includes("document_version.stamp_label_create"),
+        );
+        setCanAccessTextBoxes(
+          access.permissions.includes("document_version.text_box_access"),
+        );
+      })
+      .catch(() => {
+        setCanAccessStamps(false);
+        setCanCreateStampLabels(false);
+        setCanAccessTextBoxes(false);
+      });
+  }, []);
 
   useEffect(() => {
     if (!open || !document) return;
@@ -44,25 +71,31 @@ export function PDFAnnotationModal({
     const loadPdf = async () => {
       try {
         const token = sessionStorage.getItem("access_token");
-        const res = await fetch(
-          `${API_BASE_URL}/documents/${document.id}/preview`,
-          {
+        const [previewResponse, outputResponse] = await Promise.all([
+          fetch(`${API_BASE_URL}/documents/${document.id}/preview`, {
             headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-          }
-        );
+          }),
+          getDocumentOutput(document.id),
+        ]);
 
-        if (res.status === 401) {
+        if (previewResponse.status === 401) {
           sessionStorage.removeItem("access_token");
           window.location.reload();
           return;
         }
 
-        if (!res.ok) {
+        if (!previewResponse.ok) {
           throw new Error("Failed to load PDF");
         }
 
-        const blob = await res.blob();
+        const blob = await previewResponse.blob();
         setPdfBlob(blob);
+        setLayoutJson(
+          outputResponse.layout_json &&
+            typeof outputResponse.layout_json === "object"
+            ? (outputResponse.layout_json as AnnotationLayoutJson)
+            : null,
+        );
       } catch (error) {
         toast.error("Failed to load PDF for annotation");
         console.error(error);
@@ -75,7 +108,10 @@ export function PDFAnnotationModal({
     loadPdf();
   }, [open, document, onClose]);
 
-  const handleSaveVersion = async (annotatedPdfBlob: Blob) => {
+  const handleSaveVersion = async (
+    annotatedPdfBlob: Blob,
+    annotatorLayoutJson?: { customStamps?: string[] },
+  ) => {
     if (!document) return;
 
     try {
@@ -89,7 +125,9 @@ export function PDFAnnotationModal({
       });
 
       // Upload as new version
-      await uploadDocumentVersion(document.id, file);
+      await uploadDocumentVersion(document.id, file, {
+        customStamps: annotatorLayoutJson?.customStamps ?? layoutJson?.customStamps ?? [],
+      });
 
       // Refresh document list if callback provided
       if (onVersionSaved) {
@@ -132,13 +170,17 @@ export function PDFAnnotationModal({
 
   return (
     <div className="fixed inset-0 z-50">
-      <PDFAnnotator
+        <PDFAnnotator
         document={document}
         pdfBlob={pdfBlob}
         onClose={onClose}
         onSaveVersion={handleSaveVersion}
         darkMode={darkMode}
         currentUserName={getCurrentUserName()}
+        layoutJson={layoutJson}
+        canAccessStamps={canAccessStamps}
+        canCreateStampLabels={canCreateStampLabels}
+        canAccessTextBoxes={canAccessTextBoxes}
       />
     </div>
   );

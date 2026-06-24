@@ -47,12 +47,14 @@ def create_document_version(
     db: Session,
     document_id: UUID,
     file_bytes: bytes | None,
+    created_by_user_id: UUID | None = None,
     set_as_current: bool = False,
     *,
     storage_bucket: str | None = None,
     storage_key: str | None = None,
     storage_etag: str | None = None,
     storage_size_bytes: int | None = None,
+    layout_json: dict | None = None,
     commit: bool = True,
 ) -> DocumentVersion:
     """Create document version.
@@ -65,6 +67,8 @@ def create_document_version(
         storage_key (type=str | None): Object storage key.
         storage_etag (type=str | None): Object storage ETag (if available).
         storage_size_bytes (type=int | None): Object storage size in bytes.
+        created_by_user_id (type=UUID | None): User id of the person creating the version.
+        layout_json (type=dict | None): Optional annotation metadata to associate with the version.
         set_as_current (type=bool, default=False): Function argument used by this operation.
         commit (type=bool, default=True): Flag controlling whether to commit the transaction.
     """
@@ -96,6 +100,8 @@ def create_document_version(
         storage_etag=storage_etag,
         storage_size_bytes=storage_size_bytes
         or (len(file_bytes) if file_bytes is not None else None),
+        created_by_user_id=created_by_user_id,
+        layout_json=layout_json,
         version_number=version_number,
         processing_status=ProcessingStatus.processing,
     )

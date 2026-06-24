@@ -14,6 +14,9 @@ class Permissions:
         DOCUMENT_VERSION_PREVIEW: Parameter.
         DOCUMENT_VERSION_DOWNLOAD: Parameter.
         DOCUMENT_VERSION_SET_CURRENT: Parameter.
+        DOCUMENT_VERSION_STAMP_ACCESS: Parameter.
+        DOCUMENT_VERSION_STAMP_LABEL_CREATE: Parameter.
+        DOCUMENT_VERSION_TEXT_BOX_ACCESS: Parameter.
         DOCUMENT_TAG_READ: Parameter.
         DOCUMENT_TAG_EDIT: Parameter.
         DOCUMENT_TAG_DELETE: Parameter.
@@ -36,6 +39,9 @@ class Permissions:
     DOCUMENT_VERSION_PREVIEW = "document_version.preview"
     DOCUMENT_VERSION_DOWNLOAD = "document_version.download"
     DOCUMENT_VERSION_SET_CURRENT = "document_version.set_current"
+    DOCUMENT_VERSION_STAMP_ACCESS = "document_version.stamp_access"
+    DOCUMENT_VERSION_STAMP_LABEL_CREATE = "document_version.stamp_label_create"
+    DOCUMENT_VERSION_TEXT_BOX_ACCESS = "document_version.text_box_access"
     DOCUMENT_VERSION_DELETE = "document_version.delete"
     DOCUMENT_TAG_READ = "tags.read"
     DOCUMENT_TAG_EDIT = "tags.edit"

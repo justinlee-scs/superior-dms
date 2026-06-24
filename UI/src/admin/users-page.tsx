@@ -4,6 +4,11 @@ import { toast } from "sonner";
 import { Button } from "@/app/components/ui/button";
 import { Checkbox } from "@/app/components/ui/checkbox";
 import { Input } from "@/app/components/ui/input";
+import {
+  PERMISSION_DESCRIPTIONS,
+  PERMISSION_LABELS,
+  titleCaseFromKey,
+} from "@/lib/permission-display";
 
 import {
   createUser,
@@ -375,7 +380,16 @@ export default function UsersPage() {
                       disabled={!selectedUser || loading}
                       onCheckedChange={(checked) => onTogglePermission(permission.key, checked === true)}
                     />
-                    <span>{permission.key}</span>
+                    <div>
+                      <div className="font-medium">
+                        {PERMISSION_LABELS[permission.key] ?? titleCaseFromKey(permission.key)}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {PERMISSION_DESCRIPTIONS[permission.key] ??
+                          permission.description ??
+                          permission.key}
+                      </div>
+                    </div>
                   </label>
                 );
               })}

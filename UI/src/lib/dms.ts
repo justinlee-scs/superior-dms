@@ -12,8 +12,26 @@ export function getDocument(id: string) {
 }
 
 export function getDocumentOutput(id: string) {
-  return apiFetch(`/documents/${id}/output`);
+  return apiFetch<DocumentVersionResponse>(`/documents/${id}/output`);
 }
+
+export type DocumentVersionResponse = {
+  id: string;
+  document_id: string;
+  processing_status: string;
+  extracted_text: string | null;
+  classification: string | null;
+  confidence: number | null;
+  ocr_raw_confidence: number | null;
+  ocr_engine: string | null;
+  ocr_model_version: string | null;
+  ocr_latency_ms: number | null;
+  tags: string[];
+  layout_json: Record<string, unknown> | null;
+  created_at: string;
+  due_date: string | null;
+  page_count: number | null;
+};
 
 export type DocumentVersion = {
   id: string;
@@ -23,6 +41,7 @@ export type DocumentVersion = {
   processing_status: string;
   classification: string | null;
   confidence: number | null;
+  author: string;
   created_at: string;
   size_bytes: number;
   due_date?: string | null;
@@ -82,9 +101,16 @@ export function setCurrentDocumentVersion(documentId: string, versionId: string)
   });
 }
 
-export async function uploadDocumentVersion(documentId: string, file: File) {
+export async function uploadDocumentVersion(
+  documentId: string,
+  file: File,
+  layoutJson?: Record<string, unknown> | null,
+) {
   const form = new FormData();
   form.append("file", file);
+  if (layoutJson) {
+    form.append("layout_json", JSON.stringify(layoutJson));
+  }
 
   const token = sessionStorage.getItem("access_token");
 

@@ -60,72 +60,16 @@ import {
   type UserPermissionsResponse,
 } from "@/lib/rbac";
 import { getRetrainSchedule, updateRetrainSchedule } from "@/lib/dms";
+import {
+  PERMISSION_DESCRIPTIONS,
+  PERMISSION_LABELS,
+  permissionGroup,
+  titleCaseFromKey,
+} from "@/lib/permission-display";
 
 type AdminSection = "roles" | "users" | "hierarchy" | "training";
 type UserTab = "roles" | "permissions";
 type HierarchyManagerType = "role" | "user";
-
-const PERMISSION_LABELS: Record<string, string> = {
-  "document.read": "View Documents",
-  "document.upload": "Create Documents",
-  "document.update": "Edit Documents",
-  "document.delete": "Delete Documents",
-  "document.download": "Download Documents",
-  "document.preview": "Preview Documents",
-  "document.due_payments": "View Upcoming Payments",
-  "document_version.read": "View Versions",
-  "document_version.create": "Create Versions",
-  "document_version.preview": "Preview Versions",
-  "document_version.download": "Download Versions",
-  "document_version.set_current": "Set Current Version",
-  "document_version.delete": "Delete Versions",
-  "workflow.advance": "View Workflows",
-  "workflow.assign": "Edit Workflows",
-  "admin.users": "Manage Users",
-  "admin.roles": "Manage Roles",
-  "admin.training": "Manage Training",
-  "tags.read": "View Tags",
-  "tags.edit": "Edit Tags",
-  "tags.delete": "Delete Tag Pool Tags",
-};
-
-const PERMISSION_DESCRIPTIONS: Record<string, string> = {
-  "document.read": "Can view documents",
-  "document.upload": "Can upload new documents",
-  "document.update": "Can edit document metadata",
-  "document.delete": "Can delete documents",
-  "document.download": "Can download documents",
-  "document.preview": "Can preview documents",
-  "document.due_payments": "Can view upcoming due payments",
-  "document_version.read": "Can view document version history",
-  "document_version.create": "Can upload new versions",
-  "document_version.preview": "Can preview document versions",
-  "document_version.download": "Can download document versions",
-  "document_version.set_current": "Can set a document's current version",
-  "document_version.delete": "Can delete document versions",
-  "workflow.advance": "Can view workflow status",
-  "workflow.assign": "Can modify workflows",
-  "admin.users": "Can create and update users",
-  "admin.roles": "Can create and update roles",
-  "admin.training": "Can configure nightly retraining schedule",
-  "tags.read": "Can view document tags",
-  "tags.edit": "Can add, remove, and replace document tags",
-  "tags.delete": "Can delete tags from the global tag pool",
-};
-
-function permissionGroup(permissionKey: string): string {
-  if (permissionKey.startsWith("document_version.")) return "Versioning";
-  if (permissionKey.startsWith("document.")) return "Documents";
-  if (permissionKey.startsWith("tags.")) return "Tags";
-  if (permissionKey.startsWith("workflow.")) return "Workflows";
-  if (permissionKey.startsWith("admin.")) return "Administration";
-  return "Other";
-}
-
-function titleCaseFromKey(permissionKey: string): string {
-  const base = permissionKey.split(".").pop() ?? permissionKey;
-  return base.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
-}
 
 export default function RolesPage({
   darkMode = false,

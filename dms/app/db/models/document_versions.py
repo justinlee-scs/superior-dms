@@ -49,6 +49,12 @@ class DocumentVersion(Base):
     storage_key = Column(sa.String(512), nullable=True)
     storage_etag = Column(sa.String(128), nullable=True)
     storage_size_bytes = Column(sa.Integer, nullable=True)
+    created_by_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     extracted_text = Column(Text, nullable=True)
 
@@ -94,4 +100,9 @@ class DocumentVersion(Base):
         "Document",
         back_populates="versions",
         foreign_keys=[document_id],
+    )
+    created_by_user = relationship(
+        "User",
+        foreign_keys=[created_by_user_id],
+        lazy="selectin",
     )

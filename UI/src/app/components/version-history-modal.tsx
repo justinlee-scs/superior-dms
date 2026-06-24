@@ -330,6 +330,9 @@ export function VersionHistoryModal({
                           </span>
                         )}
                       </div>
+                      <div className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+                        {version.author}
+                      </div>
                       <div className="flex items-center gap-2">
                         <Button
                           variant="outline"

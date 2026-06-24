@@ -1,5 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { Pen, Eraser, RotateCcw, Download, Save, X, Stamp, Plus, MousePointer2 } from "lucide-react";
+import {
+  Pen,
+  Eraser,
+  RotateCcw,
+  Download,
+  Save,
+  X,
+  Stamp,
+  Plus,
+  MousePointer2,
+  Type,
+} from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { toast } from "sonner";
 import type { Document } from "@/app/components/document-card";
@@ -27,26 +38,247 @@ const loadPdfJs = async () => {
 };
 
 const DEFAULT_STAMPS = ["APPROVED", "REJECTED", "URGENT", "DRAFT", "CONFIDENTIAL", "POSTED"];
+const STAMP_SIZE_OPTIONS = [
+  { label: "Small", value: 1 },
+  { label: "Medium", value: 2 },
+  { label: "Large", value: 3 },
+] as const;
+const DEFAULT_STAMP_SIZE = STAMP_SIZE_OPTIONS[1].value;
+const DEFAULT_STAMP_OPACITY = 0.7;
+const MAX_CUSTOM_STAMPS = 5;
+const TEXT_BOX_MIN_WIDTH = 120;
+const TEXT_BOX_MIN_HEIGHT = 40;
+const TEXT_BOX_MAX_WIDTH = 260;
+const TEXT_BOX_MAX_HEIGHT = 650;
+const TEXT_BOX_MAX_CHARS = 255;
+const TEXT_BOX_PADDING = 10;
+const TEXT_BOX_FONT_SIZE = 14;
+const TEXT_BOX_LINE_HEIGHT = 20;
+
+const STAMP_COLORS: Record<string, string> = {
+  APPROVED: "#006400",
+  REJECTED: "#f00c1e",
+  URGENT: "#f00c1e",
+  DRAFT: "#0517b9",
+  CONFIDENTIAL: "#f00c1e",
+  POSTED: "#B80000",
+};
 
 interface PDFAnnotatorProps {
   document: Document;
   pdfBlob: Blob;
   onClose: () => void;
-  onSaveVersion: (annotatedPdfBlob: Blob) => Promise<void>;
+  onSaveVersion: (
+    annotatedPdfBlob: Blob,
+    layoutJson?: { customStamps?: string[] },
+  ) => Promise<void>;
   darkMode?: boolean;
   currentUserName: string;
+  canAccessStamps?: boolean;
+  canCreateStampLabels?: boolean;
+  canAccessTextBoxes?: boolean;
+  layoutJson?: {
+    customStamps?: string[];
+  } | null;
 }
 
 // "select" is the neutral/no-drawing state — pointer behaves like a normal
 // cursor over the page (no strokes, no erasing, no stamping). It exists so
 // there's an explicit, labeled way to stop drawing, rather than overloading
 // re-clicking an active tool or relying on toolMode defaulting to null.
-type ToolMode = "select" | "pen" | "eraser" | "stamp";
+type ToolMode = "select" | "pen" | "eraser" | "stamp" | "text";
 
 // One annotation layer (as a dataURL snapshot of that page's overlay canvas)
 // per PDF page number. Captured whenever the user navigates away from a page,
 // and restored whenever they navigate back to it.
 type AnnotationStore = Record<number, string>;
+
+type AnnotationItem = StampAnnotation | TextBoxAnnotation;
+
+type StampAnnotation = {
+  id: string;
+  type: "stamp";
+  x: number;
+  y: number;
+  stampText: string;
+  createdBy: string;
+  createdAt: string;
+  color: string;
+  size: number;
+};
+
+type TextBoxAnnotation = {
+  id: string;
+  type: "text";
+  x: number;
+  y: number;
+  text: string;
+};
+
+type BoxLayout = {
+  visibleLines: string[];
+  boxWidth: number;
+  boxHeight: number;
+  maxTextWidth: number;
+  maxLines: number;
+};
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function wrapText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+): string[] {
+  const paragraphs = text.split(/\r?\n/);
+  const lines: string[] = [];
+
+  const pushWrappedWord = (word: string) => {
+    let chunk = "";
+    for (const char of word) {
+      const next = chunk + char;
+      if (chunk && ctx.measureText(next).width > maxWidth) {
+        lines.push(chunk);
+        chunk = char;
+      } else {
+        chunk = next;
+      }
+    }
+    if (chunk) {
+      lines.push(chunk);
+    }
+  };
+
+  for (const paragraph of paragraphs) {
+    const words = paragraph.split(/\s+/).filter(Boolean);
+    if (words.length === 0) {
+      lines.push("");
+      continue;
+    }
+
+    let currentLine = "";
+    for (const word of words) {
+      if (!currentLine) {
+        if (ctx.measureText(word).width <= maxWidth) {
+          currentLine = word;
+        } else {
+          pushWrappedWord(word);
+        }
+        continue;
+      }
+
+      const next = `${currentLine} ${word}`;
+      if (ctx.measureText(next).width <= maxWidth) {
+        currentLine = next;
+        continue;
+      }
+
+      lines.push(currentLine);
+      if (ctx.measureText(word).width <= maxWidth) {
+        currentLine = word;
+      } else {
+        pushWrappedWord(word);
+        currentLine = "";
+      }
+    }
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+  }
+
+  return lines;
+}
+
+function measureTextBoxLayout(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+): BoxLayout {
+  ctx.font = `${TEXT_BOX_FONT_SIZE}px Arial`;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+
+  const maxTextWidth = TEXT_BOX_MAX_WIDTH - TEXT_BOX_PADDING * 2;
+  const maxLines = Math.max(
+    1,
+    Math.floor((TEXT_BOX_MAX_HEIGHT - TEXT_BOX_PADDING * 2) / TEXT_BOX_LINE_HEIGHT),
+  );
+  const wrappedLines = wrapText(ctx, text, maxTextWidth);
+  const visibleLines = wrappedLines.slice(0, maxLines);
+
+  if (wrappedLines.length > maxLines && visibleLines.length > 0) {
+    const lastIndex = visibleLines.length - 1;
+    let candidate = visibleLines[lastIndex];
+    while (candidate.length > 0 && ctx.measureText(`${candidate}…`).width > maxTextWidth) {
+      candidate = candidate.slice(0, -1);
+    }
+    visibleLines[lastIndex] = `${candidate}…`;
+  }
+
+  let maxLineWidth = 0;
+  for (const line of visibleLines) {
+    const width = ctx.measureText(line).width;
+    if (width > maxLineWidth) maxLineWidth = width;
+  }
+
+  const boxWidth = Math.min(
+    TEXT_BOX_MAX_WIDTH,
+    Math.max(
+      120,
+      TEXT_BOX_PADDING * 2 + maxLineWidth,
+    ),
+  );
+
+  const boxHeight = Math.min(
+    TEXT_BOX_MAX_HEIGHT,
+    Math.max(
+      40,
+      TEXT_BOX_PADDING * 2 + visibleLines.length * TEXT_BOX_LINE_HEIGHT,
+    ),
+  );
+
+  return { visibleLines, boxWidth, boxHeight, maxTextWidth, maxLines };
+}
+
+function measureStampLayout(
+  ctx: CanvasRenderingContext2D,
+  stampText: string,
+  createdBy: string,
+  createdAt: string,
+  size: number,
+) {
+  const titleFontSize = 18 + size * 4;
+  const subFontSize = Math.max(10, Math.round(titleFontSize * 0.48));
+  const lineHeight = subFontSize + 6;
+  const titleHeight = titleFontSize + 4;
+  const lines = [
+    { text: stampText, font: `bold ${titleFontSize}px Arial` },
+    { text: createdBy, font: `${subFontSize}px Arial` },
+    { text: createdAt, font: `${subFontSize}px Arial` },
+  ];
+
+  let maxWidth = 0;
+  for (const line of lines) {
+    ctx.font = line.font;
+    const width = ctx.measureText(line.text).width;
+    if (width > maxWidth) maxWidth = width;
+  }
+
+  const totalHeight = titleHeight + lineHeight * 2;
+  const boxWidth = maxWidth + 16;
+  const boxHeight = totalHeight + 10;
+  return {
+    lines,
+    boxWidth,
+    boxHeight,
+    titleFontSize,
+    subFontSize,
+    lineHeight,
+    titleHeight,
+    totalHeight,
+  };
+}
 
 export function PDFAnnotator({
   document,
@@ -55,9 +287,15 @@ export function PDFAnnotator({
   onSaveVersion,
   darkMode = false,
   currentUserName,
+  canAccessStamps = true,
+  canCreateStampLabels = true,
+  canAccessTextBoxes = true,
+  layoutJson = null,
 }: PDFAnnotatorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const objectCanvasRef = useRef<HTMLCanvasElement>(null);
+  const textEditorRef = useRef<HTMLTextAreaElement>(null);
   const pdfdocRef = useRef<any>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -75,16 +313,48 @@ export function PDFAnnotator({
     const stored = localStorage.getItem("pdf-annotator-stamps");
     return stored ? JSON.parse(stored) : [];
   });
+  const [stampSize, setStampSize] = useState<number>(DEFAULT_STAMP_SIZE);
   const [stampInputValue, setStampInputValue] = useState("");
   const [showStampInput, setShowStampInput] = useState(false);
   const pageCanvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawingRef = useRef(false);
+  const [draftTextBox, setDraftTextBox] = useState<{
+    x: number;
+    y: number;
+    page: number;
+    text: string;
+  } | null>(null);
 
   // Per-page annotation snapshots, keyed by page number. Using a ref (not
   // state) because we read/write it synchronously around page navigation and
   // don't want renders triggered by it.
   const annotationsRef = useRef<AnnotationStore>({});
+  const annotationItemsRef = useRef<Record<number, AnnotationItem[]>>({});
   const currentPageRef = useRef(1);
+  const dragItemRef = useRef<{
+    id: string;
+    kind: AnnotationItem["type"];
+    page: number;
+    offsetX: number;
+    offsetY: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const initialStamps = layoutJson?.customStamps?.filter(Boolean) ?? [];
+    if (initialStamps.length === 0) return;
+
+    setCustomStamps((current) => {
+      const merged = Array.from(new Set([...current, ...initialStamps]));
+      localStorage.setItem("pdf-annotator-stamps", JSON.stringify(merged));
+      return merged;
+    });
+  }, [layoutJson]);
+
+  useEffect(() => {
+    if (draftTextBox) {
+      textEditorRef.current?.focus();
+    }
+  }, [draftTextBox]);
 
   // Initialize PDF.js
   useEffect(() => {
@@ -165,7 +435,13 @@ export function PDFAnnotator({
         canvasRef.current.width = viewport.width;
         canvasRef.current.height = viewport.height;
       }
+      if (objectCanvasRef.current) {
+        objectCanvasRef.current.width = viewport.width;
+        objectCanvasRef.current.height = viewport.height;
+      }
       await restoreAnnotations(pageNum);
+      renderObjectLayer(pageNum);
+      setDraftTextBox(null);
 
       currentPageRef.current = pageNum;
       setCurrentPage(pageNum);
@@ -175,27 +451,63 @@ export function PDFAnnotator({
     }
   };
 
-  // Initialize drawing canvas with mouse events
+  // Initialize top annotation canvas with mouse events.
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const canvas = objectCanvasRef.current;
+    const penCanvas = canvasRef.current;
+    if (!canvas || !penCanvas) return;
 
     const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    const penCtx = penCanvas.getContext("2d");
+    if (!ctx || !penCtx) return;
 
     let lastX = 0;
     let lastY = 0;
 
-    const handleMouseDown = (e: MouseEvent) => {
-      if (toolMode === "select") return;
-
+    const getPoint = (e: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      return {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      };
+    };
+
+    const renderDraggingItem = () => {
+      renderObjectLayer(currentPageRef.current);
+    };
+
+    const handleMouseDown = (e: MouseEvent) => {
+      const { x, y } = getPoint(e);
+
+      if (toolMode === "select") {
+        const hit = hitTestAnnotation(currentPageRef.current, x, y, ctx);
+        if (!hit) return;
+
+        dragItemRef.current = {
+          id: hit.id,
+          kind: hit.type,
+          page: currentPageRef.current,
+          offsetX: hit.type === "stamp" ? x - hit.x : x - hit.x,
+          offsetY: hit.type === "stamp" ? y - hit.y : y - hit.y,
+        };
+        canvas.style.cursor = "grabbing";
+        return;
+      }
 
       if (toolMode === "stamp") {
-        // Draw stamp at click location
-        drawStamp(ctx, selectedStamp, x, y, penWidth);
+        if (!canAccessStamps) return;
+        addStampAnnotation(x, y);
+        return;
+      }
+
+      if (toolMode === "text") {
+        if (!canAccessTextBoxes) return;
+        setDraftTextBox({
+          x: clamp(x, 0, canvas.width - TEXT_BOX_MIN_WIDTH),
+          y: clamp(y, 0, canvas.height - TEXT_BOX_MIN_HEIGHT),
+          page: currentPageRef.current,
+          text: "",
+        });
         return;
       }
 
@@ -205,30 +517,78 @@ export function PDFAnnotator({
     };
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isDrawingRef.current || toolMode === "select" || toolMode === "stamp") return;
+      const { x, y } = getPoint(e);
 
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      if (dragItemRef.current) {
+        const page = dragItemRef.current.page;
+        const items = annotationItemsRef.current[page] ?? [];
+        const item = items.find((entry) => entry.id === dragItemRef.current?.id);
+        if (!item) return;
 
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.lineWidth = penWidth;
+        if (item.type === "stamp") {
+          const layout = measureStampLayout(
+            ctx,
+            item.stampText,
+            item.createdBy,
+            item.createdAt,
+            item.size,
+          );
+          item.x = clamp(
+            x - dragItemRef.current.offsetX,
+            layout.boxWidth / 2,
+            canvas.width - layout.boxWidth / 2,
+          );
+          item.y = clamp(
+            y - dragItemRef.current.offsetY,
+            layout.boxHeight / 2,
+            canvas.height - layout.boxHeight / 2,
+          );
+        } else {
+          const layout = measureTextBoxLayout(ctx, item.text);
+          item.x = clamp(
+            x - dragItemRef.current.offsetX,
+            0,
+            Math.max(0, canvas.width - layout.boxWidth),
+          );
+          item.y = clamp(
+            y - dragItemRef.current.offsetY,
+            0,
+            Math.max(0, canvas.height - layout.boxHeight),
+          );
+        }
+
+        renderDraggingItem();
+        canvas.style.cursor = "grabbing";
+        return;
+      }
+
+      if (
+        !isDrawingRef.current ||
+        toolMode === "select" ||
+        toolMode === "stamp" ||
+        toolMode === "text"
+      ) {
+        return;
+      }
+
+      penCtx.lineCap = "round";
+      penCtx.lineJoin = "round";
+      penCtx.lineWidth = penWidth;
 
       if (toolMode === "pen") {
-        ctx.globalCompositeOperation = "source-over";
-        ctx.strokeStyle = penColor;
-        ctx.beginPath();
-        ctx.moveTo(lastX, lastY);
-        ctx.lineTo(x, y);
-        ctx.stroke();
+        penCtx.globalCompositeOperation = "source-over";
+        penCtx.strokeStyle = penColor;
+        penCtx.beginPath();
+        penCtx.moveTo(lastX, lastY);
+        penCtx.lineTo(x, y);
+        penCtx.stroke();
       } else if (toolMode === "eraser") {
-        ctx.globalCompositeOperation = "destination-out";
-        ctx.strokeStyle = "rgba(0,0,0,1)";
-        ctx.beginPath();
-        ctx.moveTo(lastX, lastY);
-        ctx.lineTo(x, y);
-        ctx.stroke();
+        penCtx.globalCompositeOperation = "destination-out";
+        penCtx.strokeStyle = "rgba(0,0,0,1)";
+        penCtx.beginPath();
+        penCtx.moveTo(lastX, lastY);
+        penCtx.lineTo(x, y);
+        penCtx.stroke();
       }
 
       lastX = x;
@@ -237,10 +597,15 @@ export function PDFAnnotator({
 
     const handleMouseUp = () => {
       isDrawingRef.current = false;
+      dragItemRef.current = null;
+      canvas.style.cursor = toolMode === "text" ? "text" : toolMode === "stamp" ? "cell" : "default";
+      renderObjectLayer(currentPageRef.current);
     };
 
     const handleMouseLeave = () => {
       isDrawingRef.current = false;
+      dragItemRef.current = null;
+      renderObjectLayer(currentPageRef.current);
     };
 
     canvas.addEventListener("mousedown", handleMouseDown);
@@ -254,17 +619,29 @@ export function PDFAnnotator({
       canvas.removeEventListener("mouseup", handleMouseUp);
       canvas.removeEventListener("mouseleave", handleMouseLeave);
     };
-  }, [toolMode, penColor, penWidth, selectedStamp]);
+  }, [toolMode, penColor, penWidth, selectedStamp, stampSize, canAccessStamps, canAccessTextBoxes, currentUserName]);
 
   // Helper function to draw stamp text on canvas, including the author
   // name and current system date as additional lines beneath the main
   // stamp label (e.g. "POSTED" / "Justin Lee" / "06/18/2026").
-  const drawStamp = (ctx: CanvasRenderingContext2D, stampText: string, x: number, y: number, size: number) => {
+  const drawStamp = (
+    ctx: CanvasRenderingContext2D,
+    stampText: string,
+    x: number,
+    y: number,
+    size: number,
+  ) => {
     const now = new Date();
-    const dateStr = `${String(now.getMonth() + 1).padStart(2, "0")}/${String(now.getDate()).padStart(2, "0")}/${now.getFullYear()}`;
+    const dateStr = `${String(now.getMonth() + 1).padStart(2, "0")}/${String(
+      now.getDate(),
+    ).padStart(2, "0")}/${now.getFullYear()}`;
 
-    const titleFontSize = 20 + size * 2;
-    const subFontSize = Math.max(10, Math.round(titleFontSize * 0.5));
+    const stampColor = STAMP_COLORS[stampText] ?? penColor;
+
+    const titleFontSize = 18 + size * 4;
+    const subFontSize = Math.max(10, Math.round(titleFontSize * 0.48));
+    const lineHeight = subFontSize + 6;
+    const titleHeight = titleFontSize + 4;
 
     const lines = [
       { text: stampText, font: `bold ${titleFontSize}px Arial` },
@@ -272,12 +649,12 @@ export function PDFAnnotator({
       { text: dateStr, font: `${subFontSize}px Arial` },
     ];
 
+    ctx.save();
+    ctx.globalAlpha = DEFAULT_STAMP_OPACITY;
     ctx.globalCompositeOperation = "source-over";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
-    // Measure the widest line and total stacked height first, so the
-    // background box fits all three lines.
     let maxWidth = 0;
     for (const line of lines) {
       ctx.font = line.font;
@@ -285,23 +662,19 @@ export function PDFAnnotator({
       if (w > maxWidth) maxWidth = w;
     }
 
-    const lineHeight = subFontSize + 6;
-    const titleHeight = titleFontSize + 4;
     const totalHeight = titleHeight + lineHeight * 2;
-
     const boxWidth = maxWidth + 16;
     const boxHeight = totalHeight + 10;
 
-    ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+    ctx.fillStyle = "rgba(255, 255, 255, 0.82)";
     ctx.fillRect(x - boxWidth / 2, y - boxHeight / 2, boxWidth, boxHeight);
 
-    ctx.strokeStyle = penColor;
+    ctx.strokeStyle = stampColor;
     ctx.lineWidth = 2;
     ctx.strokeRect(x - boxWidth / 2, y - boxHeight / 2, boxWidth, boxHeight);
 
-    // Draw each line, stacked top-to-bottom, vertically centered as a group.
     let cursorY = y - totalHeight / 2 + titleHeight / 2;
-    ctx.fillStyle = penColor;
+    ctx.fillStyle = stampColor;
     ctx.font = lines[0].font;
     ctx.fillText(lines[0].text, x, cursorY);
 
@@ -312,6 +685,221 @@ export function PDFAnnotator({
     cursorY += lineHeight;
     ctx.font = lines[2].font;
     ctx.fillText(lines[2].text, x, cursorY);
+    ctx.restore();
+  };
+
+  const drawTextBox = (
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    x: number,
+    y: number,
+  ) => {
+    const safeText = text.trim();
+    if (!safeText) return;
+
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+    const { visibleLines, boxWidth, boxHeight, maxTextWidth } = measureTextBoxLayout(ctx, safeText);
+    const boxX = clamp(x, 0, Math.max(0, ctx.canvas.width - boxWidth));
+    const boxY = clamp(y, 0, Math.max(0, ctx.canvas.height - boxHeight));
+
+    ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+    ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+
+    ctx.strokeStyle = "#1f2937";
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+
+    ctx.fillStyle = "#111827";
+    ctx.beginPath();
+    ctx.rect(boxX, boxY, boxWidth, boxHeight);
+    ctx.clip();
+    visibleLines.forEach((line, index) => {
+      ctx.fillText(
+        line,
+        boxX + TEXT_BOX_PADDING,
+        boxY + TEXT_BOX_PADDING + index * TEXT_BOX_LINE_HEIGHT,
+      );
+    });
+
+    ctx.restore();
+  };
+
+  const commitTextBox = () => {
+    if (!draftTextBox) return;
+    const page = draftTextBox.page;
+    const nextItem: TextBoxAnnotation = {
+      id: crypto.randomUUID(),
+      type: "text",
+      x: draftTextBox.x,
+      y: draftTextBox.y,
+      text: draftTextBox.text,
+    };
+    annotationItemsRef.current[page] = [
+      ...(annotationItemsRef.current[page] ?? []),
+      nextItem,
+    ];
+    renderObjectLayer(page);
+    setDraftTextBox(null);
+  };
+
+  const drawStampAnnotation = (
+    ctx: CanvasRenderingContext2D,
+    annotation: StampAnnotation,
+  ) => {
+    const layout = measureStampLayout(
+      ctx,
+      annotation.stampText,
+      annotation.createdBy,
+      annotation.createdAt,
+      annotation.size,
+    );
+
+    ctx.save();
+    ctx.globalAlpha = DEFAULT_STAMP_OPACITY;
+    ctx.globalCompositeOperation = "source-over";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    const boxX = annotation.x - layout.boxWidth / 2;
+    const boxY = annotation.y - layout.boxHeight / 2;
+
+    ctx.fillStyle = "rgba(255, 255, 255, 0.82)";
+    ctx.fillRect(boxX, boxY, layout.boxWidth, layout.boxHeight);
+
+    ctx.strokeStyle = annotation.color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(boxX, boxY, layout.boxWidth, layout.boxHeight);
+
+    let cursorY = annotation.y - layout.totalHeight / 2 + layout.titleHeight / 2;
+    ctx.fillStyle = annotation.color;
+    ctx.font = layout.lines[0].font;
+    ctx.fillText(layout.lines[0].text, annotation.x, cursorY);
+
+    cursorY += layout.titleHeight / 2 + layout.lineHeight / 2;
+    ctx.font = layout.lines[1].font;
+    ctx.fillText(layout.lines[1].text, annotation.x, cursorY);
+
+    cursorY += layout.lineHeight;
+    ctx.font = layout.lines[2].font;
+    ctx.fillText(layout.lines[2].text, annotation.x, cursorY);
+    ctx.restore();
+  };
+
+  const drawTextAnnotation = (
+    ctx: CanvasRenderingContext2D,
+    annotation: TextBoxAnnotation,
+  ) => {
+    const safeText = annotation.text.trim();
+    if (!safeText) return;
+
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+    const { visibleLines, boxWidth, boxHeight } = measureTextBoxLayout(ctx, safeText);
+    const boxX = annotation.x;
+    const boxY = annotation.y;
+
+    ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+    ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+
+    ctx.strokeStyle = "#1f2937";
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+
+    ctx.fillStyle = "#111827";
+    ctx.beginPath();
+    ctx.rect(boxX, boxY, boxWidth, boxHeight);
+    ctx.clip();
+    visibleLines.forEach((line, index) => {
+      ctx.fillText(
+        line,
+        boxX + TEXT_BOX_PADDING,
+        boxY + TEXT_BOX_PADDING + index * TEXT_BOX_LINE_HEIGHT,
+      );
+    });
+
+    ctx.restore();
+  };
+
+  const renderObjectLayer = (pageNum: number) => {
+    const canvas = objectCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const items = annotationItemsRef.current[pageNum] ?? [];
+    for (const item of items) {
+      if (item.type === "stamp") {
+        drawStampAnnotation(ctx, item);
+      } else {
+        drawTextAnnotation(ctx, item);
+      }
+    }
+  };
+
+  const hitTestAnnotation = (
+    pageNum: number,
+    x: number,
+    y: number,
+    ctx: CanvasRenderingContext2D,
+  ): AnnotationItem | null => {
+    const items = annotationItemsRef.current[pageNum] ?? [];
+    for (let i = items.length - 1; i >= 0; i--) {
+      const item = items[i];
+      if (item.type === "text") {
+        const layout = measureTextBoxLayout(ctx, item.text.trim());
+        if (
+          x >= item.x &&
+          x <= item.x + layout.boxWidth &&
+          y >= item.y &&
+          y <= item.y + layout.boxHeight
+        ) {
+          return item;
+        }
+      } else {
+        const layout = measureStampLayout(
+          ctx,
+          item.stampText,
+          item.createdBy,
+          item.createdAt,
+          item.size,
+        );
+        const left = item.x - layout.boxWidth / 2;
+        const top = item.y - layout.boxHeight / 2;
+        if (
+          x >= left &&
+          x <= left + layout.boxWidth &&
+          y >= top &&
+          y <= top + layout.boxHeight
+        ) {
+          return item;
+        }
+      }
+    }
+    return null;
+  };
+
+  const addStampAnnotation = (x: number, y: number) => {
+    const page = currentPageRef.current;
+    const item: StampAnnotation = {
+      id: crypto.randomUUID(),
+      type: "stamp",
+      x,
+      y,
+      stampText: selectedStamp,
+      createdBy: currentUserName,
+      createdAt: new Date().toLocaleDateString(),
+      color: STAMP_COLORS[selectedStamp] ?? penColor,
+      size: stampSize,
+    };
+    annotationItemsRef.current[page] = [
+      ...(annotationItemsRef.current[page] ?? []),
+      item,
+    ];
+    renderObjectLayer(page);
   };
 
   // Save current color to favorites
@@ -338,9 +926,10 @@ export function PDFAnnotator({
 
   // Add custom stamp
   const addCustomStamp = () => {
+    if (!canCreateStampLabels) return;
     if (!stampInputValue.trim()) return;
     const newStamp = stampInputValue.toUpperCase().trim();
-    if (customStamps.length >= 5) {
+    if (customStamps.length >= MAX_CUSTOM_STAMPS) {
       const updated = [...customStamps.slice(1), newStamp];
       setCustomStamps(updated);
       localStorage.setItem("pdf-annotator-stamps", JSON.stringify(updated));
@@ -356,6 +945,7 @@ export function PDFAnnotator({
 
   // Remove custom stamp
   const removeStamp = (stamp: string) => {
+    if (!canCreateStampLabels) return;
     const newStamps = customStamps.filter((s) => s !== stamp);
     setCustomStamps(newStamps);
     localStorage.setItem("pdf-annotator-stamps", JSON.stringify(newStamps));
@@ -367,9 +957,17 @@ export function PDFAnnotator({
     if (ctx) {
       ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
     }
+    if (objectCanvasRef.current) {
+      const objectCtx = objectCanvasRef.current.getContext("2d");
+      if (objectCtx) {
+        objectCtx.clearRect(0, 0, objectCanvasRef.current.width, objectCanvasRef.current.height);
+      }
+    }
+    setDraftTextBox(null);
     // Also clear the stored snapshot for this page so navigating away and
     // back doesn't resurrect the cleared annotations.
     delete annotationsRef.current[currentPageRef.current];
+    delete annotationItemsRef.current[currentPageRef.current];
   };
 
   // Build a full multi-page PDF: for every page, re-render the PDF page at
@@ -380,6 +978,10 @@ export function PDFAnnotator({
   // round-trip (the previous bug: saving at 1.5× each time → 1.5^n zoom).
   const buildAnnotatedPdf = async (): Promise<Uint8Array<ArrayBuffer>> => {
     if (!pdfdocRef.current) throw new Error("PDF not loaded");
+
+    if (draftTextBox) {
+      commitTextBox();
+    }
 
     // Make sure the page we're currently viewing is captured too.
     captureAnnotations(currentPageRef.current);
@@ -421,6 +1023,15 @@ export function PDFAnnotator({
           img.onerror = () => resolve();
           img.src = snapshot;
         });
+      }
+
+      const items = annotationItemsRef.current[pageNum] ?? [];
+      for (const item of items) {
+        if (item.type === "stamp") {
+          drawStampAnnotation(baseCtx, item);
+        } else {
+          drawTextAnnotation(baseCtx, item);
+        }
       }
 
       const pngDataUrl = baseCanvas.toDataURL("image/png");
@@ -473,7 +1084,7 @@ export function PDFAnnotator({
       const pdfBytes = await buildAnnotatedPdf();
       const blob = new Blob([pdfBytes], { type: "application/pdf" });
 
-      await onSaveVersion(blob);
+      await onSaveVersion(blob, { customStamps });
       toast.success("Annotations saved as new version");
       onClose();
     } catch (error) {
@@ -483,6 +1094,24 @@ export function PDFAnnotator({
       setIsSaving(false);
     }
   };
+
+  const textBoxPreviewLayout = (() => {
+    const canvas = canvasRef.current ?? pageCanvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!ctx) {
+      return {
+        boxWidth: TEXT_BOX_MIN_WIDTH,
+        boxHeight: TEXT_BOX_MIN_HEIGHT,
+      };
+    }
+
+    const previewText = draftTextBox?.text.trim() || "Write a comment...";
+    const layout = measureTextBoxLayout(ctx, previewText);
+    return {
+      boxWidth: layout.boxWidth,
+      boxHeight: layout.boxHeight,
+    };
+  })();
 
   return (
     <div className={`flex flex-col h-screen ${darkMode ? "bg-gray-900 text-white" : "bg-white"}`}>
@@ -527,14 +1156,26 @@ export function PDFAnnotator({
             <Eraser className="w-4 h-4 mr-1" />
             Eraser
           </Button>
-          <Button
-            variant={toolMode === "stamp" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setToolMode("stamp")}
-          >
-            <Stamp className="w-4 h-4 mr-1" />
-            Stamp
-          </Button>
+          {canAccessStamps && (
+            <Button
+              variant={toolMode === "stamp" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setToolMode("stamp")}
+            >
+              <Stamp className="w-4 h-4 mr-1" />
+              Stamp
+            </Button>
+          )}
+          {canAccessTextBoxes && (
+            <Button
+              variant={toolMode === "text" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setToolMode("text")}
+            >
+              <Type className="w-4 h-4 mr-1" />
+              Text
+            </Button>
+          )}
         </div>
 
         {toolMode === "pen" && (
@@ -608,7 +1249,7 @@ export function PDFAnnotator({
           </div>
         )}
 
-        {toolMode === "stamp" && (
+        {toolMode === "stamp" && canAccessStamps && (
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex gap-1 flex-wrap max-w-xs">
               {DEFAULT_STAMPS.map((stamp) => (
@@ -635,37 +1276,42 @@ export function PDFAnnotator({
                     >
                       {stamp}
                     </Button>
-                    <button
-                      onClick={() => removeStamp(stamp)}
-                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition"
-                      title="Remove stamp"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
+                    {canCreateStampLabels && (
+                      <button
+                        onClick={() => removeStamp(stamp)}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition"
+                        title="Remove stamp"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowStampInput(!showStampInput)}
-              className="text-xs"
-            >
-              <Plus className="w-3 h-3 mr-1" />
-              New
-            </Button>
-            {showStampInput && (
+            {canCreateStampLabels && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowStampInput(!showStampInput)}
+                className="text-xs"
+              >
+                <Plus className="w-3 h-3 mr-1" />
+                New
+              </Button>
+            )}
+            {showStampInput && canCreateStampLabels && (
               <div className="flex gap-1">
                 <input
                   type="text"
                   value={stampInputValue}
                   onChange={(e) => setStampInputValue(e.target.value)}
-                  onKeyPress={(e) => e.key === "Enter" && addCustomStamp()}
+                  onKeyDown={(e) => e.key === "Enter" && addCustomStamp()}
                   placeholder="New stamp..."
-                  className={`px-2 py-1 rounded text-sm ${
-                    darkMode ? "bg-gray-800 text-white border-gray-600" : "bg-white text-black border-gray-300"
-                  } border`}
+                  className={`px-2 py-1 rounded text-sm ${darkMode
+                    ? "bg-gray-800 text-white border-gray-600"
+                    : "bg-white text-black border-gray-300"
+                    } border`}
                   autoFocus
                   maxLength={15}
                 />
@@ -674,13 +1320,31 @@ export function PDFAnnotator({
                 </Button>
               </div>
             )}
-            <input
-              type="color"
-              value={penColor}
-              onChange={(e) => setPenColor(e.target.value)}
-              className="w-8 h-8 rounded cursor-pointer"
-              title="Stamp color"
-            />
+            <div className="flex items-center gap-1">
+              {STAMP_SIZE_OPTIONS.map((option) => (
+                <Button
+                  key={option.label}
+                  variant={stampSize === option.value ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setStampSize(option.value)}
+                  className="text-xs"
+                >
+                  {option.label}
+                </Button>
+              ))}
+            </div>
+            {!DEFAULT_STAMPS.includes(selectedStamp) && (
+              <input
+                type="color"
+                value={penColor}
+                onChange={(e) => setPenColor(e.target.value)}
+                className="w-8 h-8 rounded cursor-pointer"
+                title="Stamp color"
+              />
+            )}
+            <span className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+              Opacity fixed at 70%
+            </span>
           </div>
         )}
 
@@ -725,16 +1389,112 @@ export function PDFAnnotator({
           />
           <canvas
             ref={canvasRef}
-            className={`absolute top-0 left-0 ${
-              toolMode === "pen"
-                ? "cursor-crosshair"
-                : toolMode === "eraser"
-                  ? "cursor-pointer"
-                  : toolMode === "stamp"
-                    ? "cursor-cell"
+            className={`absolute top-0 left-0 ${toolMode === "pen"
+              ? "cursor-crosshair"
+              : toolMode === "eraser"
+                ? "cursor-pointer"
+                : toolMode === "stamp"
+                  ? "cursor-cell"
+                  : toolMode === "text"
+                    ? "cursor-text"
                     : "cursor-default"
-            }`}
+              }`}
           />
+          <canvas
+            ref={objectCanvasRef}
+            className={`absolute top-0 left-0 ${toolMode === "pen"
+              ? "cursor-crosshair"
+              : toolMode === "eraser"
+                ? "cursor-pointer"
+                : toolMode === "stamp"
+                  ? "cursor-cell"
+                  : toolMode === "text"
+                    ? "cursor-text"
+                    : toolMode === "select"
+                      ? "cursor-move"
+                      : "cursor-default"
+              }`}
+          />
+          {draftTextBox && canAccessTextBoxes && (
+            <div
+              className="absolute z-20 rounded-lg border border-gray-700/40 bg-white/75 p-2 shadow-lg backdrop-blur-sm"
+              style={{
+                left: clamp(
+                  draftTextBox.x,
+                  0,
+                  Math.max(0, (pageCanvasRef.current?.width ?? TEXT_BOX_MAX_WIDTH) - textBoxPreviewLayout.boxWidth),
+                ),
+                top: clamp(
+                  draftTextBox.y,
+                  0,
+                  Math.max(0, (pageCanvasRef.current?.height ?? TEXT_BOX_MAX_HEIGHT) - textBoxPreviewLayout.boxHeight),
+                ),
+                width: textBoxPreviewLayout.boxWidth,
+                maxWidth: TEXT_BOX_MAX_WIDTH,
+                maxHeight: TEXT_BOX_MAX_HEIGHT,
+              }}
+            >
+              <textarea
+                ref={textEditorRef}
+                value={draftTextBox.text}
+                onChange={(e) =>
+                  setDraftTextBox((current) =>
+                    current
+                      ? { ...current, text: e.target.value.slice(0, TEXT_BOX_MAX_CHARS) }
+                      : current,
+                  )
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setDraftTextBox(null);
+                  }
+                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                    commitTextBox();
+                  }
+                }}
+                maxLength={TEXT_BOX_MAX_CHARS}
+                placeholder="Write a comment..."
+                className="block w-full resize-none rounded-md border border-gray-300 bg-white/70 px-3 py-2 text-sm text-gray-900 outline-none"
+                style={{
+                  width: "100%",
+                  maxWidth: TEXT_BOX_MAX_WIDTH - TEXT_BOX_PADDING * 2,
+                  maxHeight: TEXT_BOX_MAX_HEIGHT - 72,
+                  height: Math.max(
+                    24,
+                    textBoxPreviewLayout.boxHeight - 72,
+                  ),
+                  minHeight: 0,
+                  overflow: "hidden",
+                  overflowWrap: "anywhere",
+                  wordBreak: "break-word",
+                  whiteSpace: "pre-wrap",
+                  fontFamily: "Arial, sans-serif",
+                  lineHeight: `${TEXT_BOX_LINE_HEIGHT}px`,
+                }}
+              />
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <span className="text-xs text-gray-500">
+                  {draftTextBox.text.length}/{TEXT_BOX_MAX_CHARS}
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDraftTextBox(null)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={commitTextBox}
+                    disabled={!draftTextBox.text.trim()}
+                  >
+                    Add
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -757,11 +1517,10 @@ export function PDFAnnotator({
             const page = Math.min(totalPages, Math.max(1, Number(e.target.value)));
             renderPage(page);
           }}
-          className={`w-12 px-2 py-1 rounded text-center ${
-            darkMode
-              ? "bg-gray-800 text-white border-gray-600"
-              : "bg-white text-black border-gray-300"
-          } border`}
+          className={`w-12 px-2 py-1 rounded text-center ${darkMode
+            ? "bg-gray-800 text-white border-gray-600"
+            : "bg-white text-black border-gray-300"
+            } border`}
         />
         <span className={`${darkMode ? "text-gray-400" : "text-gray-600"}`}>
           / {totalPages}

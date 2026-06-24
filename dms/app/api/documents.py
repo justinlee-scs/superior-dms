@@ -1,11 +1,12 @@
 from marshal import version
 
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from uuid import UUID, uuid4
 from fastapi.responses import StreamingResponse
 import io
 import mimetypes
+import json
 import tempfile
 import zipfile
 from datetime import datetime, timezone, date, timedelta
@@ -284,6 +285,7 @@ async def upload_document(
             db=db,
             document_id=document.id,
             file_bytes=None if storage_ref else file_bytes,
+            created_by_user_id=current_user.id,
             set_as_current=True,
             storage_bucket=storage_ref.bucket if storage_ref else None,
             storage_key=storage_ref.key if storage_ref else None,
@@ -699,6 +701,7 @@ def get_document_output(
         ocr_model_version=version.ocr_model_version,
         ocr_latency_ms=version.ocr_latency_ms,
         tags=version.tags or [],
+        layout_json=version.layout_json,
         created_at=version.created_at,
         due_date=version.due_date,
         page_count=version.page_count,
@@ -836,6 +839,15 @@ def get_document_versions(
             ocr_model_version=version.ocr_model_version,
             tags=version.tags or [],
             created_at=version.created_at,
+            author=(
+                (version.created_by_user.full_name or version.created_by_user.username)
+                if version.created_by_user
+                else (
+                    (document.uploaded_by_user.full_name or document.uploaded_by_user.username)
+                    if document.uploaded_by_user
+                    else "System"
+                )
+            ),
             size_bytes=version.storage_size_bytes
             or (len(version.content) if version.content else 0),
             due_date=version.due_date,
@@ -853,7 +865,9 @@ def get_document_versions(
 async def create_new_document_version(
     document_id: UUID,
     file: UploadFile = File(...),
+    layout_json: str | None = Form(None),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     _=Depends(require_permission(Permissions.DOCUMENT_VERSION_CREATE)),
 ):
     """Create new document version.
@@ -862,6 +876,7 @@ async def create_new_document_version(
         document_id (type=UUID): Identifier used to locate the target record.
         file (type=UploadFile, default=File(...)): Uploaded file object provided by the request.
         db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
+        current_user (type=User, default=Depends(get_current_user)): Authenticated user context for attribution.
         _ (default=Depends(require_permission(Permissions.DOCUMENT_VERSION_CREATE))): Dependency-injection placeholder argument required by FastAPI.
     """
     file_bytes = await file.read()
@@ -892,15 +907,27 @@ async def create_new_document_version(
             ) from exc
 
     try:
+        parsed_layout_json = None
+        if layout_json:
+            try:
+                parsed_layout_json = json.loads(layout_json)
+            except json.JSONDecodeError as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail="layout_json must be valid JSON",
+                ) from exc
+
         version = create_document_version(
             db=db,
             document_id=document_id,
             file_bytes=None if storage_ref else file_bytes,
+            created_by_user_id=current_user.id,
             set_as_current=True,
             storage_bucket=storage_ref.bucket if storage_ref else None,
             storage_key=storage_ref.key if storage_ref else None,
             storage_etag=storage_ref.etag if storage_ref else None,
             storage_size_bytes=storage_ref.size_bytes if storage_ref else None,
+            layout_json=parsed_layout_json,
             commit=False,
         )
 
