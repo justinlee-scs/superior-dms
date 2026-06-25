@@ -25,6 +25,7 @@ import { openLoadingPreviewWindow } from "@/lib/preview";
 import { isOfficeFilename } from "@/lib/file-types";
 import { saveResponseAsFile } from "@/lib/file-transfer";
 import { API_BASE_URL } from "@/lib/api";
+import { PDFAnnotator } from "@/app/components/pdf-annotator";
 
 interface VersionHistoryModalProps {
   open: boolean;
@@ -63,6 +64,9 @@ export function VersionHistoryModal({
   );
   const [canPreviewVersion, setCanPreviewVersion] = useState(false);
   const [canDeleteVersion, setCanDeleteVersion] = useState(false);
+
+  const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
+  const [previewDocStub, setPreviewDocStub] = useState<Document | null>(null);
 
   const sortedVersions = useMemo(
     () => [...versions].sort((a, b) => b.version_number - a.version_number),
@@ -155,6 +159,36 @@ export function VersionHistoryModal({
   };
 
   const onPreviewVersion = async (version: DocumentVersion) => {
+    const isPdf = document.name.toLowerCase().endsWith(".pdf");
+
+    if (isPdf) {
+      setPreviewingVersionId(version.id);
+      try {
+        const token = sessionStorage.getItem("access_token");
+        const response = await fetch(
+          `${API_BASE_URL}/documents/${document.id}/versions/${version.id}/preview`,
+          {
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          },
+        );
+        if (response.status === 401) {
+          sessionStorage.removeItem("access_token");
+          window.location.reload();
+          return;
+        }
+        if (!response.ok) throw new Error("Preview failed");
+        const blob = await response.blob();
+        setPreviewBlob(blob);
+        setPreviewDocStub(document);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Preview failed");
+      } finally {
+        setPreviewingVersionId(null);
+      }
+      return;
+    }
+
+    // Non-PDF files keep the existing blob/text new-window behavior
     setPreviewingVersionId(version.id);
     const previewWindow = openLoadingPreviewWindow(document.name);
     if (!previewWindow) {
@@ -407,6 +441,20 @@ export function VersionHistoryModal({
           </div>
         </div>
       </div>
+      {previewBlob && previewDocStub && (
+        <PDFAnnotator
+          document={previewDocStub}
+          pdfBlob={previewBlob}
+          onClose={() => {
+            setPreviewBlob(null);
+            setPreviewDocStub(null);
+          }}
+          onSaveVersion={async () => { }}
+          darkMode={darkMode}
+          currentUserName=""
+          readOnly
+        />
+      )}
     </div>
   );
 }

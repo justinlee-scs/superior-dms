@@ -451,18 +451,34 @@ export function BulkActionBar({
 
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
 
-    const bar = ref.current;
-    if (!bar) return;
+    const current = document.activeElement as HTMLElement | null;
+
+    // Don't hijack arrow keys while typing in a text field (e.g. tag input) —
+    // let native text-cursor movement happen instead of roving focus.
+    if (current && (current.tagName === "INPUT" || current.tagName === "TEXTAREA")) {
+      return;
+    }
+
+    // Popover/Dialog content renders into a portal physically outside the
+    // bar's DOM subtree (even though it's still inside BulkActionBar in the
+    // React tree, which is why this handler still fires for it). Without this,
+    // bar.querySelectorAll() can't see Apply/Cancel/Delete buttons inside an
+    // open popover or dialog, and arrow keys yank focus back to the toolbar.
+    const portalScope = current?.closest<HTMLElement>(
+      '[data-radix-popper-content-wrapper], [role="dialog"]'
+    );
+
+    const scope = portalScope ?? ref.current;
+    if (!scope) return;
 
     const focusable = Array.from(
-      bar.querySelectorAll<HTMLElement>(
+      scope.querySelectorAll<HTMLElement>(
         "button:not([disabled]), [role='button']:not([disabled])"
       )
     );
     if (!focusable.length) return;
 
-    const current = document.activeElement as HTMLElement;
-    const idx = focusable.indexOf(current);
+    const idx = focusable.indexOf(current as HTMLElement);
     if (idx === -1) {
       focusable[0].focus();
       return;
@@ -493,16 +509,14 @@ export function BulkActionBar({
           first?.focus();
         }
       }}
-      className={`hidden md:flex flex-nowrap overflow-x-auto items-center gap-2 px-4 py-2 text-sm transition-opacity sm:px-8 rounded-2xl ${
-        darkMode
+      className={`hidden md:flex flex-nowrap overflow-x-auto items-center gap-2 px-4 py-2 text-sm transition-opacity sm:px-8 rounded-2xl ${darkMode
           ? "border-gray-600 bg-gray-800/60"
           : "border-gray-300 bg-gray-100"
-      } ${inactive ? "pointer-events-none select-none opacity-40" : "opacity-100"}`}
+        } ${inactive ? "pointer-events-none select-none opacity-40" : "opacity-100"}`}
     >
       <span
-        className={`mr-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-          darkMode ? "bg-gray-700 text-gray-200" : "bg-gray-200 text-gray-700"
-        }`}
+        className={`mr-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${darkMode ? "bg-gray-700 text-gray-200" : "bg-gray-200 text-gray-700"
+          }`}
       >
         {inactive ? "None selected" : `${count} selected`}
       </span>

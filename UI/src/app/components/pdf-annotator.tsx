@@ -81,6 +81,7 @@ interface PDFAnnotatorProps {
   layoutJson?: {
     customStamps?: string[];
   } | null;
+  readOnly?: boolean;
 }
 
 // "select" is the neutral/no-drawing state — pointer behaves like a normal
@@ -292,6 +293,7 @@ export function PDFAnnotator({
   canCreateStampLabels = true,
   canAccessTextBoxes = true,
   layoutJson = null,
+  readOnly = false,
 }: PDFAnnotatorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -531,6 +533,7 @@ export function PDFAnnotator({
     };
 
     const handleMouseDown = (e: MouseEvent) => {
+      if (readOnly) return;
       const { x, y } = getPoint(e);
 
       if (toolMode === "select") {
@@ -1210,256 +1213,258 @@ export function PDFAnnotator({
       </div>
 
       {/* Toolbar */}
-      <div className={`flex items-center gap-2 p-4 border-b ${darkMode ? "border-gray-700" : "border-gray-200"} flex-wrap`}>
-        <div className="flex items-center gap-2">
-          <Button
-            variant={toolMode === "select" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setToolMode("select")}
-            title="Stop drawing — pan/scroll and click around without marking the page"
-          >
-            <MousePointer2 className="w-4 h-4 mr-1" />
-            Select
-          </Button>
-          <Button
-            variant={toolMode === "pen" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setToolMode("pen")}
-          >
-            <Pen className="w-4 h-4 mr-1" />
-            Pen
-          </Button>
-          <Button
-            variant={toolMode === "eraser" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setToolMode("eraser")}
-          >
-            <Eraser className="w-4 h-4 mr-1" />
-            Eraser
-          </Button>
-          {canAccessStamps && (
-            <Button
-              variant={toolMode === "stamp" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setToolMode("stamp")}
-            >
-              <Stamp className="w-4 h-4 mr-1" />
-              Stamp
-            </Button>
-          )}
-          {canAccessTextBoxes && (
-            <Button
-              variant={toolMode === "text" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setToolMode("text")}
-            >
-              <Type className="w-4 h-4 mr-1" />
-              Text
-            </Button>
-          )}
-        </div>
-
-        {toolMode === "pen" && (
+      {!readOnly && (
+        <div className={`flex items-center gap-2 p-4 border-b ${darkMode ? "border-gray-700" : "border-gray-200"} flex-wrap`}>
           <div className="flex items-center gap-2">
-            <input
-              type="color"
-              value={penColor}
-              onChange={(e) => setPenColor(e.target.value)}
-              className="w-10 h-10 rounded cursor-pointer"
-              title="Pen color"
-            />
             <Button
-              variant="outline"
+              variant={toolMode === "select" ? "default" : "outline"}
               size="sm"
-              onClick={saveColor}
-              className="text-xs"
+              onClick={() => setToolMode("select")}
+              title="Stop drawing — pan/scroll and click around without marking the page"
             >
-              <Plus className="w-3 h-3" />
+              <MousePointer2 className="w-4 h-4 mr-1" />
+              Select
             </Button>
-            <input
-              type="range"
-              min="1"
-              max="20"
-              value={penWidth}
-              onChange={(e) => setPenWidth(Number(e.target.value))}
-              className="w-24"
-              title="Pen width"
-            />
-            <span className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
-              {penWidth}px
-            </span>
-          </div>
-        )}
-
-        {toolMode === "eraser" && (
-          <div className="flex items-center gap-2">
-            <input
-              type="range"
-              min="1"
-              max="20"
-              value={penWidth}
-              onChange={(e) => setPenWidth(Number(e.target.value))}
-              className="w-24"
-              title="Eraser width"
-            />
-            <span className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
-              {penWidth}px
-            </span>
-          </div>
-        )}
-
-        {toolMode === "pen" && savedColors.length > 0 && (
-          <div className="flex items-center gap-1">
-            {savedColors.map((color) => (
-              <div key={color} className="relative group">
-                <button
-                  onClick={() => setPenColor(color)}
-                  className={`w-8 h-8 rounded border-2 ${penColor === color ? "border-white" : "border-gray-400"}`}
-                  style={{ backgroundColor: color }}
-                  title={color}
-                />
-                <button
-                  onClick={() => removeColor(color)}
-                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition"
-                  title="Remove color"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {toolMode === "stamp" && canAccessStamps && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex gap-1 flex-wrap max-w-xs">
-              {DEFAULT_STAMPS.map((stamp) => (
-                <Button
-                  key={stamp}
-                  variant={selectedStamp === stamp ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setSelectedStamp(stamp)}
-                  className="text-xs"
-                >
-                  {stamp}
-                </Button>
-              ))}
-            </div>
-            {customStamps.length > 0 && (
-              <div className="flex gap-1 flex-wrap">
-                {customStamps.map((stamp) => (
-                  <div key={stamp} className="relative group">
-                    <Button
-                      variant={selectedStamp === stamp ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setSelectedStamp(stamp)}
-                      className="text-xs"
-                    >
-                      {stamp}
-                    </Button>
-                    {canCreateStampLabels && (
-                      <button
-                        onClick={() => removeStamp(stamp)}
-                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition"
-                        title="Remove stamp"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-            {canCreateStampLabels && (
+            <Button
+              variant={toolMode === "pen" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setToolMode("pen")}
+            >
+              <Pen className="w-4 h-4 mr-1" />
+              Pen
+            </Button>
+            <Button
+              variant={toolMode === "eraser" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setToolMode("eraser")}
+            >
+              <Eraser className="w-4 h-4 mr-1" />
+              Eraser
+            </Button>
+            {canAccessStamps && (
               <Button
-                variant="outline"
+                variant={toolMode === "stamp" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setShowStampInput(!showStampInput)}
-                className="text-xs"
+                onClick={() => setToolMode("stamp")}
               >
-                <Plus className="w-3 h-3 mr-1" />
-                New
+                <Stamp className="w-4 h-4 mr-1" />
+                Stamp
               </Button>
             )}
-            {showStampInput && canCreateStampLabels && (
-              <div className="flex gap-1">
-                <input
-                  type="text"
-                  value={stampInputValue}
-                  onChange={(e) => setStampInputValue(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && addCustomStamp()}
-                  placeholder="New stamp..."
-                  className={`px-2 py-1 rounded text-sm ${darkMode
-                    ? "bg-gray-800 text-white border-gray-600"
-                    : "bg-white text-black border-gray-300"
-                    } border`}
-                  autoFocus
-                  maxLength={15}
-                />
-                <Button size="sm" onClick={addCustomStamp}>
-                  Add
-                </Button>
-              </div>
+            {canAccessTextBoxes && (
+              <Button
+                variant={toolMode === "text" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setToolMode("text")}
+              >
+                <Type className="w-4 h-4 mr-1" />
+                Text
+              </Button>
             )}
-            <div className="flex items-center gap-1">
-              {STAMP_SIZE_OPTIONS.map((option) => (
-                <Button
-                  key={option.label}
-                  variant={stampSize === option.value ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setStampSize(option.value)}
-                  className="text-xs"
-                >
-                  {option.label}
-                </Button>
-              ))}
-            </div>
-            {!DEFAULT_STAMPS.includes(selectedStamp) && (
+          </div>
+
+          {toolMode === "pen" && (
+            <div className="flex items-center gap-2">
               <input
                 type="color"
                 value={penColor}
                 onChange={(e) => setPenColor(e.target.value)}
-                className="w-8 h-8 rounded cursor-pointer"
-                title="Stamp color"
+                className="w-10 h-10 rounded cursor-pointer"
+                title="Pen color"
               />
-            )}
-            <span className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
-              Opacity fixed at 70%
-            </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={saveColor}
+                className="text-xs"
+              >
+                <Plus className="w-3 h-3" />
+              </Button>
+              <input
+                type="range"
+                min="1"
+                max="20"
+                value={penWidth}
+                onChange={(e) => setPenWidth(Number(e.target.value))}
+                className="w-24"
+                title="Pen width"
+              />
+              <span className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+                {penWidth}px
+              </span>
+            </div>
+          )}
+
+          {toolMode === "eraser" && (
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min="1"
+                max="20"
+                value={penWidth}
+                onChange={(e) => setPenWidth(Number(e.target.value))}
+                className="w-24"
+                title="Eraser width"
+              />
+              <span className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+                {penWidth}px
+              </span>
+            </div>
+          )}
+
+          {toolMode === "pen" && savedColors.length > 0 && (
+            <div className="flex items-center gap-1">
+              {savedColors.map((color) => (
+                <div key={color} className="relative group">
+                  <button
+                    onClick={() => setPenColor(color)}
+                    className={`w-8 h-8 rounded border-2 ${penColor === color ? "border-white" : "border-gray-400"}`}
+                    style={{ backgroundColor: color }}
+                    title={color}
+                  />
+                  <button
+                    onClick={() => removeColor(color)}
+                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition"
+                    title="Remove color"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {toolMode === "stamp" && canAccessStamps && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex gap-1 flex-wrap max-w-xs">
+                {DEFAULT_STAMPS.map((stamp) => (
+                  <Button
+                    key={stamp}
+                    variant={selectedStamp === stamp ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setSelectedStamp(stamp)}
+                    className="text-xs"
+                  >
+                    {stamp}
+                  </Button>
+                ))}
+              </div>
+              {customStamps.length > 0 && (
+                <div className="flex gap-1 flex-wrap">
+                  {customStamps.map((stamp) => (
+                    <div key={stamp} className="relative group">
+                      <Button
+                        variant={selectedStamp === stamp ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setSelectedStamp(stamp)}
+                        className="text-xs"
+                      >
+                        {stamp}
+                      </Button>
+                      {canCreateStampLabels && (
+                        <button
+                          onClick={() => removeStamp(stamp)}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition"
+                          title="Remove stamp"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {canCreateStampLabels && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowStampInput(!showStampInput)}
+                  className="text-xs"
+                >
+                  <Plus className="w-3 h-3 mr-1" />
+                  New
+                </Button>
+              )}
+              {showStampInput && canCreateStampLabels && (
+                <div className="flex gap-1">
+                  <input
+                    type="text"
+                    value={stampInputValue}
+                    onChange={(e) => setStampInputValue(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && addCustomStamp()}
+                    placeholder="New stamp..."
+                    className={`px-2 py-1 rounded text-sm ${darkMode
+                      ? "bg-gray-800 text-white border-gray-600"
+                      : "bg-white text-black border-gray-300"
+                      } border`}
+                    autoFocus
+                    maxLength={15}
+                  />
+                  <Button size="sm" onClick={addCustomStamp}>
+                    Add
+                  </Button>
+                </div>
+              )}
+              <div className="flex items-center gap-1">
+                {STAMP_SIZE_OPTIONS.map((option) => (
+                  <Button
+                    key={option.label}
+                    variant={stampSize === option.value ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setStampSize(option.value)}
+                    className="text-xs"
+                  >
+                    {option.label}
+                  </Button>
+                ))}
+              </div>
+              {!DEFAULT_STAMPS.includes(selectedStamp) && (
+                <input
+                  type="color"
+                  value={penColor}
+                  onChange={(e) => setPenColor(e.target.value)}
+                  className="w-8 h-8 rounded cursor-pointer"
+                  title="Stamp color"
+                />
+              )}
+              <span className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+                Opacity fixed at 70%
+              </span>
+            </div>
+          )}
+
+          <div className="flex-1" />
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleClearAnnotations}
+            >
+              <RotateCcw className="w-4 h-4 mr-1" />
+              Clear
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDownloadAnnotated}
+              disabled={isDownloading}
+            >
+              <Download className="w-4 h-4 mr-1" />
+              {isDownloading ? "Preparing..." : "Download"}
+            </Button>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={handleSaveAsVersion}
+              disabled={isSaving}
+            >
+              <Save className="w-4 h-4 mr-1" />
+              {isSaving ? "Saving..." : "Save Version"}
+            </Button>
           </div>
-        )}
-
-        <div className="flex-1" />
-
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleClearAnnotations}
-          >
-            <RotateCcw className="w-4 h-4 mr-1" />
-            Clear
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleDownloadAnnotated}
-            disabled={isDownloading}
-          >
-            <Download className="w-4 h-4 mr-1" />
-            {isDownloading ? "Preparing..." : "Download"}
-          </Button>
-          <Button
-            variant="default"
-            size="sm"
-            onClick={handleSaveAsVersion}
-            disabled={isSaving}
-          >
-            <Save className="w-4 h-4 mr-1" />
-            {isSaving ? "Saving..." : "Save Version"}
-          </Button>
         </div>
-      </div>
+      )}
 
       {/* PDF Canvas Container */}
       <div className="flex-1 overflow-auto flex items-start justify-center" ref={containerRef}>
