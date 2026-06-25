@@ -39,9 +39,9 @@ const loadPdfJs = async () => {
 
 const DEFAULT_STAMPS = ["APPROVED", "REJECTED", "URGENT", "DRAFT", "CONFIDENTIAL", "POSTED"];
 const STAMP_SIZE_OPTIONS = [
-  { label: "Small", value: 1 },
-  { label: "Medium", value: 2 },
-  { label: "Large", value: 3 },
+  { label: "Small", value: 0.5 },
+  { label: "Medium", value: 1 },
+  { label: "Large", value: 1.5 },
 ] as const;
 const DEFAULT_STAMP_SIZE = STAMP_SIZE_OPTIONS[1].value;
 const DEFAULT_STAMP_OPACITY = 0.7;
@@ -54,6 +54,7 @@ const TEXT_BOX_MAX_CHARS = 255;
 const TEXT_BOX_PADDING = 10;
 const TEXT_BOX_FONT_SIZE = 14;
 const TEXT_BOX_LINE_HEIGHT = 20;
+const TEXTBOX_EDITOR_MIN_WIDTH = 220; // wide enough for char count + Cancel + Add buttons
 
 const STAMP_COLORS: Record<string, string> = {
   APPROVED: "#006400",
@@ -248,7 +249,7 @@ function measureStampLayout(
   createdAt: string,
   size: number,
 ) {
-  const titleFontSize = 18 + size * 4;
+  const titleFontSize = 14 + size * 4;
   const subFontSize = Math.max(10, Math.round(titleFontSize * 0.48));
   const lineHeight = subFontSize + 6;
   const titleHeight = titleFontSize + 4;
@@ -316,6 +317,8 @@ export function PDFAnnotator({
   const [stampSize, setStampSize] = useState<number>(DEFAULT_STAMP_SIZE);
   const [stampInputValue, setStampInputValue] = useState("");
   const [showStampInput, setShowStampInput] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const zoomRef = useRef(1);
   const pageCanvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawingRef = useRef(false);
   const [draftTextBox, setDraftTextBox] = useState<{
@@ -376,6 +379,16 @@ export function PDFAnnotator({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pdfBlob]);
 
+  useEffect(() => {
+    if (pdfdocRef.current) {
+      renderPage(currentPageRef.current);
+    }
+  }, [zoom]);
+
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
   // Snapshot whatever is currently drawn on the annotation canvas into the
   // store under the given page number.
   const captureAnnotations = (pageNum: number) => {
@@ -416,28 +429,69 @@ export function PDFAnnotator({
 
     try {
       const page = await pdfdocRef.current.getPage(pageNum);
-      const viewport = page.getViewport({ scale: 1.5 });
+      const viewport = page.getViewport({ scale: zoom });
+
+      const devicePixelRatio = window.devicePixelRatio || 1;
 
       const canvas = pageCanvasRef.current;
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
+      canvas.width = Math.floor(viewport.width * devicePixelRatio);
+      canvas.height = Math.floor(viewport.height * devicePixelRatio);
+
+      canvas.style.width = `${viewport.width}px`;
+      canvas.style.height = `${viewport.height}px`;
 
       const context = canvas.getContext("2d");
       if (!context) return;
 
+      context.setTransform(
+        devicePixelRatio,
+        0,
+        0,
+        devicePixelRatio,
+        0,
+        0,
+      );
+
       await page.render({
         canvasContext: context,
-        viewport: viewport,
+        viewport,
       }).promise;
 
       // Update drawing canvas size, then restore that page's annotations.
       if (canvasRef.current) {
-        canvasRef.current.width = viewport.width;
-        canvasRef.current.height = viewport.height;
+        canvasRef.current.width = Math.floor(viewport.width * devicePixelRatio);
+        canvasRef.current.height = Math.floor(viewport.height * devicePixelRatio);
+
+        canvasRef.current.style.width = `${viewport.width}px`;
+        canvasRef.current.style.height = `${viewport.height}px`;
+
+        const ctx = canvasRef.current.getContext("2d");
+        ctx?.setTransform(
+          devicePixelRatio,
+          0,
+          0,
+          devicePixelRatio,
+          0,
+          0,
+        );
       }
+
       if (objectCanvasRef.current) {
-        objectCanvasRef.current.width = viewport.width;
-        objectCanvasRef.current.height = viewport.height;
+        objectCanvasRef.current.width = Math.floor(viewport.width * devicePixelRatio);
+        objectCanvasRef.current.height = Math.floor(viewport.height * devicePixelRatio);
+
+        objectCanvasRef.current.style.width = `${viewport.width}px`;
+        objectCanvasRef.current.style.height = `${viewport.height}px`;
+
+        const ctx = objectCanvasRef.current.getContext("2d");
+        ctx?.setTransform(
+          devicePixelRatio,
+          0,
+          0,
+          devicePixelRatio,
+          0,
+          0,
+        );
       }
       await restoreAnnotations(pageNum);
       renderObjectLayer(pageNum);
@@ -503,8 +557,16 @@ export function PDFAnnotator({
       if (toolMode === "text") {
         if (!canAccessTextBoxes) return;
         setDraftTextBox({
-          x: clamp(x, 0, canvas.width - TEXT_BOX_MIN_WIDTH),
-          y: clamp(y, 0, canvas.height - TEXT_BOX_MIN_HEIGHT),
+          x: clamp(
+            x / zoomRef.current,
+            0,
+            canvas.width / zoomRef.current - TEXT_BOX_MIN_WIDTH,
+          ),
+          y: clamp(
+            y / zoomRef.current,
+            0,
+            canvas.height / zoomRef.current - TEXT_BOX_MIN_HEIGHT,
+          ),
           page: currentPageRef.current,
           text: "",
         });
@@ -534,24 +596,24 @@ export function PDFAnnotator({
             item.size,
           );
           item.x = clamp(
-            x - dragItemRef.current.offsetX,
+            (x - dragItemRef.current.offsetX) / zoomRef.current,
             layout.boxWidth / 2,
             canvas.width - layout.boxWidth / 2,
           );
           item.y = clamp(
-            y - dragItemRef.current.offsetY,
+            (y - dragItemRef.current.offsetY) / zoomRef.current,
             layout.boxHeight / 2,
             canvas.height - layout.boxHeight / 2,
           );
         } else {
           const layout = measureTextBoxLayout(ctx, item.text);
           item.x = clamp(
-            x - dragItemRef.current.offsetX,
+            (x - dragItemRef.current.offsetX) / zoomRef.current,
             0,
             Math.max(0, canvas.width - layout.boxWidth),
           );
           item.y = clamp(
-            y - dragItemRef.current.offsetY,
+            (y - dragItemRef.current.offsetY) / zoomRef.current,
             0,
             Math.max(0, canvas.height - layout.boxHeight),
           );
@@ -638,7 +700,7 @@ export function PDFAnnotator({
 
     const stampColor = STAMP_COLORS[stampText] ?? penColor;
 
-    const titleFontSize = 18 + size * 4;
+    const titleFontSize = 14 + size * 4;
     const subFontSize = Math.max(10, Math.round(titleFontSize * 0.48));
     const lineHeight = subFontSize + 6;
     const titleHeight = titleFontSize + 4;
@@ -762,8 +824,11 @@ export function PDFAnnotator({
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
-    const boxX = annotation.x - layout.boxWidth / 2;
-    const boxY = annotation.y - layout.boxHeight / 2;
+    const x = annotation.x * zoomRef.current;
+    const y = annotation.y * zoomRef.current;
+
+    const boxX = x - layout.boxWidth / 2;
+    const boxY = y - layout.boxHeight / 2;
 
     ctx.fillStyle = "rgba(255, 255, 255, 0.82)";
     ctx.fillRect(boxX, boxY, layout.boxWidth, layout.boxHeight);
@@ -772,18 +837,18 @@ export function PDFAnnotator({
     ctx.lineWidth = 2;
     ctx.strokeRect(boxX, boxY, layout.boxWidth, layout.boxHeight);
 
-    let cursorY = annotation.y - layout.totalHeight / 2 + layout.titleHeight / 2;
+    let cursorY = y - layout.totalHeight / 2 + layout.titleHeight / 2;
     ctx.fillStyle = annotation.color;
     ctx.font = layout.lines[0].font;
-    ctx.fillText(layout.lines[0].text, annotation.x, cursorY);
+    ctx.fillText(layout.lines[0].text, x, cursorY);
 
     cursorY += layout.titleHeight / 2 + layout.lineHeight / 2;
     ctx.font = layout.lines[1].font;
-    ctx.fillText(layout.lines[1].text, annotation.x, cursorY);
+    ctx.fillText(layout.lines[1].text, x, cursorY);
 
     cursorY += layout.lineHeight;
     ctx.font = layout.lines[2].font;
-    ctx.fillText(layout.lines[2].text, annotation.x, cursorY);
+    ctx.fillText(layout.lines[2].text, x, cursorY);
     ctx.restore();
   };
 
@@ -798,8 +863,11 @@ export function PDFAnnotator({
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = "source-over";
     const { visibleLines, boxWidth, boxHeight } = measureTextBoxLayout(ctx, safeText);
-    const boxX = annotation.x;
-    const boxY = annotation.y;
+
+    const x = annotation.x * zoomRef.current;
+    const y = annotation.y * zoomRef.current;
+    const boxX = x;
+    const boxY = y;
 
     ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
     ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
@@ -846,16 +914,22 @@ export function PDFAnnotator({
     y: number,
     ctx: CanvasRenderingContext2D,
   ): AnnotationItem | null => {
+    const pdfX = x / zoomRef.current;
+    const pdfY = y / zoomRef.current;
+
     const items = annotationItemsRef.current[pageNum] ?? [];
+
     for (let i = items.length - 1; i >= 0; i--) {
       const item = items[i];
+
       if (item.type === "text") {
         const layout = measureTextBoxLayout(ctx, item.text.trim());
+
         if (
-          x >= item.x &&
-          x <= item.x + layout.boxWidth &&
-          y >= item.y &&
-          y <= item.y + layout.boxHeight
+          pdfX >= item.x &&
+          pdfX <= item.x + layout.boxWidth &&
+          pdfY >= item.y &&
+          pdfY <= item.y + layout.boxHeight
         ) {
           return item;
         }
@@ -867,18 +941,21 @@ export function PDFAnnotator({
           item.createdAt,
           item.size,
         );
+
         const left = item.x - layout.boxWidth / 2;
         const top = item.y - layout.boxHeight / 2;
+
         if (
-          x >= left &&
-          x <= left + layout.boxWidth &&
-          y >= top &&
-          y <= top + layout.boxHeight
+          pdfX >= left &&
+          pdfX <= left + layout.boxWidth &&
+          pdfY >= top &&
+          pdfY <= top + layout.boxHeight
         ) {
           return item;
         }
       }
     }
+
     return null;
   };
 
@@ -887,8 +964,8 @@ export function PDFAnnotator({
     const item: StampAnnotation = {
       id: crypto.randomUUID(),
       type: "stamp",
-      x,
-      y,
+      x: x / zoomRef.current,
+      y: y / zoomRef.current,
       stampText: selectedStamp,
       createdBy: currentUserName,
       createdAt: new Date().toLocaleDateString(),
@@ -986,7 +1063,7 @@ export function PDFAnnotator({
     // Make sure the page we're currently viewing is captured too.
     captureAnnotations(currentPageRef.current);
 
-    const EXPORT_SCALE = 1.0; // keep at 1.0 — display scale (1.5) must NOT be used here
+    const EXPORT_SCALE = 1.0; // change back to 1.0 if scaling issues persist
 
     const outPdf = await PDFDocument.create();
 
@@ -1006,6 +1083,7 @@ export function PDFAnnotator({
 
       // Composite annotation snapshot — it was captured at display scale (1.5×),
       // so draw it scaled down to fit the export canvas dimensions exactly.
+      // const snapshot = annotationsRef.current[pageNum];
       const snapshot = annotationsRef.current[pageNum];
       if (snapshot) {
         await new Promise<void>((resolve) => {
@@ -1014,9 +1092,9 @@ export function PDFAnnotator({
             baseCtx.drawImage(
               img,
               0, 0,
-              img.naturalWidth, img.naturalHeight,  // source: full display-size snapshot
+              img.naturalWidth, img.naturalHeight,
               0, 0,
-              exportViewport.width, exportViewport.height  // dest: export-size canvas
+              exportViewport.width, exportViewport.height
             );
             resolve();
           };
@@ -1026,6 +1104,8 @@ export function PDFAnnotator({
       }
 
       const items = annotationItemsRef.current[pageNum] ?? [];
+      const previousZoom = zoomRef.current;
+      zoomRef.current = 1;
       for (const item of items) {
         if (item.type === "stamp") {
           drawStampAnnotation(baseCtx, item);
@@ -1033,6 +1113,7 @@ export function PDFAnnotator({
           drawTextAnnotation(baseCtx, item);
         }
       }
+      zoomRef.current = previousZoom;
 
       const pngDataUrl = baseCanvas.toDataURL("image/png");
       const pngBytes = await fetch(pngDataUrl).then((r) => r.arrayBuffer());
@@ -1100,7 +1181,7 @@ export function PDFAnnotator({
     const ctx = canvas?.getContext("2d");
     if (!ctx) {
       return {
-        boxWidth: TEXT_BOX_MIN_WIDTH,
+        boxWidth: Math.max(TEXT_BOX_MIN_WIDTH, TEXTBOX_EDITOR_MIN_WIDTH),
         boxHeight: TEXT_BOX_MIN_HEIGHT,
       };
     }
@@ -1108,7 +1189,7 @@ export function PDFAnnotator({
     const previewText = draftTextBox?.text.trim() || "Write a comment...";
     const layout = measureTextBoxLayout(ctx, previewText);
     return {
-      boxWidth: layout.boxWidth,
+      boxWidth: Math.max(layout.boxWidth, TEXTBOX_EDITOR_MIN_WIDTH),
       boxHeight: layout.boxHeight,
     };
   })();
@@ -1499,7 +1580,7 @@ export function PDFAnnotator({
       </div>
 
       {/* Footer - Page Navigation */}
-      <div className={`flex items-center justify-center gap-4 p-4 border-t ${darkMode ? "border-gray-700" : "border-gray-200"}`}>
+      <div className={`relative flex items-center justify-center gap-4 p-4 border-t ${darkMode ? "border-gray-700" : "border-gray-200"}`}>
         <Button
           variant="outline"
           size="sm"
@@ -1533,6 +1614,27 @@ export function PDFAnnotator({
         >
           Next
         </Button>
+        <div className="absolute right-4 flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}
+          >
+            -
+          </Button>
+
+          <span className="w-16 text-center text-sm">
+            {Math.round(zoom * 100)}%
+          </span>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setZoom((z) => Math.min(4, z + 0.25))}
+          >
+            +
+          </Button>
+        </div>
       </div>
     </div>
   );
