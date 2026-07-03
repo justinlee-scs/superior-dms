@@ -22,6 +22,7 @@ import {
 import { formatBytes, formatLocalDateFromDateOnly, formatPageCount } from "@/lib/format";
 import { normalizeWorkflowStatus } from "@/lib/dms";
 import { MoveProjectDialog } from "@/app/components/move-project-dialog";
+import { RenameDocumentDialog } from "@/app/components/rename-document-dialog";
 
 export interface Document {
   id: string;
@@ -57,6 +58,7 @@ interface DocumentCardProps {
   onReprocess?: (doc: Document) => void;
   availableTags?: string[];
   darkMode?: boolean;
+  onRename?: (doc: Document, newName: string) => Promise<void>;
 }
 
 const getFileIcon = (type: string) => {
@@ -111,19 +113,20 @@ export function DocumentCard({
   onEditWorkflow,
   onEditTags,
   onMoveProject,
+  onRename,
   onReprocess,
   availableTags = [],
   darkMode,
 }: DocumentCardProps) {
   const FileIcon = getFileIcon(document.type);
   const [moveProjectOpen, setMoveProjectOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
 
   return (
     <>
       <div
-        className={`flex items-center gap-3 p-4 border rounded-lg transition-colors ${
-          darkMode ? "bg-gray-800 border-gray-700 hover:bg-gray-750" : "bg-white border-gray-200 hover:bg-blue-50"
-        }`}
+        className={`flex items-center gap-3 p-4 border rounded-lg transition-colors ${darkMode ? "bg-gray-800 border-gray-700 hover:bg-gray-750" : "bg-white border-gray-200 hover:bg-blue-50"
+          }`}
       >
         {/* File Icon */}
         <FileIcon className={`w-5 h-5 flex-shrink-0 ${darkMode ? "text-gray-400" : "text-gray-500"}`} />
@@ -167,12 +170,26 @@ export function DocumentCard({
                   Move Project
                 </DropdownMenuItem>
               )}
+              {onRename && (
+                <DropdownMenuItem onClick={() => setRenameOpen(true)}>Rename</DropdownMenuItem>
+              )}
               {onReprocess && <DropdownMenuItem onClick={() => onReprocess(document)}>Reprocess</DropdownMenuItem>}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </div>
 
+      {onRename && (
+        <RenameDocumentDialog
+          open={renameOpen}
+          onOpenChange={setRenameOpen}
+          currentName={document.name}
+          darkMode={darkMode}
+          onApply={async (newName) => {
+            await onRename(document, newName);
+          }}
+        />
+      )}
       {onMoveProject && (
         <MoveProjectDialog
           open={moveProjectOpen}

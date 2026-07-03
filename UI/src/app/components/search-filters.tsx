@@ -37,6 +37,7 @@ interface SearchFiltersProps {
   darkMode?: boolean; // New: dark mode prop
   className?: string;
   variant?: "sidebar" | "drawer";
+  headerAction?: React.ReactNode;
 }
 
 export function SearchFilters({
@@ -50,6 +51,7 @@ export function SearchFilters({
   darkMode,
   className,
   variant = "sidebar",
+  headerAction,
 }: SearchFiltersProps) {
   const [tagSearchText, setTagSearchText] = useState("");
   const [newTagText, setNewTagText] = useState("");
@@ -118,7 +120,10 @@ export function SearchFilters({
       )}
     >
       <div className="flex items-center justify-between">
-        <h2 className={`font-semibold ${darkMode ? "text-gray-100" : ""}`}>Filters</h2>
+        <div className="flex items-center gap-2">
+          {headerAction}
+          <h2 className={`font-semibold ${darkMode ? "text-gray-100" : ""}`}>Filters</h2>
+        </div>
         {hasActiveFilters && (
           <Button variant="ghost" size="sm" onClick={clearFilters}>
             Clear all
@@ -185,13 +190,12 @@ export function SearchFilters({
               variant={tagDeleteMode ? "default" : "outline"}
               size="sm"
               onClick={() => setTagDeleteMode((prev) => !prev)}
-              className={`h-7 text-xs ${
-                tagDeleteMode
+              className={`h-7 text-xs ${tagDeleteMode
                   ? "bg-[#020825] text-gray-100 hover:bg-[#1a2248]"
                   : darkMode
                     ? "text-gray-100"
                     : ""
-              }`}
+                }`}
             >
               {tagDeleteMode ? "Done" : "Manage Tags"}
             </Button>
@@ -225,13 +229,12 @@ export function SearchFilters({
               <div key={tag} className="inline-flex items-center gap-1 min-w-0">
                 <Badge
                   variant={isSelected ? "default" : "outline"}
-                  className={`cursor-pointer rounded-full px-3 py-1 text-xs max-w-[140px] inline-flex items-center ${
-                    isSelected
+                  className={`cursor-pointer rounded-full px-3 py-1 text-xs max-w-[140px] inline-flex items-center ${isSelected
                       ? "bg-[#020825] text-white hover:bg-[#1a2248]"
                       : darkMode
                         ? "border-gray-600 text-gray-300 hover:bg-gray-700"
                         : "border-gray-300 text-gray-700 hover:bg-gray-100"
-                  }`}
+                    }`}
                   onClick={() => toggleTag(tag)}
                 >
                   <span className="truncate min-w-0">{tag}</span>
@@ -351,13 +354,13 @@ export function SearchFilters({
                     classNames={
                       darkMode
                         ? {
-                            day: "size-8 p-0 font-normal text-gray-100 aria-selected:opacity-100",
-                            day_outside: "day-outside text-gray-500 aria-selected:text-gray-500",
-                            day_disabled: "text-gray-500 opacity-50",
-                            head_cell: "rounded-md w-8 font-normal text-[0.8rem] text-gray-400",
-                            dropdown: "h-8 rounded-md border border-gray-600 bg-gray-900 px-2 text-sm text-gray-100",
-                            nav_button: "size-7 border border-gray-600 bg-transparent p-0 text-gray-200 opacity-70 hover:opacity-100",
-                          }
+                          day: "size-8 p-0 font-normal text-gray-100 aria-selected:opacity-100",
+                          day_outside: "day-outside text-gray-500 aria-selected:text-gray-500",
+                          day_disabled: "text-gray-500 opacity-50",
+                          head_cell: "rounded-md w-8 font-normal text-[0.8rem] text-gray-400",
+                          dropdown: "h-8 rounded-md border border-gray-600 bg-gray-900 px-2 text-sm text-gray-100",
+                          nav_button: "size-7 border border-gray-600 bg-transparent p-0 text-gray-200 opacity-70 hover:opacity-100",
+                        }
                         : undefined
                     }
                     initialFocus
@@ -397,13 +400,13 @@ export function SearchFilters({
                     classNames={
                       darkMode
                         ? {
-                            day: "size-8 p-0 font-normal text-gray-100 aria-selected:opacity-100",
-                            day_outside: "day-outside text-gray-500 aria-selected:text-gray-500",
-                            day_disabled: "text-gray-500 opacity-50",
-                            head_cell: "rounded-md w-8 font-normal text-[0.8rem] text-gray-400",
-                            dropdown: "h-8 rounded-md border border-gray-600 bg-gray-900 px-2 text-sm text-gray-100",
-                            nav_button: "size-7 border border-gray-600 bg-transparent p-0 text-gray-200 opacity-70 hover:opacity-100",
-                          }
+                          day: "size-8 p-0 font-normal text-gray-100 aria-selected:opacity-100",
+                          day_outside: "day-outside text-gray-500 aria-selected:text-gray-500",
+                          day_disabled: "text-gray-500 opacity-50",
+                          head_cell: "rounded-md w-8 font-normal text-[0.8rem] text-gray-400",
+                          dropdown: "h-8 rounded-md border border-gray-600 bg-gray-900 px-2 text-sm text-gray-100",
+                          nav_button: "size-7 border border-gray-600 bg-transparent p-0 text-gray-200 opacity-70 hover:opacity-100",
+                        }
                         : undefined
                     }
                     disabled={(date) =>

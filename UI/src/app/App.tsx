@@ -187,6 +187,12 @@ function AppInner() {
   );
   const [duePaymentsWindowDays, setDuePaymentsWindowDays] = useState(7);
   const [liveSyncEnabled, setLiveSyncEnabled] = useState(true);
+
+  const [headerVisible, setHeaderVisible] = useState(true);
+  const [bulkBarVisible, setBulkBarVisible] = useState(true);
+  const [leftPanelVisible, setLeftPanelVisible] = useState(true);
+  const [rightPanelVisible, setRightPanelVisible] = useState(true);
+
   const preferencesReadyRef = useRef(false);
   const skipNextPreferencePersistRef = useRef(false);
   const searchTextRef = useRef("");
@@ -359,16 +365,16 @@ function AppInner() {
       .then((user) => {
         const nextDarkMode = Boolean(user.ui_dark_mode);
         const nextViewMode = user.ui_view_mode === "grouped" ? "grouped" : "compact";
+        // Set ready BEFORE state updates so the skip ref is consumed correctly
+        preferencesReadyRef.current = true;
         skipNextPreferencePersistRef.current = true;
         setDarkMode(nextDarkMode);
         setViewMode(nextViewMode);
-        persistUiPreferences({
-          darkMode: nextDarkMode,
-          viewMode: nextViewMode,
-        });
+        persistUiPreferences({ darkMode: nextDarkMode, viewMode: nextViewMode });
         applyUiThemeClass(nextDarkMode);
       })
-      .finally(() => {
+      .catch(() => {
+        // Still mark ready on failure so manual toggles save normally
         preferencesReadyRef.current = true;
       });
   }, []);
@@ -599,7 +605,7 @@ function AppInner() {
       await Promise.allSettled([refreshTagPool(), refreshDuePayments()]);
       toast.success(`${file.name} uploaded`);
     } catch (error) {
-      toast.error(`Failed to upload ${file.name}`);
+      toast.error(`Failed to upload ${file.name}: ${error instanceof Error ? error.message : "Unknown error"}`);
       throw error;
     } finally {
       toast.dismiss(loadingToastId);
@@ -621,7 +627,7 @@ function AppInner() {
         toast.error(`Failed to delete ${doc.name}`);
         await refreshDocuments();
       }
-    }, 5000);
+    }, 30000);
 
     // Add to deleted queue
     setDeletedQueue((prev) => [...prev, { doc, timeoutId }]);
@@ -644,7 +650,7 @@ function AppInner() {
           Undo
         </button>
       </div>,
-      { duration: 5000 },
+      { duration: 30000 },
     );
   };
 
@@ -923,20 +929,20 @@ function AppInner() {
       prev.map((doc) =>
         doc.id === documentId
           ? {
-              ...doc,
-              workflow: normalizeWorkflowStatus(response.status),
-              workflowNotes: response.notes,
-            }
+            ...doc,
+            workflow: normalizeWorkflowStatus(response.status),
+            workflowNotes: response.notes,
+          }
           : doc,
       ),
     );
     setSelectedDocument((prev) =>
       prev && prev.id === documentId
         ? {
-            ...prev,
-            workflow: normalizeWorkflowStatus(response.status),
-            workflowNotes: response.notes,
-          }
+          ...prev,
+          workflow: normalizeWorkflowStatus(response.status),
+          workflowNotes: response.notes,
+        }
         : prev,
     );
     toast.success("Workflow updated");
@@ -983,6 +989,28 @@ function AppInner() {
     }
   };
 
+  const handleRenameDocument = async (doc: Document, newName: string) => {
+    const token = sessionStorage.getItem("access_token");
+    const res = await fetch(`${API_BASE_URL}/documents/${doc.id}/name`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ name: newName }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Failed to rename document");
+    }
+
+    const updated = await res.json();
+    setDocuments((prev) =>
+      prev.map((d) => (d.id === doc.id ? { ...d, name: updated.filename } : d)),
+    );
+  };
+
   const handleCreateStandaloneTag = async (rawTag: string) => {
     const result = await createTagPool(rawTag);
     setTagPool((prev) => Array.from(new Set([...prev, result.tag])).sort());
@@ -1005,12 +1033,13 @@ function AppInner() {
     toast.success(`Tag removed from pool: ${tag}`);
   };
 
-  const handleSaveDocumentTags = async (payload: {
-    tags: string[];
-    dueDate: string | null;
-  }) => {
-    if (!editingTagsDoc) return;
-    if (!editingTagsDoc.currentVersionId) {
+  const handleSaveDocumentTags = async (
+    payload: { tags: string[]; dueDate: string | null },
+    targetDoc?: Document | null,
+  ) => {
+    const doc = targetDoc ?? editingTagsDoc;
+    if (!doc) return;
+    if (!doc.currentVersionId) {
       toast.error("Document has no current version to tag");
       return;
     }
@@ -1019,24 +1048,24 @@ function AppInner() {
     );
     await Promise.all(createCalls);
     const response = await replaceDocumentVersionTags(
-      editingTagsDoc.id,
-      editingTagsDoc.currentVersionId,
+      doc.id,
+      doc.currentVersionId,
       payload.tags,
     );
     await updateDocumentVersionDueDate(
-      editingTagsDoc.id,
-      editingTagsDoc.currentVersionId,
+      doc.id,
+      doc.currentVersionId,
       payload.dueDate,
     );
 
     setDocuments((prev) =>
-      prev.map((doc) =>
-        doc.id === editingTagsDoc.id
-          ? { ...doc, tags: response.tags ?? [], dueDate: payload.dueDate }
-          : doc,
+      prev.map((d) =>
+        d.id === doc.id
+          ? { ...d, tags: response.tags ?? [], dueDate: payload.dueDate }
+          : d,
       ),
     );
-    if (editingTagsDoc.id === selectedDocument?.id) {
+    if (doc.id === selectedDocument?.id) {
       setSelectedDocument((prev) =>
         prev ? { ...prev, tags: response.tags ?? [], dueDate: payload.dueDate } : prev,
       );
@@ -1052,21 +1081,44 @@ function AppInner() {
         className={`flex h-screen w-full overflow-hidden ${darkMode ? "bg-gray-900 text-white" : ""}`}
       >
         {/* Sidebar — fixed height, independent scroll */}
-        <div className="hidden shrink-0 lg:flex lg:flex-col h-full">
-          <SearchFilters
-            filters={filters}
-            onFiltersChange={setFilters}
-            availableTags={availableTags}
-            availableAuthors={availableAuthors}
-            onCreateTag={handleCreateStandaloneTag}
-            onDeleteTagFromPool={handleDeletePoolTag}
-            canDeleteTagFromPool={
-              accessPermissions.has("tags.delete") ||
-              accessPermissions.has("tags.edit")
-            }
-            darkMode={darkMode}
-            variant="sidebar"
-          />
+        <div className={`hidden lg:flex lg:flex-col shrink-0 h-full border-r transition-all duration-200 ${darkMode ? "border-gray-700 bg-gray-900" : "border-gray-200 bg-white"} ${leftPanelVisible ? "" : "w-8"}`}>
+          {leftPanelVisible ? (
+            <div className="flex-1 overflow-y-auto">
+              <SearchFilters
+                filters={filters}
+                onFiltersChange={setFilters}
+                availableTags={availableTags}
+                availableAuthors={availableAuthors}
+                onCreateTag={handleCreateStandaloneTag}
+                onDeleteTagFromPool={handleDeletePoolTag}
+                canDeleteTagFromPool={
+                  accessPermissions.has("tags.delete") ||
+                  accessPermissions.has("tags.edit")
+                }
+                darkMode={darkMode}
+                variant="sidebar"
+                headerAction={
+                  <button
+                    onClick={() => setLeftPanelVisible(false)}
+                    className={`flex items-center justify-center w-6 h-6 rounded-full border text-sm font-bold transition-colors ${darkMode ? "border-gray-600 bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white" : "border-gray-300 bg-white text-gray-500 hover:bg-gray-100 hover:text-gray-800"}`}
+                    title="Collapse filters"
+                  >
+                    ‹
+                  </button>
+                }
+              />
+            </div>
+          ) : (
+            <div className="flex flex-col items-center pt-3">
+              <button
+                onClick={() => setLeftPanelVisible(true)}
+                className={`flex items-center justify-center w-6 h-6 rounded-full border text-sm font-bold transition-colors ${darkMode ? "border-gray-600 bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white" : "border-gray-300 bg-white text-gray-500 hover:bg-gray-100 hover:text-gray-800"}`}
+                title="Expand filters"
+              >
+                ›
+              </button>
+            </div>
+          )}
         </div>
 
         <Drawer open={filtersOpen} onOpenChange={setFiltersOpen} direction="left">
@@ -1089,134 +1141,164 @@ function AppInner() {
         </Drawer>
 
         {/* Main content — independent scroll */}
-        <div className="flex min-w-0 flex-1 flex-col h-full overflow-y-auto">
+        <div className="flex min-w-0 flex-1 flex-col h-full overflow-hidden">
           {/* Header */}
-          <div className="border-b px-4 py-4 sm:px-6 shrink-0">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <FileText className="w-8 h-8 text-blue-600" />
-                <div>
-                  <h1 className="text-2xl">Document Management System</h1>
-                  <p className="text-sm text-gray-500">
-                    {filteredDocuments.length} document(s)
-                  </p>
+          {headerVisible ? (
+            <div className={`border-b px-4 py-4 sm:px-6 shrink-0 sticky top-0 z-20 ${darkMode ? "bg-gray-900" : "bg-white"}`}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <FileText className="w-8 h-8 text-blue-600" />
+                  <div>
+                    <h1 className="text-2xl">Document Management System</h1>
+                    <p className="text-sm text-gray-500">
+                      {filteredDocuments.length} document(s)
+                    </p>
+                  </div>
                 </div>
-              </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  variant="outline"
-                  className="lg:hidden"
-                  onClick={() => setFiltersOpen(true)}
-                >
-                  <SlidersHorizontal className="mr-2 h-4 w-4" />
-                  Show Filters
-                </Button>
-                <Button
-                  variant={viewMode === "compact" ? "default" : "outline"}
-                  onClick={() => setViewMode("compact")}
-                >
-                  <AlignJustify className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant={viewMode === "grouped" ? "default" : "outline"}
-                  onClick={() => setViewMode("grouped")}
-                >
-                  <Layers className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setDarkMode(!darkMode)}
-                >
-                  {darkMode ? <Sun /> : <Moon />}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setLiveSyncEnabled((prev) => !prev)}
-                >
-                  {liveSyncEnabled ? "Live Sync On" : "Live Sync Off"}
-                </Button>
-                <div
-                  className={`mx-1 h-5 w-px ${darkMode ? "bg-gray-600" : "bg-gray-300"}`}
-                />
-                {isAdmin && (
+                <div className="flex flex-wrap items-center gap-2">
                   <Button
                     variant="outline"
-                    onClick={() =>
-                      setActiveTab((prev) =>
-                        prev === "admin" ? "documents" : "admin",
-                      )
-                    }
+                    className="lg:hidden"
+                    onClick={() => setFiltersOpen(true)}
                   >
-                    <Shield className="mr-2 h-4 w-4" />
-                    Admin
+                    <SlidersHorizontal className="mr-2 h-4 w-4" />
+                    Show Filters
                   </Button>
-                )}
-                <Button variant="outline" onClick={() => setProfileOpen(true)}>
-                  <UserCircle2 className="mr-2 h-4 w-4" />
-                  Profile
-                </Button>
-                <Button variant="outline" onClick={handleLogout}>
-                  Log out
-                </Button>
+                  <Button variant="outline" onClick={() => setHeaderVisible(v => !v)}>
+                    {headerVisible ? "Hide Header" : "Show Header"}
+                  </Button>
+                  <Button
+                    variant={viewMode === "compact" ? "default" : "outline"}
+                    onClick={() => setViewMode("compact")}
+                  >
+                    <AlignJustify className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant={viewMode === "grouped" ? "default" : "outline"}
+                    onClick={() => setViewMode("grouped")}
+                  >
+                    <Layers className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setDarkMode(!darkMode)}
+                  >
+                    {darkMode ? <Sun /> : <Moon />}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setLiveSyncEnabled((prev) => !prev)}
+                  >
+                    {liveSyncEnabled ? "Live Sync On" : "Live Sync Off"}
+                  </Button>
+                  <div
+                    className={`mx-1 h-5 w-px ${darkMode ? "bg-gray-600" : "bg-gray-300"}`}
+                  />
+                  {isAdmin && (
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        setActiveTab((prev) =>
+                          prev === "admin" ? "documents" : "admin",
+                        )
+                      }
+                    >
+                      <Shield className="mr-2 h-4 w-4" />
+                      Admin
+                    </Button>
+                  )}
+                  <Button variant="outline" onClick={() => setProfileOpen(true)}>
+                    <UserCircle2 className="mr-2 h-4 w-4" />
+                    Profile
+                  </Button>
+                  <Button variant="outline" onClick={handleLogout}>
+                    Log out
+                  </Button>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className={`sticky top-0 z-20 flex px-2 py-1 border-b ${darkMode ? "bg-gray-900 border-gray-700" : "bg-white border-gray-200"}`}>
+              <Button size="sm" variant="ghost" onClick={() => setHeaderVisible(true)}>Show Header</Button>
+            </div>
+          )}
 
-          {/* Content */}
-          <div className="flex-1 px-4 py-4 pb-24 sm:px-6">
-            <div className="flex min-w-0 flex-col gap-6 lg:flex-row lg:items-start">
-              <div className="min-w-0 flex-1">
-                <Tabs
-                  value={activeTab}
-                  onValueChange={(value) =>
-                    setActiveTab(value as "documents" | "workspace" | "upload" | "admin")
-                  }
-                >
-                  <TabsList className="w-full flex-wrap sm:w-fit">
-                    <TabsTrigger value="documents">
-                      <FileText className="w-4 h-4 mr-2" />
-                      Documents
-                    </TabsTrigger>
-                    <TabsTrigger value="workspace">
-                      <Bookmark className="w-4 h-4 mr-2" />
-                      Workspace
-                    </TabsTrigger>
-                    <TabsTrigger value="upload">
-                      <UploadIcon className="w-4 h-4 mr-2" />
-                      Upload
-                    </TabsTrigger>
-                  </TabsList>
+          {/* Content + right panel row */}
+          <div className="flex flex-1 overflow-hidden">
 
-                  <BulkActionBar
-                    count={selection.selected.size}
-                    darkMode={darkMode}
-                    availableTags={availableTags}
-                    canDelete={accessPermissions.has("document.delete")}
-                    onDownload={() => { void handleBulkDownload(); }}
-                    onReprocess={() => { void handleBulkReprocess(); }}
-                    onDelete={async () => {
-                      for (const doc of selection.selected.values()) {
-                        await handleDelete(doc);
-                      }
-                      selection.clear();
-                    }}
-                    onClear={selection.clear}
-                    onBulkAddTags={handleBulkAddTags}
-                    onBulkRemoveTags={handleBulkRemoveTags}
-                    onBulkSetWorkflow={handleBulkSetWorkflow}
-                    onBulkMoveProject={handleBulkMoveProject}
-                    barRef={barRef}
-                    onEscapeToTable={() => {
-                      const el = selection.focusedId
-                        ? document.querySelector<HTMLElement>(`[data-doc-id="${selection.focusedId}"]`)
-                        : document.querySelector<HTMLElement>("[data-doc-id]");
-                      el?.focus();
-                    }}
-                    documents={[]}
-                  />
+            {/* Center column */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <Tabs
+                value={activeTab}
+                onValueChange={(value) =>
+                  setActiveTab(value as "documents" | "workspace" | "upload" | "admin")
+                }
+                className="flex flex-col flex-1 overflow-hidden"
+              >
+                {/* Control panel */}
+                <div className={`shrink-0 px-4 pt-3 pb-2 border-b ${darkMode ? "bg-gray-900 border-gray-700" : "bg-white border-gray-200"}`}>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <TabsList className="flex-wrap sm:w-fit">
+                      <TabsTrigger value="documents">
+                        <FileText className="w-4 h-4 mr-2" />
+                        Documents
+                      </TabsTrigger>
+                      <TabsTrigger value="workspace">
+                        <Bookmark className="w-4 h-4 mr-2" />
+                        Workspace
+                      </TabsTrigger>
+                      <TabsTrigger value="upload">
+                        <UploadIcon className="w-4 h-4 mr-2" />
+                        Upload
+                      </TabsTrigger>
+                      <button
+                        className="text-xs text-gray-400 hover:text-gray-600 px-2"
+                        onClick={() => setBulkBarVisible(v => !v)}
+                      >
+                        {bulkBarVisible ? "Hide bar" : "Show bar"}
+                      </button>
+                    </TabsList>
+                    <Button variant="outline" size="sm" onClick={() => setRightPanelVisible(v => !v)}>
+                      {rightPanelVisible ? "Hide Widgets" : "Widgets"}
+                    </Button>
+                  </div>
+                  {bulkBarVisible && (
+                    <div className="mt-2">
+                      <BulkActionBar
+                        count={selection.selected.size}
+                        darkMode={darkMode}
+                        availableTags={availableTags}
+                        canDelete={accessPermissions.has("document.delete")}
+                        onDownload={() => { void handleBulkDownload(); }}
+                        onReprocess={() => { void handleBulkReprocess(); }}
+                        onDelete={async () => {
+                          for (const doc of selection.selected.values()) {
+                            await handleDelete(doc);
+                          }
+                          selection.clear();
+                        }}
+                        onClear={selection.clear}
+                        onBulkAddTags={handleBulkAddTags}
+                        onBulkRemoveTags={handleBulkRemoveTags}
+                        onBulkSetWorkflow={handleBulkSetWorkflow}
+                        onBulkMoveProject={handleBulkMoveProject}
+                        barRef={barRef}
+                        onEscapeToTable={() => {
+                          const el = selection.focusedId
+                            ? document.querySelector<HTMLElement>(`[data-doc-id="${selection.focusedId}"]`)
+                            : document.querySelector<HTMLElement>("[data-doc-id]");
+                          el?.focus();
+                        }}
+                        documents={[]}
+                      />
+                    </div>
+                  )}
+                </div>
 
-                  <TabsContent value="documents" className="mt-6">
+                {/* Scrollable content */}
+                <div className="flex-1 overflow-y-auto px-4 py-4 pb-24 sm:px-6">
+                  <TabsContent value="documents" className="mt-2">
                     {viewMode === "compact" ? (
                       <CompactProjectView
                         documents={filteredDocuments}
@@ -1236,6 +1318,7 @@ function AppInner() {
                         availableTags={availableTags}
                         barRef={barRef}
                         darkMode={darkMode}
+                        onRename={handleRenameDocument}
                       />
                     ) : viewMode === "grouped" ? (
                       <GroupedDocuments
@@ -1272,13 +1355,14 @@ function AppInner() {
                                 : undefined
                             }
                             availableTags={availableTags}
+                            onRename={handleRenameDocument}
                           />
                         ))}
                       </div>
                     )}
                   </TabsContent>
 
-                  <TabsContent value="workspace" className="mt-6">
+                  <TabsContent value="workspace" className="mt-2">
                     <CompactProjectView
                       documents={workspaceDocuments}
                       onPreview={handlePreview}
@@ -1297,10 +1381,11 @@ function AppInner() {
                       availableTags={availableTags}
                       barRef={barRef}
                       darkMode={darkMode}
+                      onRename={handleRenameDocument}
                     />
                   </TabsContent>
 
-                  <TabsContent value="upload" className="mt-6">
+                  <TabsContent value="upload" className="mt-2">
                     <UploadZone
                       onFileUploaded={handleFileUpload}
                       darkMode={darkMode}
@@ -1308,32 +1393,33 @@ function AppInner() {
                   </TabsContent>
 
                   {isAdmin && (
-                    <TabsContent value="admin" className="mt-6">
+                    <TabsContent value="admin" className="mt-2">
                       <RolesPage
                         darkMode={darkMode}
                         onBackToDocuments={() => setActiveTab("documents")}
                       />
                     </TabsContent>
                   )}
-                </Tabs>
-              </div>
-
-              {activeTab === "documents" && (
-                <div className="w-full lg:w-80 lg:shrink-0">
-                  <div className="lg:sticky lg:top-6">
-                    <UpcomingDuePaymentsPanel
-                      items={duePayments}
-                      loading={duePaymentsLoading}
-                      darkMode={darkMode}
-                      onPreview={(item) => handlePreviewById(item.documentId)}
-                      daysAhead={duePaymentsWindowDays}
-                      onDaysAheadChange={setDuePaymentsWindowDays}
-                      hasAccess={accessPermissions.has("document.due_payments")}
-                    />
-                  </div>
                 </div>
-              )}
+              </Tabs>
             </div>
+
+            {/* Right panel — widgets column */}
+            {rightPanelVisible && (
+              <div className={`hidden lg:flex lg:flex-col shrink-0 w-80 h-full border-l overflow-y-auto ${darkMode ? "border-gray-700 bg-gray-900" : "border-gray-200 bg-white"}`}>
+                <div className="p-4">
+                  <UpcomingDuePaymentsPanel
+                    items={duePayments}
+                    loading={duePaymentsLoading}
+                    darkMode={darkMode}
+                    onPreview={(item) => handlePreviewById(item.documentId)}
+                    daysAhead={duePaymentsWindowDays}
+                    onDaysAheadChange={setDuePaymentsWindowDays}
+                    hasAccess={accessPermissions.has("document.due_payments")}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           <WorkflowEditor
@@ -1369,8 +1455,12 @@ function AppInner() {
             onClose={() => setPdfAnnotationDoc(null)}
             onVersionSaved={refreshDocuments}
             darkMode={darkMode}
+            availableTags={availableTags}
+            onSaveTags={pdfAnnotationDoc
+              ? (payload) => handleSaveDocumentTags(payload, pdfAnnotationDoc)
+              : undefined
+            }
           />
-
           <Toaster />
         </div>
       </div>

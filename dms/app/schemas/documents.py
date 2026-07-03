@@ -126,3 +126,6 @@ class WorkflowUpdateResponse(BaseModel):
     version_id: UUID
     status: ProcessingStatus
     notes: str | None = None
+
+class DocumentRenameRequest(BaseModel):
+    name: str

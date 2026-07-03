@@ -1,10 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PDFAnnotator } from "@/app/components/pdf-annotator";
 import type { Document } from "@/app/components/document-card";
 import { getDocumentOutput, uploadDocumentVersion } from "@/lib/dms";
 import { getMyAccess } from "@/lib/rbac";
 import { API_BASE_URL } from "@/lib/api";
 import { toast } from "sonner";
+import { Badge } from "@/app/components/ui/badge";
+import { Input } from "@/app/components/ui/input";
+import { Button } from "@/app/components/ui/button";
 
 interface PDFAnnotationModalProps {
   open: boolean;
@@ -12,6 +15,8 @@ interface PDFAnnotationModalProps {
   onClose: () => void;
   onVersionSaved?: () => Promise<void>;
   darkMode?: boolean;
+  availableTags?: string[];
+  onSaveTags?: (payload: { tags: string[]; dueDate: string | null }) => Promise<void>;
 }
 
 // Reads the cached user object that ProfileDialog (and login) stores in
@@ -32,12 +37,147 @@ type AnnotationLayoutJson = {
   customStamps?: string[];
 };
 
+function TagEditorInline({
+  document,
+  availableTags,
+  onSave,
+  darkMode,
+}: {
+  document: Document | null;
+  availableTags: string[];
+  onSave: (payload: { tags: string[]; dueDate: string | null }) => Promise<void>;
+  darkMode?: boolean;
+}) {
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [newTag, setNewTag] = useState("");
+  const [searchTag, setSearchTag] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setSelectedTags(document?.tags ?? []);
+    setDueDate(document?.dueDate ?? "");
+  }, [document]);
+
+  const visiblePool = useMemo(() => {
+    if (!searchTag.trim()) return availableTags;
+    const q = searchTag.trim().toLowerCase();
+    return availableTags.filter((t) => t.toLowerCase().includes(q));
+  }, [availableTags, searchTag]);
+
+  const toggleTag = (tag: string) => {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
+    );
+  };
+
+  const addNewTag = () => {
+    const normalized = newTag.trim().toLowerCase().replace(/\s+/g, "_");
+    if (!normalized) return;
+    setSelectedTags((prev) => prev.includes(normalized) ? prev : [...prev, normalized]);
+    setNewTag("");
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <p className={`text-sm font-medium ${darkMode ? "text-gray-300" : ""}`}>Due date</p>
+        <Input
+          type="date"
+          value={dueDate}
+          onChange={(e) => setDueDate(e.target.value)}
+          className={darkMode ? "bg-gray-800 border-gray-700 text-white" : ""}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <p className={`text-sm font-medium ${darkMode ? "text-gray-300" : ""}`}>Search tags</p>
+        <Input
+          value={searchTag}
+          onChange={(e) => setSearchTag(e.target.value)}
+          placeholder="Search existing tags..."
+          className={darkMode ? "bg-gray-800 border-gray-700 text-white placeholder:text-gray-500" : ""}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <p className={`text-sm font-medium ${darkMode ? "text-gray-300" : ""}`}>Tag pool</p>
+        <div className={`max-h-48 overflow-auto rounded-md border p-2 ${darkMode ? "border-gray-700 bg-gray-800" : ""}`}>
+          <div className="flex flex-wrap gap-2">
+            {visiblePool.map((tag) => {
+              const selected = selectedTags.includes(tag);
+              return (
+                <Badge
+                  key={tag}
+                  variant={selected ? "default" : "outline"}
+                  className={`cursor-pointer ${!selected && darkMode ? "border-gray-500 text-gray-300" : ""}`}
+                  onClick={() => toggleTag(tag)}
+                >
+                  {tag}
+                </Badge>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <p className={`text-sm font-medium ${darkMode ? "text-gray-300" : ""}`}>Add new tag</p>
+        <div className="flex gap-2">
+          <Input
+            value={newTag}
+            onChange={(e) => setNewTag(e.target.value)}
+            placeholder="e.g. project:apollo"
+            className={darkMode ? "bg-gray-800 border-gray-700 text-white placeholder:text-gray-500" : ""}
+            onKeyDown={(e) => { if (e.key === "Enter") addNewTag(); }}
+          />
+          <Button type="button" variant="outline" onClick={addNewTag} disabled={!newTag.trim()}
+            className={darkMode ? "border-gray-600 text-gray-300 hover:bg-gray-700" : ""}
+          >
+            Add
+          </Button>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <p className={`text-sm font-medium ${darkMode ? "text-gray-300" : ""}`}>Selected</p>
+        <div className={`rounded-md border p-2 min-h-12 ${darkMode ? "border-gray-700 bg-gray-800" : ""}`}>
+          <div className="flex flex-wrap gap-2">
+            {selectedTags.map((tag) => (
+              <Badge key={tag} className="cursor-pointer" onClick={() => toggleTag(tag)}>
+                {tag} ✕
+              </Badge>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <Button
+        className="w-full"
+        disabled={saving}
+        onClick={async () => {
+          setSaving(true);
+          try {
+            await onSave({ tags: selectedTags, dueDate: dueDate || null });
+          } finally {
+            setSaving(false);
+          }
+        }}
+      >
+        {saving ? "Saving..." : "Save Tags"}
+      </Button>
+    </div>
+  );
+}
+
 export function PDFAnnotationModal({
   open,
   document,
   onClose,
   onVersionSaved,
   darkMode = false,
+  availableTags = [],
+  onSaveTags,
 }: PDFAnnotationModalProps) {
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [layoutJson, setLayoutJson] = useState<AnnotationLayoutJson | null>(null);
@@ -45,6 +185,7 @@ export function PDFAnnotationModal({
   const [canAccessStamps, setCanAccessStamps] = useState(false);
   const [canCreateStampLabels, setCanCreateStampLabels] = useState(false);
   const [canAccessTextBoxes, setCanAccessTextBoxes] = useState(false);
+  const [tagPanelOpen, setTagPanelOpen] = useState(false);
 
   useEffect(() => {
     getMyAccess()
@@ -148,9 +289,8 @@ export function PDFAnnotationModal({
   if (loading) {
     return (
       <div
-        className={`fixed inset-0 z-50 flex items-center justify-center ${
-          darkMode ? "bg-black/80" : "bg-black/50"
-        }`}
+        className={`fixed inset-0 z-50 flex items-center justify-center ${darkMode ? "bg-black/80" : "bg-black/50"
+          }`}
       >
         <div className={`rounded-lg p-6 ${darkMode ? "bg-gray-900" : "bg-white"}`}>
           <div className="flex flex-col items-center gap-2">
@@ -169,19 +309,48 @@ export function PDFAnnotationModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50">
+    <div className="fixed inset-0 z-50 flex">
+      {/* PDF annotator — shrinks when tag panel is open */}
+      <div className={`flex flex-col ${tagPanelOpen ? "flex-1 min-w-0" : "w-full"}`}>
         <PDFAnnotator
-        document={document}
-        pdfBlob={pdfBlob}
-        onClose={onClose}
-        onSaveVersion={handleSaveVersion}
-        darkMode={darkMode}
-        currentUserName={getCurrentUserName()}
-        layoutJson={layoutJson}
-        canAccessStamps={canAccessStamps}
-        canCreateStampLabels={canCreateStampLabels}
-        canAccessTextBoxes={canAccessTextBoxes}
-      />
+          document={document}
+          pdfBlob={pdfBlob}
+          onClose={onClose}
+          onSaveVersion={handleSaveVersion}
+          darkMode={darkMode}
+          currentUserName={getCurrentUserName()}
+          layoutJson={layoutJson}
+          canAccessStamps={canAccessStamps}
+          canCreateStampLabels={canCreateStampLabels}
+          canAccessTextBoxes={canAccessTextBoxes}
+          onEditTags={onSaveTags ? () => setTagPanelOpen(v => !v) : undefined}
+        />
+      </div>
+
+      {/* Tag panel — slides in from the right */}
+      {onSaveTags && tagPanelOpen && (
+        <div className={`flex flex-col w-96 shrink-0 border-l overflow-y-auto ${darkMode ? "bg-gray-900 border-gray-700" : "bg-white border-gray-200"}`}>
+          <div className={`flex items-center justify-between px-4 py-3 border-b ${darkMode ? "border-gray-700" : "border-gray-200"}`}>
+            <span className={`font-semibold ${darkMode ? "text-gray-100" : ""}`}>Edit Tags</span>
+            <button
+              onClick={() => setTagPanelOpen(false)}
+              className={`flex items-center justify-center w-6 h-6 rounded-full border text-sm font-bold transition-colors ${darkMode ? "border-gray-600 bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white" : "border-gray-300 bg-white text-gray-500 hover:bg-gray-100 hover:text-gray-800"}`}
+            >
+              ✕
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            <TagEditorInline
+              document={document}
+              availableTags={availableTags}
+              onSave={async (payload) => {
+                await onSaveTags(payload);
+              }}
+              darkMode={darkMode}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

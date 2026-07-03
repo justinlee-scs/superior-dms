@@ -509,9 +509,9 @@ export function BulkActionBar({
           first?.focus();
         }
       }}
-      className={`hidden md:flex flex-nowrap overflow-x-auto items-center gap-2 px-4 py-2 text-sm transition-opacity sm:px-8 rounded-2xl ${darkMode
-          ? "border-gray-600 bg-gray-800/60"
-          : "border-gray-300 bg-gray-100"
+      className={`sticky top-0 z-10 hidden md:flex flex-nowrap overflow-x-auto items-center gap-2 px-4 py-2 text-sm transition-opacity sm:px-8 rounded-2xl ${darkMode
+        ? "border-gray-600 bg-gray-800/60"
+        : "border-gray-300 bg-gray-100"
         } ${inactive ? "pointer-events-none select-none opacity-40" : "opacity-100"}`}
     >
       <span

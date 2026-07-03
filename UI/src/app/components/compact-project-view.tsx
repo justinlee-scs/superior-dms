@@ -39,6 +39,7 @@ import { useSelection } from "@/app/selection/selection-context";
 import { formatBytes, formatLocalDateFromDateOnly, formatPageCount } from "@/lib/format";
 import { normalizeWorkflowStatus } from "@/lib/dms";
 import { MoveProjectDialog } from "@/app/components/move-project-dialog";
+import { RenameDocumentDialog } from "@/app/components/rename-document-dialog";
 
 interface CompactProjectViewProps {
   documents: Document[];
@@ -48,6 +49,7 @@ interface CompactProjectViewProps {
   onEditWorkflow: (doc: Document) => void;
   onEditTags?: (doc: Document) => void;
   onMoveProject?: (doc: Document, projectName: string) => Promise<void>;
+  onRename?: (doc: Document, newName: string) => Promise<void>;
   onReprocess?: (doc: Document) => void;
   onOpenVersions?: (doc: Document) => void;
   onToggleWorkspace?: (doc: Document) => void;
@@ -117,6 +119,7 @@ export function CompactProjectView({
   onReprocess,
   onOpenVersions,
   onToggleWorkspace,
+  onRename,
   availableTags = [],
   darkMode,
   barRef,
@@ -132,6 +135,7 @@ export function CompactProjectView({
 
   // Track which doc has the Move Project dialog open
   const [moveProjectDoc, setMoveProjectDoc] = useState<Document | null>(null);
+  const [renameDoc, setRenameDoc] = useState<Document | null>(null);
 
   const selection = useSelection();
 
@@ -175,7 +179,7 @@ export function CompactProjectView({
       const tag = (e.target as HTMLElement).tagName;
       if (["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(tag)) return;
       if (!["ArrowUp", "ArrowDown", " ", "b", "B"].includes(e.key) &&
-          !(e.key === "a" && (e.ctrlKey || e.metaKey))) return;
+        !(e.key === "a" && (e.ctrlKey || e.metaKey))) return;
 
       // B — jump focus to the bulk action bar
       if (e.key === "b" || e.key === "B") {
@@ -303,19 +307,17 @@ export function CompactProjectView({
           return (
             <div
               key={project}
-              className={`overflow-hidden border rounded-xl ${
-                darkMode
-                  ? "border-gray-800 bg-gray-900"
-                  : "border-gray-200 bg-white"
-              }`}
+              className={`overflow-hidden border rounded-xl ${darkMode
+                ? "border-gray-800 bg-gray-900"
+                : "border-gray-200 bg-white"
+                }`}
             >
               {/* Project header */}
               <div
-                className={`px-4 py-3 flex justify-between border-b ${
-                  darkMode
-                    ? "bg-gray-800 border-gray-700"
-                    : "bg-gray-50 border-gray-200"
-                }`}
+                className={`px-4 py-3 flex justify-between border-b ${darkMode
+                  ? "bg-gray-800 border-gray-700"
+                  : "bg-gray-50 border-gray-200"
+                  }`}
               >
                 <div className="flex items-center gap-3">
                   <SelectionCheckbox
@@ -390,11 +392,10 @@ export function CompactProjectView({
                     <div key={typeKey}>
                       {/* Type header */}
                       <div
-                        className={`flex items-center gap-3 px-4 py-2 text-sm ${
-                          darkMode
-                            ? "bg-gray-800 border-gray-700"
-                            : "bg-gray-50 border-gray-200"
-                        }`}
+                        className={`flex items-center gap-3 px-4 py-2 text-sm ${darkMode
+                          ? "bg-gray-800 border-gray-700"
+                          : "bg-gray-50 border-gray-200"
+                          }`}
                       >
                         <SelectionCheckbox
                           checked={typeSel.checked}
@@ -426,180 +427,183 @@ export function CompactProjectView({
                         <div className="overflow-hidden rounded-b-xl">
                           <div className="overflow-x-auto">
                             <Table className="min-w-[1100px] w-full table-fixed">
-                          <TableHeader>
-                            <TableRow
-                              className={`border-t ${
-                                darkMode ? "border-gray-800" : "border-gray-200"
-                              }`}
-                            >
-                              {/* checkbox col — matches px-4 of header rows */}
-                              <TableHead className="w-10 pl-4 pr-2" />
-                              <TableHead className="w-[36%] px-2 text-sm">File</TableHead>
-                              <TableHead className="hidden md:table-cell w-[9%] px-2 text-sm">
-                                Versions
-                              </TableHead>
-                              <TableHead className="hidden lg:table-cell w-[11%] px-2 text-sm">
-                                Owner
-                              </TableHead>
-                              <TableHead className="w-[11%] px-2 text-sm">Status</TableHead>
-                              <TableHead className="hidden md:table-cell w-[7%] px-2 text-sm">
-                                Date
-                              </TableHead>
-                              <TableHead className="hidden md:table-cell w-[4%] px-2 text-sm">
-                                Ext.
-                              </TableHead>
-                              <TableHead className="hidden xl:table-cell w-[9%] px-2 text-sm text-right">
-                                Size
-                              </TableHead>
-                              <TableHead className="w-10 px-2 text-sm text-right">
-                                Actions
-                              </TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {sortedDocs.map((doc) => {
-                              const FileIcon = getFileIcon(doc.type);
-                              const checked = selection.isSelected(doc.id);
-                              const isFocused = selection.focusedId === doc.id;
-
-                              return (
+                              <TableHeader>
                                 <TableRow
-                                  key={doc.id}
-                                  data-doc-id={doc.id}
-                                  tabIndex={0}
-                                  onClick={() => {
-                                    selection.setFocusedId(doc.id);
-                                    anchorIdRef.current = doc.id;
-                                  }}
-                                  onFocus={() => selection.setFocusedId(doc.id)}
-                                  className={`group transition-colors cursor-pointer outline-none ${
-                                    isFocused
-                                      ? darkMode
-                                        ? "border-gray-800 bg-gray-800/60"
-                                        : "border-gray-200 bg-blue-50"
-                                      : darkMode
-                                        ? "border-gray-800 hover:bg-gray-800/60"
-                                        : "border-gray-200 hover:bg-blue-50"
-                                  }`}
+                                  className={`border-t ${darkMode ? "border-gray-800" : "border-gray-200"
+                                    }`}
                                 >
-                                  {/* Checkbox — pl-4 matches project/type header indent */}
-                                  <TableCell className="w-10 pl-4 pr-2 align-middle">
-                                    <SelectionCheckbox
-                                      checked={checked}
-                                      onToggle={() => {
-                                        selection.toggle(doc);
+                                  {/* checkbox col — matches px-4 of header rows */}
+                                  <TableHead className="w-10 pl-4 pr-2" />
+                                  <TableHead className="w-[36%] px-2 text-sm">File</TableHead>
+                                  <TableHead className="hidden md:table-cell w-[9%] px-2 text-sm">
+                                    Versions
+                                  </TableHead>
+                                  <TableHead className="hidden lg:table-cell w-[11%] px-2 text-sm">
+                                    Owner
+                                  </TableHead>
+                                  <TableHead className="w-[11%] px-2 text-sm">Status</TableHead>
+                                  <TableHead className="hidden md:table-cell w-[7%] px-2 text-sm">
+                                    Date
+                                  </TableHead>
+                                  <TableHead className="hidden md:table-cell w-[4%] px-2 text-sm">
+                                    Ext.
+                                  </TableHead>
+                                  <TableHead className="hidden xl:table-cell w-[9%] px-2 text-sm text-right">
+                                    Size
+                                  </TableHead>
+                                  <TableHead className="w-10 px-2 text-sm text-right">
+                                    Actions
+                                  </TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {sortedDocs.map((doc) => {
+                                  const FileIcon = getFileIcon(doc.type);
+                                  const checked = selection.isSelected(doc.id);
+                                  const isFocused = selection.focusedId === doc.id;
+
+                                  return (
+                                    <TableRow
+                                      key={doc.id}
+                                      data-doc-id={doc.id}
+                                      tabIndex={0}
+                                      onClick={() => {
                                         selection.setFocusedId(doc.id);
                                         anchorIdRef.current = doc.id;
                                       }}
-                                    />
-                                  </TableCell>
-
-                                  <TableCell className="px-2 align-middle overflow-hidden">
-                                    <span className="block truncate text-sm font-medium">
-                                      {doc.name}
-                                    </span>
-                                  </TableCell>
-
-                                  <TableCell className="hidden md:table-cell px-2 align-middle text-xs text-gray-500">
-                                    <div className="flex items-center gap-2">
-                                      <span className={`rounded px-1 py-0.5 ${darkMode ? "bg-gray-700 text-gray-300" : "bg-gray-100 text-gray-600"}`}>
-                                        v{doc.currentVersionNumber ?? 1}
-                                      </span>
-                                      <button
-                                        type="button"
-                                        className="text-blue-600 hover:underline whitespace-nowrap"
-                                        onClick={() => onOpenVersions?.(doc)}
-                                      >
-                                        {doc.versionCount ?? 1} ver.
-                                      </button>
-                                    </div>
-                                  </TableCell>
-
-                                  <TableCell className="hidden lg:table-cell px-2 align-middle text-xs text-gray-600 dark:text-gray-400">
-                                    <div className="truncate">{doc.author}</div>
-                                  </TableCell>
-
-                                  <TableCell className="px-2 align-middle">
-                                    <span
-                                      className={`inline-flex items-center gap-1 ${getWorkflowColor(
-                                        doc.workflow,
-                                        darkMode,
-                                      )}`}
+                                      onFocus={() => selection.setFocusedId(doc.id)}
+                                      className={`group transition-colors cursor-pointer outline-none ${isFocused
+                                        ? darkMode
+                                          ? "border-gray-800 bg-gray-800/60"
+                                          : "border-gray-200 bg-blue-50"
+                                        : darkMode
+                                          ? "border-gray-800 hover:bg-gray-800/60"
+                                          : "border-gray-200 hover:bg-blue-50"
+                                        }`}
                                     >
-                                      {getWorkflowIcon(doc.workflow)}
-                                      {normalizeWorkflowStatus(doc.workflow)}
-                                    </span>
-                                  </TableCell>
+                                      {/* Checkbox — pl-4 matches project/type header indent */}
+                                      <TableCell className="w-10 pl-4 pr-2 align-middle">
+                                        <SelectionCheckbox
+                                          checked={checked}
+                                          onToggle={() => {
+                                            selection.toggle(doc);
+                                            selection.setFocusedId(doc.id);
+                                            anchorIdRef.current = doc.id;
+                                          }}
+                                        />
+                                      </TableCell>
 
-                                  <TableCell className="hidden md:table-cell px-2 align-middle text-xs text-gray-500">
-                                    {formatLocalDateFromDateOnly(doc.date)}
-                                  </TableCell>
+                                      <TableCell className="px-2 align-middle overflow-hidden">
+                                        <span className="block truncate text-sm font-medium">
+                                          {doc.name}
+                                        </span>
+                                      </TableCell>
 
-                                  <TableCell className="hidden md:table-cell px-2 align-middle">
-                                    <span className={`rounded px-1 py-0.5 uppercase font-mono text-xs ${darkMode ? "bg-gray-700 text-gray-300" : "bg-gray-100 text-gray-500"}`}>
-                                      {doc.type}
-                                    </span>
-                                  </TableCell>
-
-                                  <TableCell className="hidden xl:table-cell px-2 align-middle text-right text-xs text-gray-500">
-                                    <div>{formatPageCount(doc.pageCount)}</div>
-                                    <div>{formatBytes(doc.sizeBytes)}</div>
-                                  </TableCell>
-
-                                  <TableCell className="w-10 px-2 align-middle text-right">
-                                    <DropdownMenu>
-                                      <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="sm">
-                                          ⋯
-                                        </Button>
-                                      </DropdownMenuTrigger>
-                                      <DropdownMenuContent align="end">
-                                        <DropdownMenuItem
-                                          onClick={() => onPreview(doc)}
-                                        >
-                                          Preview
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem
-                                          onClick={() => onDownload(doc)}
-                                        >
-                                          Download
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem
-                                          onClick={() => onDelete(doc)}
-                                        >
-                                          Delete
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem
-                                          onClick={() => onEditWorkflow(doc)}
-                                        >
-                                          Edit Workflow
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem
-                                          onClick={() => onEditTags?.(doc)}
-                                        >
-                                          Edit Tags
-                                        </DropdownMenuItem>
-                                        {onMoveProject && (
-                                          <DropdownMenuItem
-                                            onClick={() => setMoveProjectDoc(doc)}
+                                      <TableCell className="hidden md:table-cell px-2 align-middle text-xs text-gray-500">
+                                        <div className="flex items-center gap-2">
+                                          <span className={`rounded px-1 py-0.5 ${darkMode ? "bg-gray-700 text-gray-300" : "bg-gray-100 text-gray-600"}`}>
+                                            v{doc.currentVersionNumber ?? 1}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            className="text-blue-600 hover:underline whitespace-nowrap"
+                                            onClick={() => onOpenVersions?.(doc)}
                                           >
-                                            Move Project
-                                          </DropdownMenuItem>
-                                        )}
-                                        <DropdownMenuItem
-                                          onClick={() => onReprocess?.(doc)}
+                                            {doc.versionCount ?? 1} ver.
+                                          </button>
+                                        </div>
+                                      </TableCell>
+
+                                      <TableCell className="hidden lg:table-cell px-2 align-middle text-xs text-gray-600 dark:text-gray-400">
+                                        <div className="truncate">{doc.author}</div>
+                                      </TableCell>
+
+                                      <TableCell className="px-2 align-middle">
+                                        <span
+                                          className={`inline-flex items-center gap-1 ${getWorkflowColor(
+                                            doc.workflow,
+                                            darkMode,
+                                          )}`}
                                         >
-                                          Reprocess
-                                        </DropdownMenuItem>
-                                      </DropdownMenuContent>
-                                    </DropdownMenu>
-                                  </TableCell>
-                                </TableRow>
-                              );
-                            })}
-                          </TableBody>
-                        </Table>
-                        </div>
+                                          {getWorkflowIcon(doc.workflow)}
+                                          {normalizeWorkflowStatus(doc.workflow)}
+                                        </span>
+                                      </TableCell>
+
+                                      <TableCell className="hidden md:table-cell px-2 align-middle text-xs text-gray-500">
+                                        {formatLocalDateFromDateOnly(doc.date)}
+                                      </TableCell>
+
+                                      <TableCell className="hidden md:table-cell px-2 align-middle">
+                                        <span className={`rounded px-1 py-0.5 uppercase font-mono text-xs ${darkMode ? "bg-gray-700 text-gray-300" : "bg-gray-100 text-gray-500"}`}>
+                                          {doc.type}
+                                        </span>
+                                      </TableCell>
+
+                                      <TableCell className="hidden xl:table-cell px-2 align-middle text-right text-xs text-gray-500">
+                                        <div>{formatPageCount(doc.pageCount)}</div>
+                                        <div>{formatBytes(doc.sizeBytes)}</div>
+                                      </TableCell>
+
+                                      <TableCell className="w-10 px-2 align-middle text-right">
+                                        <DropdownMenu>
+                                          <DropdownMenuTrigger asChild>
+                                            <Button variant="ghost" size="sm">
+                                              ⋯
+                                            </Button>
+                                          </DropdownMenuTrigger>
+                                          <DropdownMenuContent align="end">
+                                            <DropdownMenuItem
+                                              onClick={() => onPreview(doc)}
+                                            >
+                                              Preview
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                              onClick={() => onDownload(doc)}
+                                            >
+                                              Download
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                              onClick={() => onDelete(doc)}
+                                            >
+                                              Delete
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                              onClick={() => onEditWorkflow(doc)}
+                                            >
+                                              Edit Workflow
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                              onClick={() => onEditTags?.(doc)}
+                                            >
+                                              Edit Tags
+                                            </DropdownMenuItem>
+                                            {onMoveProject && (
+                                              <DropdownMenuItem
+                                                onClick={() => setMoveProjectDoc(doc)}
+                                              >
+                                                Move Project
+                                              </DropdownMenuItem>
+                                            )}
+                                            {onRename && (
+                                              <DropdownMenuItem onClick={() => setRenameDoc(doc)}>
+                                                Rename
+                                              </DropdownMenuItem>
+                                            )}
+                                            <DropdownMenuItem
+                                              onClick={() => onReprocess?.(doc)}
+                                            >
+                                              Reprocess
+                                            </DropdownMenuItem>
+                                          </DropdownMenuContent>
+                                        </DropdownMenu>
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                })}
+                              </TableBody>
+                            </Table>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -624,6 +628,20 @@ export function CompactProjectView({
             if (moveProjectDoc) {
               await onMoveProject(moveProjectDoc, projectName);
               setMoveProjectDoc(null);
+            }
+          }}
+        />
+      )}
+      {onRename && (
+        <RenameDocumentDialog
+          open={renameDoc !== null}
+          onOpenChange={(open) => { if (!open) setRenameDoc(null); }}
+          currentName={renameDoc ? renameDoc.name : ""}
+          darkMode={darkMode}
+          onApply={async (newName) => {
+            if (renameDoc) {
+              await onRename(renameDoc, newName);
+              setRenameDoc(null);
             }
           }}
         />

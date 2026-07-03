@@ -82,6 +82,7 @@ interface PDFAnnotatorProps {
     customStamps?: string[];
   } | null;
   readOnly?: boolean;
+  onEditTags?: () => void;
 }
 
 // "select" is the neutral/no-drawing state — pointer behaves like a normal
@@ -294,6 +295,7 @@ export function PDFAnnotator({
   canAccessTextBoxes = true,
   layoutJson = null,
   readOnly = false,
+  onEditTags,
 }: PDFAnnotatorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -1436,6 +1438,11 @@ export function PDFAnnotator({
           <div className="flex-1" />
 
           <div className="flex items-center gap-2">
+            {onEditTags && (
+              <Button variant="outline" size="sm" onClick={onEditTags}>
+                Edit Tags
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"

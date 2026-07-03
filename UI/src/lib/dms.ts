@@ -132,8 +132,14 @@ export async function uploadDocumentVersion(
   }
 
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "Version upload failed");
+    let message = "Upload failed";
+    try {
+      const json = await res.json();
+      message = json.detail ?? json.message ?? message;
+    } catch {
+      message = (await res.text()) || message;
+    }
+    throw new Error(message);
   }
 
   return res.json();
@@ -293,8 +299,14 @@ export async function uploadDocument(file: File) {
   }
 
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "Upload failed");
+    let message = "Upload failed";
+    try {
+      const json = await res.json();
+      message = json.detail ?? json.message ?? message;
+    } catch {
+      message = (await res.text()) || message;
+    }
+    throw new Error(message);
   }
 
   return res.json();

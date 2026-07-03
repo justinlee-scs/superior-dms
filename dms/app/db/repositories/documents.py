@@ -674,3 +674,12 @@ def _get_next_version_number(db, document_id):
         .scalar()
     )
     return (max_version or 0) + 1
+
+def update_document_name(db: Session, document_id: UUID, name: str):
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        return None
+    document.filename = name.strip()
+    db.commit()
+    db.refresh(document)
+    return document

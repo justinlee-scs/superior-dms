@@ -1307,3 +1307,42 @@ def move_document_project(
         project_tag=project_tag,
         tags=tags,
     )
+
+@router.patch("/{document_id}/name", response_model=DocumentResponse)
+def rename_document(
+    document_id: UUID,
+    payload: DocumentRenameRequest,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permissions.DOCUMENT_UPDATE)),
+):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name must not be empty")
+
+    document = update_document_name(db=db, document_id=document_id, name=name)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    current_version = get_document_version(db=db, document_id=document_id)
+    versions = list_document_versions(db=db, document_id=document_id)
+
+    return DocumentResponse(
+        id=document.id,
+        filename=document.filename,
+        author=(
+            (document.uploaded_by_user.full_name or document.uploaded_by_user.username)
+            if document.uploaded_by_user
+            else "System"
+        ),
+        status=current_version.processing_status if current_version else None,
+        document_type=document.document_type,
+        confidence=current_version.confidence if current_version else None,
+        created_at=document.created_at,
+        current_version_id=document.current_version_id,
+        version_count=len(versions) or 1,
+        tags=(current_version.tags if current_version else []) or [],
+        due_date=current_version.due_date if current_version else None,
+        size_bytes=current_version.storage_size_bytes if current_version else None,
+        page_count=current_version.page_count if current_version else None,
+        workflow_notes=current_version.workflow_notes if current_version else None,
+    )
