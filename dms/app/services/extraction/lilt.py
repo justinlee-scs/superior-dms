@@ -94,15 +94,8 @@ def _load_model():
 
 
 def _group_entities(tokens: List[str], labels: List[str]) -> Dict[str, str]:
-    """
-    Converts BIO-tagged tokens into structured fields
-    Example labels:
-        B-VENDOR, I-VENDOR
-        B-INVOICE_NUMBER, I-INVOICE_NUMBER
-        B-DUE_DATE, I-DUE_DATE
-    """
+    """Handles both BIO labels (B-VENDOR) and flat labels (company)."""
     fields: Dict[str, List[str]] = {}
-
     current_field = None
 
     for token, label in zip(tokens, labels):
@@ -110,17 +103,18 @@ def _group_entities(tokens: List[str], labels: List[str]) -> Dict[str, str]:
             continue
 
         if label.startswith("B-"):
-            current_field = label[2:]
+            current_field = label[2:].lower()
             fields.setdefault(current_field, []).append(token)
-
-        elif label.startswith("I-") and current_field == label[2:]:
+        elif label.startswith("I-") and current_field == label[2:].lower():
             fields[current_field].append(token)
-
+        elif label != "O":
+            # flat label — treat every token as its own span
+            current_field = label.lower()
+            fields.setdefault(current_field, []).append(token)
         else:
             current_field = None
 
-    # join tokens
-    return {key.lower(): _clean_tokens(value) for key, value in fields.items()}
+    return {key: _clean_tokens(value) for key, value in fields.items()}
 
 
 def _clean_tokens(tokens: List[str]) -> str:

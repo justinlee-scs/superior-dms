@@ -37,7 +37,8 @@ class DocumentResponse(BaseModel):
     size_bytes: int | None = None
     page_count: int | None = None
     workflow_notes: str | None = None
-
+    in_workspace: bool = False
+    
     model_config = ConfigDict(from_attributes=True)
 
 class DocumentTypeEnum(str, Enum):
@@ -129,3 +130,10 @@ class WorkflowUpdateResponse(BaseModel):
 
 class DocumentRenameRequest(BaseModel):
     name: str
+    
+class WorkspaceUpdateRequest(BaseModel):
+    in_workspace: bool
+
+class WorkspaceUpdateResponse(BaseModel):
+    id: UUID
+    in_workspace: bool

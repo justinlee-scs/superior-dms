@@ -78,6 +78,8 @@ class Document(Base):
         ForeignKey("document_versions.id", ondelete="SET NULL"),
         nullable=True,
     )
+    
+    in_workspace = Column(sa.Boolean, nullable=False, default=False, server_default="false")
 
     versions = relationship(
         "DocumentVersion",

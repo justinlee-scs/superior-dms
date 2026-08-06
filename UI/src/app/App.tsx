@@ -26,6 +26,9 @@ import {
   useSelection,
 } from "@/app/selection/selection-context";
 
+//business license tracking
+import LicensingPage from "@/app/components/licensing/licensing-page";
+
 import { Button } from "@/app/components/ui/button";
 import {
   Drawer,
@@ -52,6 +55,7 @@ import {
   Shield,
   UserCircle2,
   SlidersHorizontal,
+  BadgeCheck,
 } from "lucide-react";
 
 import { toast } from "sonner";
@@ -87,6 +91,8 @@ import {
   readUiPreferences,
 } from "@/lib/ui-preferences";
 import RolesPage from "@/admin/roles-page";
+
+type GroupField = "project" | "vendor" | "documentType";
 
 /**
  * Maps backend document → UI Document
@@ -192,6 +198,12 @@ function AppInner() {
   const [bulkBarVisible, setBulkBarVisible] = useState(true);
   const [leftPanelVisible, setLeftPanelVisible] = useState(true);
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
+
+  const [upperGroup, setUpperGroup] = useState<GroupField>("vendor");
+  const [lowerGroup, setLowerGroup] = useState<GroupField>("documentType");
+
+  //business license tracking
+  const [appView, setAppView] = useState<"dms" | "licensing">("dms");
 
   const preferencesReadyRef = useRef(false);
   const skipNextPreferencePersistRef = useRef(false);
@@ -524,6 +536,17 @@ function AppInner() {
     () => filteredDocuments.filter((doc) => doc.inWorkspace),
     [filteredDocuments],
   );
+
+  const handleClearWorkspace = async () => {
+    const toRemove = documents.filter((d) => d.inWorkspace);
+    await Promise.allSettled(
+      toRemove.map((doc) => updateDocumentWorkspace(doc.id, false))
+    );
+    setDocuments((prev) =>
+      prev.map((d) => d.inWorkspace ? { ...d, inWorkspace: false } : d)
+    );
+    toast.success("Workspace cleared");
+  };
 
   useEffect(() => {
     if (!documents.length && !searchTextRef.current) return;
@@ -956,7 +979,14 @@ function AppInner() {
       ),
     );
     try {
-      await updateDocumentWorkspace(doc.id, next);
+      const response = await updateDocumentWorkspace(doc.id, next);
+      setDocuments((prev) =>
+        prev.map((item) =>
+          item.id === doc.id
+            ? { ...item, inWorkspace: response.in_workspace }
+            : item,
+        ),
+      );
     } catch (error) {
       setDocuments((prev) =>
         prev.map((item) =>
@@ -1070,6 +1100,7 @@ function AppInner() {
         prev ? { ...prev, tags: response.tags ?? [], dueDate: payload.dueDate } : prev,
       );
     }
+    await refreshDocuments();
     await refreshTagPool();
     await refreshDuePayments();
     toast.success("Document details updated");
@@ -1147,11 +1178,40 @@ function AppInner() {
             <div className={`border-b px-4 py-4 sm:px-6 shrink-0 sticky top-0 z-20 ${darkMode ? "bg-gray-900" : "bg-white"}`}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <FileText className="w-8 h-8 text-blue-600" />
+                  {/* App switcher — icon group acts as a segmented mode toggle */}
+                  <div className={`flex items-center rounded-lg border p-1 gap-1 ${darkMode ? "border-gray-700 bg-gray-800" : "border-gray-200 bg-gray-100"}`}>
+                    <button
+                      onClick={() => setAppView("dms")}
+                      title="Document Management System"
+                      className={`flex items-center justify-center w-8 h-8 rounded-md transition-colors ${appView === "dms"
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : darkMode
+                          ? "text-gray-400 hover:text-gray-200 hover:bg-gray-700"
+                          : "text-gray-400 hover:text-gray-700 hover:bg-white"
+                        }`}
+                    >
+                      <FileText className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={() => setAppView("licensing")}
+                      title="Business License Tracker"
+                      className={`flex items-center justify-center w-8 h-8 rounded-md transition-colors ${appView === "licensing"
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : darkMode
+                          ? "text-gray-400 hover:text-gray-200 hover:bg-gray-700"
+                          : "text-gray-400 hover:text-gray-700 hover:bg-white"
+                        }`}
+                    >
+                      <BadgeCheck className="w-5 h-5" />
+                    </button>
+                  </div>
+
                   <div>
-                    <h1 className="text-2xl">Document Management System</h1>
+                    <h1 className="text-2xl">
+                      {appView === "dms" ? "Document Management System" : "Business License Tracker"}
+                    </h1>
                     <p className="text-sm text-gray-500">
-                      {filteredDocuments.length} document(s)
+                      {appView === "dms" ? `${filteredDocuments.length} document(s)` : "BC regulatory registry"}
                     </p>
                   </div>
                 </div>
@@ -1229,79 +1289,189 @@ function AppInner() {
 
             {/* Center column */}
             <div className="flex-1 flex flex-col overflow-hidden">
-              <Tabs
-                value={activeTab}
-                onValueChange={(value) =>
-                  setActiveTab(value as "documents" | "workspace" | "upload" | "admin")
-                }
-                className="flex flex-col flex-1 overflow-hidden"
-              >
-                {/* Control panel */}
-                <div className={`shrink-0 px-4 pt-3 pb-2 border-b ${darkMode ? "bg-gray-900 border-gray-700" : "bg-white border-gray-200"}`}>
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <TabsList className="flex-wrap sm:w-fit">
-                      <TabsTrigger value="documents">
-                        <FileText className="w-4 h-4 mr-2" />
-                        Documents
-                      </TabsTrigger>
-                      <TabsTrigger value="workspace">
-                        <Bookmark className="w-4 h-4 mr-2" />
-                        Workspace
-                      </TabsTrigger>
-                      <TabsTrigger value="upload">
-                        <UploadIcon className="w-4 h-4 mr-2" />
-                        Upload
-                      </TabsTrigger>
-                      <button
-                        className="text-xs text-gray-400 hover:text-gray-600 px-2"
-                        onClick={() => setBulkBarVisible(v => !v)}
-                      >
-                        {bulkBarVisible ? "Hide bar" : "Show bar"}
-                      </button>
-                    </TabsList>
-                    <Button variant="outline" size="sm" onClick={() => setRightPanelVisible(v => !v)}>
-                      {rightPanelVisible ? "Hide Widgets" : "Widgets"}
-                    </Button>
-                  </div>
-                  {bulkBarVisible && (
-                    <div className="mt-2">
-                      <BulkActionBar
-                        count={selection.selected.size}
-                        darkMode={darkMode}
-                        availableTags={availableTags}
-                        canDelete={accessPermissions.has("document.delete")}
-                        onDownload={() => { void handleBulkDownload(); }}
-                        onReprocess={() => { void handleBulkReprocess(); }}
-                        onDelete={async () => {
-                          for (const doc of selection.selected.values()) {
-                            await handleDelete(doc);
-                          }
-                          selection.clear();
-                        }}
-                        onClear={selection.clear}
-                        onBulkAddTags={handleBulkAddTags}
-                        onBulkRemoveTags={handleBulkRemoveTags}
-                        onBulkSetWorkflow={handleBulkSetWorkflow}
-                        onBulkMoveProject={handleBulkMoveProject}
-                        barRef={barRef}
-                        onEscapeToTable={() => {
-                          const el = selection.focusedId
-                            ? document.querySelector<HTMLElement>(`[data-doc-id="${selection.focusedId}"]`)
-                            : document.querySelector<HTMLElement>("[data-doc-id]");
-                          el?.focus();
-                        }}
-                        documents={[]}
-                      />
-                    </div>
-                  )}
+              {appView === "licensing" ? (
+                <div className="flex-1 overflow-y-auto">
+                  <LicensingPage darkMode={darkMode} />
                 </div>
+              ) : (
+                <Tabs
+                  value={activeTab}
+                  onValueChange={(value) =>
+                    setActiveTab(value as "documents" | "workspace" | "upload" | "admin")
+                  }
+                  className="flex flex-col flex-1 overflow-hidden"
+                >
+                  {/* Control panel */}
+                  <div className={`shrink-0 px-4 pt-3 pb-2 border-b ${darkMode ? "bg-gray-900 border-gray-700" : "bg-white border-gray-200"}`}>
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <TabsList className="flex-wrap sm:w-fit">
+                          <TabsTrigger value="documents">
+                            <FileText className="w-4 h-4 mr-2" />
+                            Documents
+                          </TabsTrigger>
+                          <TabsTrigger value="workspace">
+                            <Bookmark className="w-4 h-4 mr-2" />
+                            Workspace
+                          </TabsTrigger>
+                          <TabsTrigger value="upload">
+                            <UploadIcon className="w-4 h-4 mr-2" />
+                            Upload
+                          </TabsTrigger>
+                          <button
+                            className="text-xs text-gray-400 hover:text-gray-600 px-2"
+                            onClick={() => setBulkBarVisible(v => !v)}
+                          >
+                            {bulkBarVisible ? "Hide bar" : "Show bar"}
+                          </button>
+                        </TabsList>
+                        {(activeTab === "documents" || activeTab === "workspace") && (
+                          <div className={`flex items-center gap-2 text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
+                            <span className="font-medium">Group:</span>
+                            <select
+                              value={upperGroup}
+                              onChange={(e) => { const v = e.target.value as GroupField; if (v !== lowerGroup) setUpperGroup(v); }}
+                              className={`rounded border px-2 py-1 text-sm ${darkMode ? "bg-gray-800 border-gray-700 text-gray-100" : "bg-white border-gray-300"}`}
+                            >
+                              {(["project", "vendor", "documentType"] as GroupField[]).map((f) => (
+                                <option key={f} value={f} disabled={f === lowerGroup}>
+                                  {f === "project" ? "Project" : f === "vendor" ? "Vendor" : "Doc Type"}
+                                </option>
+                              ))}
+                            </select>
+                            <span className={darkMode ? "text-gray-500" : "text-gray-400"}>›</span>
+                            <select
+                              value={lowerGroup}
+                              onChange={(e) => { const v = e.target.value as GroupField; if (v !== upperGroup) setLowerGroup(v); }}
+                              className={`rounded border px-2 py-1 text-sm ${darkMode ? "bg-gray-800 border-gray-700 text-gray-100" : "bg-white border-gray-300"}`}
+                            >
+                              {(["project", "vendor", "documentType"] as GroupField[]).map((f) => (
+                                <option key={f} value={f} disabled={f === upperGroup}>
+                                  {f === "project" ? "Project" : f === "vendor" ? "Vendor" : "Doc Type"}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                      <Button variant="outline" size="sm" onClick={() => setRightPanelVisible(v => !v)}>
+                        {rightPanelVisible ? "Hide Widgets" : "Widgets"}
+                      </Button>
+                    </div>
+                    {bulkBarVisible && (
+                      <div className="mt-2">
+                        <BulkActionBar
+                          count={selection.selected.size}
+                          darkMode={darkMode}
+                          availableTags={availableTags}
+                          canDelete={accessPermissions.has("document.delete")}
+                          onDownload={() => { void handleBulkDownload(); }}
+                          onReprocess={() => { void handleBulkReprocess(); }}
+                          onDelete={async () => {
+                            for (const doc of selection.selected.values()) {
+                              await handleDelete(doc);
+                            }
+                            selection.clear();
+                          }}
+                          onClear={selection.clear}
+                          onBulkAddTags={handleBulkAddTags}
+                          onBulkRemoveTags={handleBulkRemoveTags}
+                          onBulkSetWorkflow={handleBulkSetWorkflow}
+                          onBulkMoveProject={handleBulkMoveProject}
+                          barRef={barRef}
+                          onEscapeToTable={() => {
+                            const el = selection.focusedId
+                              ? document.querySelector<HTMLElement>(`[data-doc-id="${selection.focusedId}"]`)
+                              : document.querySelector<HTMLElement>("[data-doc-id]");
+                            el?.focus();
+                          }}
+                          documents={[]}
+                        />
+                      </div>
+                    )}
+                  </div>
 
-                {/* Scrollable content */}
-                <div className="flex-1 overflow-y-auto px-4 py-4 pb-24 sm:px-6">
-                  <TabsContent value="documents" className="mt-2">
-                    {viewMode === "compact" ? (
+                  {/* Scrollable content */}
+                  <div className="flex-1 overflow-y-auto px-4 py-4 pb-24 sm:px-6">
+                    <TabsContent value="documents" className="mt-2">
+                      {viewMode === "compact" ? (
+                        <CompactProjectView
+                          documents={filteredDocuments}
+                          onPreview={handlePreview}
+                          onDownload={handleDownload}
+                          onDelete={handleDelete}
+                          onEditWorkflow={handleEditWorkflow}
+                          onEditTags={(doc) => setEditingTagsDoc(doc)}
+                          onMoveProject={
+                            accessPermissions.has("document.project_move")
+                              ? handleMoveProject
+                              : undefined
+                          }
+                          onReprocess={handleReprocess}
+                          onOpenVersions={(doc) => setVersionModalDoc(doc)}
+                          onToggleWorkspace={handleWorkspaceToggle}
+                          availableTags={availableTags}
+                          barRef={barRef}
+                          darkMode={darkMode}
+                          onRename={handleRenameDocument}
+                          upperGroup={upperGroup}
+                          lowerGroup={lowerGroup}
+                        />
+                      ) : viewMode === "grouped" ? (
+                        <GroupedDocuments
+                          documents={filteredDocuments}
+                          onPreview={handlePreview}
+                          onDownload={handleDownload}
+                          onDelete={handleDelete}
+                          onEditWorkflow={handleEditWorkflow}
+                          onEditTags={(doc) => setEditingTagsDoc(doc)}
+                          onMoveProject={
+                            accessPermissions.has("document.project_move")
+                              ? handleMoveProject
+                              : undefined
+                          }
+                          onReprocess={handleReprocess}
+                          onToggleWorkspace={handleWorkspaceToggle}
+                          availableTags={availableTags}
+                          darkMode={darkMode}
+                        />
+                      ) : (
+                        <div className="grid gap-4">
+                          {filteredDocuments.map((doc) => (
+                            <DocumentCard
+                              key={doc.id}
+                              document={doc}
+                              onPreview={() => handlePreview(doc)}
+                              onDownload={() => handleDownload(doc)}
+                              onDelete={() => handleDelete(doc)}
+                              onEditWorkflow={() => handleEditWorkflow(doc)}
+                              onEditTags={() => setEditingTagsDoc(doc)}
+                              onMoveProject={
+                                accessPermissions.has("document.project_move")
+                                  ? handleMoveProject
+                                  : undefined
+                              }
+                              availableTags={availableTags}
+                              onRename={handleRenameDocument}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </TabsContent>
+
+                    <TabsContent value="workspace" className="mt-2">
+                      <div className="flex justify-end mb-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleClearWorkspace}
+                          disabled={workspaceDocuments.length === 0}
+                        >
+                          Clear Workspace
+                        </Button>
+                      </div>
                       <CompactProjectView
-                        documents={filteredDocuments}
+                        documents={workspaceDocuments}
                         onPreview={handlePreview}
                         onDownload={handleDownload}
                         onDelete={handleDelete}
@@ -1319,92 +1489,32 @@ function AppInner() {
                         barRef={barRef}
                         darkMode={darkMode}
                         onRename={handleRenameDocument}
-                      />
-                    ) : viewMode === "grouped" ? (
-                      <GroupedDocuments
-                        documents={filteredDocuments}
-                        onPreview={handlePreview}
-                        onDownload={handleDownload}
-                        onDelete={handleDelete}
-                        onEditWorkflow={handleEditWorkflow}
-                        onEditTags={(doc) => setEditingTagsDoc(doc)}
-                        onMoveProject={
-                          accessPermissions.has("document.project_move")
-                            ? handleMoveProject
-                            : undefined
-                        }
-                        onReprocess={handleReprocess}
-                        onToggleWorkspace={handleWorkspaceToggle}
-                        availableTags={availableTags}
-                        darkMode={darkMode}
-                      />
-                    ) : (
-                      <div className="grid gap-4">
-                        {filteredDocuments.map((doc) => (
-                          <DocumentCard
-                            key={doc.id}
-                            document={doc}
-                            onPreview={() => handlePreview(doc)}
-                            onDownload={() => handleDownload(doc)}
-                            onDelete={() => handleDelete(doc)}
-                            onEditWorkflow={() => handleEditWorkflow(doc)}
-                            onEditTags={() => setEditingTagsDoc(doc)}
-                            onMoveProject={
-                              accessPermissions.has("document.project_move")
-                                ? handleMoveProject
-                                : undefined
-                            }
-                            availableTags={availableTags}
-                            onRename={handleRenameDocument}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </TabsContent>
-
-                  <TabsContent value="workspace" className="mt-2">
-                    <CompactProjectView
-                      documents={workspaceDocuments}
-                      onPreview={handlePreview}
-                      onDownload={handleDownload}
-                      onDelete={handleDelete}
-                      onEditWorkflow={handleEditWorkflow}
-                      onEditTags={(doc) => setEditingTagsDoc(doc)}
-                      onMoveProject={
-                        accessPermissions.has("document.project_move")
-                          ? handleMoveProject
-                          : undefined
-                      }
-                      onReprocess={handleReprocess}
-                      onOpenVersions={(doc) => setVersionModalDoc(doc)}
-                      onToggleWorkspace={handleWorkspaceToggle}
-                      availableTags={availableTags}
-                      barRef={barRef}
-                      darkMode={darkMode}
-                      onRename={handleRenameDocument}
-                    />
-                  </TabsContent>
-
-                  <TabsContent value="upload" className="mt-2">
-                    <UploadZone
-                      onFileUploaded={handleFileUpload}
-                      darkMode={darkMode}
-                    />
-                  </TabsContent>
-
-                  {isAdmin && (
-                    <TabsContent value="admin" className="mt-2">
-                      <RolesPage
-                        darkMode={darkMode}
-                        onBackToDocuments={() => setActiveTab("documents")}
+                        upperGroup={upperGroup}
+                        lowerGroup={lowerGroup}
                       />
                     </TabsContent>
-                  )}
-                </div>
-              </Tabs>
+
+                    <TabsContent value="upload" className="mt-2">
+                      <UploadZone
+                        onFileUploaded={handleFileUpload}
+                        darkMode={darkMode}
+                      />
+                    </TabsContent>
+
+                    {isAdmin && (
+                      <TabsContent value="admin" className="mt-2">
+                        <RolesPage
+                          darkMode={darkMode}
+                          onBackToDocuments={() => setActiveTab("documents")}
+                        />
+                      </TabsContent>
+                    )}
+                  </div>
+                </Tabs>
+              )}
             </div>
 
-            {/* Right panel — widgets column */}
+            {/* Right panel — widgets column — MUST be inside the flex row div */}
             {rightPanelVisible && (
               <div className={`hidden lg:flex lg:flex-col shrink-0 w-80 h-full border-l overflow-y-auto ${darkMode ? "border-gray-700 bg-gray-900" : "border-gray-200 bg-white"}`}>
                 <div className="p-4">
@@ -1420,49 +1530,50 @@ function AppInner() {
                 </div>
               </div>
             )}
-          </div>
 
-          <WorkflowEditor
-            document={selectedDocument}
-            open={workflowEditorOpen}
-            onOpenChange={setWorkflowEditorOpen}
-            onSave={handleSaveWorkflow}
-          />
+          </div>{/* end Content + right panel row */}
+        </div>{/* end Main content */}
 
-          <VersionHistoryModal
-            open={versionModalDoc !== null}
-            document={versionModalDoc}
-            onClose={() => setVersionModalDoc(null)}
-            onUpdated={refreshDocuments}
-            darkMode={darkMode}
-          />
+        <WorkflowEditor
+          document={selectedDocument}
+          open={workflowEditorOpen}
+          onOpenChange={setWorkflowEditorOpen}
+          onSave={handleSaveWorkflow}
+        />
 
-          <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
-          <TagEditorDialog
-            open={editingTagsDoc !== null}
-            document={editingTagsDoc}
-            availableTags={availableTags}
-            onOpenChange={(open) => {
-              if (!open) setEditingTagsDoc(null);
-            }}
-            onSave={handleSaveDocumentTags}
-            darkMode={darkMode}
-          />
+        <VersionHistoryModal
+          open={versionModalDoc !== null}
+          document={versionModalDoc}
+          onClose={() => setVersionModalDoc(null)}
+          onUpdated={refreshDocuments}
+          darkMode={darkMode}
+        />
 
-          <PDFAnnotationModal
-            open={pdfAnnotationDoc !== null}
-            document={pdfAnnotationDoc}
-            onClose={() => setPdfAnnotationDoc(null)}
-            onVersionSaved={refreshDocuments}
-            darkMode={darkMode}
-            availableTags={availableTags}
-            onSaveTags={pdfAnnotationDoc
-              ? (payload) => handleSaveDocumentTags(payload, pdfAnnotationDoc)
-              : undefined
-            }
-          />
-          <Toaster />
-        </div>
+        <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
+        <TagEditorDialog
+          open={editingTagsDoc !== null}
+          document={editingTagsDoc}
+          availableTags={availableTags}
+          onOpenChange={(open) => {
+            if (!open) setEditingTagsDoc(null);
+          }}
+          onSave={handleSaveDocumentTags}
+          darkMode={darkMode}
+        />
+
+        <PDFAnnotationModal
+          open={pdfAnnotationDoc !== null}
+          document={pdfAnnotationDoc}
+          onClose={() => setPdfAnnotationDoc(null)}
+          onVersionSaved={refreshDocuments}
+          darkMode={darkMode}
+          availableTags={availableTags}
+          onSaveTags={pdfAnnotationDoc
+            ? (payload) => handleSaveDocumentTags(payload, pdfAnnotationDoc)
+            : undefined
+          }
+        />
+        <Toaster />
       </div>
     </DndProvider>
   );

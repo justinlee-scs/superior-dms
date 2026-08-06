@@ -35,6 +35,7 @@ from app.db.repositories.documents import (
     list_upcoming_due_payments,
     remove_document_version_tags,
     replace_document_version_tags,
+    update_document_name,
     update_document_type,
     update_document_workflow,
     delete_document_version as delete_document_version_repo,
@@ -45,6 +46,7 @@ from app.db.repositories.documents import (
     delete_document as delete_document_repo,
     list_existing_tags,
     load_document_version_bytes,
+    _user_passes_security_clearance,
 )
 from app.db.repositories.tags import (
     create_tag_pool_entry,
@@ -55,10 +57,13 @@ from app.db.repositories.tags import (
 from app.schemas.documents import (
     BulkDownloadRequest,
     DocumentResponse,
+    DocumentRenameRequest,
     DocumentTypeUpdate,
     DuePaymentItem,
     WorkflowUpdateRequest,
     WorkflowUpdateResponse,
+    WorkspaceUpdateRequest,
+    WorkspaceUpdateResponse,
 )
 from app.schemas.document_versions import (
     DocumentVersionResponse,
@@ -315,6 +320,7 @@ async def upload_document(
         size_bytes=version.storage_size_bytes,
         page_count=version.page_count,
         workflow_notes=version.workflow_notes,
+        in_workspace=bool(document.in_workspace),
     )
 
 
@@ -322,6 +328,7 @@ async def upload_document(
 def get_documents(
     q: str | None = None,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     # _=Depends(require_role("viewer")), #what if we comment out the viewing thing real quick one time
     _=Depends(require_permission(Permissions.DOCUMENT_READ)),
 ):
@@ -331,7 +338,7 @@ def get_documents(
         db (type=Session, default=Depends(get_db)): Database session used for persistence operations.
         _ (default=Depends(require_permission(Permissions.DOCUMENT_READ))): Dependency-injection placeholder argument required by FastAPI.
     """
-    rows = list_documents(db=db, query=q)
+    rows = list_documents(db=db, query=q, current_user=current_user)
 
     return [
         DocumentResponse(
@@ -350,6 +357,7 @@ def get_documents(
             size_bytes=size_bytes,
             page_count=page_count,
             workflow_notes=workflow_notes,
+            in_workspace=bool(doc.in_workspace),
         )
         for doc, processing_status, CLASSIFICATION, confidence, tags, due_date, page_count, size_bytes, workflow_notes, uploader_username, version_count, current_version_number in rows
     ]
@@ -520,6 +528,7 @@ def bulk_download_documents(
 def get_document(
     document_id: UUID,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     # _=Depends(require_role("viewer")),
     _=Depends(require_permission(Permissions.DOCUMENT_READ)),
 ):
@@ -535,6 +544,10 @@ def get_document(
         raise HTTPException(status_code=404, detail="Document not found")
 
     current_version = get_document_version(db=db, document_id=document_id)
+    if not _user_passes_security_clearance(
+        current_user, current_version.tags if current_version else []
+    ):
+        raise HTTPException(status_code=403, detail="Insufficient clearance")
     versions = list_document_versions(db=db, document_id=document_id)
     current_version_number = None
     if current_version:
@@ -563,6 +576,7 @@ def get_document(
         size_bytes=current_version.storage_size_bytes if current_version else None,
         page_count=current_version.page_count if current_version else None,
         workflow_notes=current_version.workflow_notes if current_version else None,
+        in_workspace=bool(document.in_workspace),
     )
 
 
@@ -641,6 +655,7 @@ def set_document_type(
         size_bytes=current_version.storage_size_bytes if current_version else None,
         page_count=current_version.page_count if current_version else None,
         workflow_notes=current_version.workflow_notes if current_version else None,
+        in_workspace=bool(document.in_workspace),
     )
 
 
@@ -843,7 +858,10 @@ def get_document_versions(
                 (version.created_by_user.full_name or version.created_by_user.username)
                 if version.created_by_user
                 else (
-                    (document.uploaded_by_user.full_name or document.uploaded_by_user.username)
+                    (
+                        document.uploaded_by_user.full_name
+                        or document.uploaded_by_user.username
+                    )
                     if document.uploaded_by_user
                     else "System"
                 )
@@ -1308,6 +1326,7 @@ def move_document_project(
         tags=tags,
     )
 
+
 @router.patch("/{document_id}/name", response_model=DocumentResponse)
 def rename_document(
     document_id: UUID,
@@ -1345,4 +1364,26 @@ def rename_document(
         size_bytes=current_version.storage_size_bytes if current_version else None,
         page_count=current_version.page_count if current_version else None,
         workflow_notes=current_version.workflow_notes if current_version else None,
+        in_workspace=bool(document.in_workspace),
+    )
+
+
+@router.put("/{document_id}/workspace", response_model=WorkspaceUpdateResponse)
+def update_document_workspace(
+    document_id: UUID,
+    payload: WorkspaceUpdateRequest,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permissions.DOCUMENT_UPDATE)),
+):
+    document = get_document_by_id(db=db, document_id=document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    document.in_workspace = payload.in_workspace
+    db.commit()
+    db.refresh(document)
+
+    return WorkspaceUpdateResponse(
+        id=document.id,
+        in_workspace=document.in_workspace,
     )

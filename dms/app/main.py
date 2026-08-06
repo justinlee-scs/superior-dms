@@ -7,6 +7,7 @@ from app.api.auth import router as auth_router
 from app.api.processing import router as processing_router
 from app.api.labelstudio_ml import router as labelstudio_router
 from app.api.admin_training import router as admin_training_router
+from app.api.licensing import router as licensing_router
 
 import app.db.models
 
@@ -36,6 +37,7 @@ app.include_router(processing_router)
 app.include_router(rbac_router, prefix="/rbac")
 app.include_router(labelstudio_router)
 app.include_router(admin_training_router)
+app.include_router(licensing_router)
 
 
 @app.on_event("startup")
@@ -44,6 +46,7 @@ def _startup_jobs() -> None:
     requeued = recover_stuck_processing_jobs()
     if requeued:
         logger.warning("Recovered %s stale processing job(s) on startup", requeued)
+
 
 @app.get("/")
 def root():
@@ -54,6 +57,7 @@ def root():
     """
     return {"message": "DMS API running"}
 
+
 @app.get("/documents")
 def list_docs(user: User = Depends(get_current_user)):
     """Return docs.
@@ -62,6 +66,7 @@ def list_docs(user: User = Depends(get_current_user)):
         user (type=User, default=Depends(get_current_user)): Authenticated user context for authorization and ownership checks.
     """
     return {"msg": f"Hello {user.email}"}
+
 
 @app.get("/health")
 def health():

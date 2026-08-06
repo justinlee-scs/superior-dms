@@ -131,7 +131,7 @@ export function GroupedDocuments({
                 >
                   <span className="font-semibold">{project}</span>
                   <span className="text-sm text-gray-500">
-                    ({projectDocs.length} files)
+                    ({projectDocs.length} {projectDocs.length === 1 ? "file" : "files"})
                   </span>
                 </button>
               </div>

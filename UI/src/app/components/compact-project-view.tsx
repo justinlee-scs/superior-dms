@@ -41,6 +41,8 @@ import { normalizeWorkflowStatus } from "@/lib/dms";
 import { MoveProjectDialog } from "@/app/components/move-project-dialog";
 import { RenameDocumentDialog } from "@/app/components/rename-document-dialog";
 
+type GroupField = "project" | "vendor" | "documentType";
+
 interface CompactProjectViewProps {
   documents: Document[];
   onPreview: (doc: Document) => void;
@@ -57,7 +59,17 @@ interface CompactProjectViewProps {
   darkMode?: boolean;
   /** Ref to the BulkActionBar — B key moves focus there */
   barRef?: RefObject<HTMLDivElement | null>;
+  upperGroup: GroupField;
+  lowerGroup: GroupField;
 }
+
+const getGroupValue = (doc: Document, field: GroupField): string => {
+  switch (field) {
+    case "project": return doc.project || "Unassigned";
+    case "vendor": return doc.vendor || "Unknown Vendor";
+    case "documentType": return doc.documentType || "Other";
+  }
+};
 
 const getFileIcon = (type: string) => {
   if (type.includes("image")) return Image;
@@ -123,15 +135,13 @@ export function CompactProjectView({
   availableTags = [],
   darkMode,
   barRef,
+  upperGroup,
+  lowerGroup,
 }: CompactProjectViewProps) {
-  const isInvoiceDocument = (doc: Document) =>
-    (doc.documentType ?? "").toLowerCase().includes("invoice");
-
-  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(
-    new Set(),
-  );
-  const [collapsedTypes, setCollapsedTypes] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<Record<string, SortOption>>({});
+
+  const [collapsedUpper, setCollapsedUpper] = useState<Set<string>>(new Set());
+  const [collapsedLower, setCollapsedLower] = useState<Set<string>>(new Set());
 
   // Track which doc has the Move Project dialog open
   const [moveProjectDoc, setMoveProjectDoc] = useState<Document | null>(null);
@@ -139,23 +149,29 @@ export function CompactProjectView({
 
   const selection = useSelection();
 
-  // Flat ordered list of all currently visible docs — used for keyboard nav
+  // Ref to track the anchor point for Shift+Arrow range selection
+  const anchorIdRef = useRef<string | null>(null);
+
+  const groupedDocuments = useMemo(() => {
+    const result: Record<string, Record<string, Document[]>> = {};
+    documents.forEach((doc) => {
+      const upper = getGroupValue(doc, upperGroup);
+      const lower = getGroupValue(doc, lowerGroup);
+      if (!result[upper]) result[upper] = {};
+      if (!result[upper][lower]) result[upper][lower] = [];
+      result[upper][lower].push(doc);
+    });
+    return result;
+  }, [documents, upperGroup, lowerGroup]);
+
   const visibleDocs = useMemo(() => {
     const result: Document[] = [];
-    const projects: Record<string, Record<string, Document[]>> = {};
-    documents.forEach((doc) => {
-      if (!projects[doc.project]) projects[doc.project] = {};
-      const docType = doc.documentType || "Other";
-      if (!projects[doc.project][docType]) projects[doc.project][docType] = [];
-      projects[doc.project][docType].push(doc);
-    });
-
-    Object.entries(projects).forEach(([project, types]) => {
-      if (collapsedProjects.has(project)) return;
-      Object.entries(types).forEach(([docType, docs]) => {
-        const typeKey = `${project}-${docType}`;
-        if (collapsedTypes.has(typeKey)) return;
-        const sortOption = sortBy[project] || "date";
+    Object.entries(groupedDocuments).forEach(([upper, lowers]) => {
+      if (collapsedUpper.has(upper)) return;
+      Object.entries(lowers).forEach(([lower, docs]) => {
+        const key = `${upper}-${lower}`;
+        if (collapsedLower.has(key)) return;
+        const sortOption = sortBy[upper] || "date";
         const sorted = [...docs].sort((a, b) => {
           switch (sortOption) {
             case "date": return new Date(b.date).getTime() - new Date(a.date).getTime();
@@ -168,10 +184,7 @@ export function CompactProjectView({
       });
     });
     return result;
-  }, [documents, collapsedProjects, collapsedTypes, sortBy]);
-
-  // Ref to track the anchor point for Shift+Arrow range selection
-  const anchorIdRef = useRef<string | null>(null);
+  }, [groupedDocuments, collapsedUpper, collapsedLower, sortBy]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -200,7 +213,7 @@ export function CompactProjectView({
         e.preventDefault();
         const focusedDoc = visibleDocs.find((d) => d.id === selection.focusedId);
         const docsToSelect = focusedDoc
-          ? visibleDocs.filter((d) => d.project === focusedDoc.project)
+          ? visibleDocs.filter((d) => getGroupValue(d, upperGroup) === getGroupValue(focusedDoc, upperGroup))
           : visibleDocs;
         docsToSelect.forEach((d) => selection.add(d));
         return;
@@ -253,29 +266,14 @@ export function CompactProjectView({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
 
-  const groupedDocuments = useMemo(() => {
-    const projects: Record<string, Record<string, Document[]>> = {};
-    documents.forEach((doc) => {
-      if (!projects[doc.project]) projects[doc.project] = {};
-      const docType = doc.documentType || "Other";
-      if (!projects[doc.project][docType]) projects[doc.project][docType] = [];
-      projects[doc.project][docType].push(doc);
-    });
-    return projects;
-  }, [documents]);
-
-  const getSortedDocuments = (project: string, docs: Document[]) => {
-    const sortOption = sortBy[project] || "date";
+  const getSortedDocuments = (upperValue: string, docs: Document[]) => {
+    const sortOption = sortBy[upperValue] || "date";
     return [...docs].sort((a, b) => {
       switch (sortOption) {
-        case "date":
-          return new Date(b.date).getTime() - new Date(a.date).getTime();
-        case "name":
-          return a.name.localeCompare(b.name);
-        case "size":
-          return (b.sizeBytes ?? 0) - (a.sizeBytes ?? 0);
-        default:
-          return 0;
+        case "date": return new Date(b.date).getTime() - new Date(a.date).getTime();
+        case "name": return a.name.localeCompare(b.name);
+        case "size": return (b.sizeBytes ?? 0) - (a.sizeBytes ?? 0);
+        default: return 0;
       }
     });
   };
@@ -298,15 +296,15 @@ export function CompactProjectView({
   return (
     <>
       <div className="space-y-4">
-        {Object.entries(groupedDocuments).map(([project, types]) => {
-          const projectDocs = Object.values(types).flat();
-          const projectSel = selectionState(projectDocs);
-          const isProjectCollapsed = collapsedProjects.has(project);
-          const currentSort = sortBy[project] || "date";
+        {Object.entries(groupedDocuments).map(([upper, lowers]) => {
+          const upperDocs = Object.values(lowers).flat();
+          const upperSel = selectionState(upperDocs);
+          const isUpperCollapsed = collapsedUpper.has(upper);
+          const currentSort = sortBy[upper] || "date";
 
           return (
             <div
-              key={project}
+              key={upper}
               className={`overflow-hidden border rounded-xl ${darkMode
                 ? "border-gray-800 bg-gray-900"
                 : "border-gray-200 bg-white"
@@ -321,32 +319,30 @@ export function CompactProjectView({
               >
                 <div className="flex items-center gap-3">
                   <SelectionCheckbox
-                    checked={projectSel.checked}
-                    indeterminate={projectSel.indeterminate}
-                    onToggle={() => toggleMany(projectDocs)}
+                    checked={upperSel.checked}
+                    indeterminate={upperSel.indeterminate}
+                    onToggle={() => toggleMany(upperDocs)}
                   />
 
                   <button
                     onClick={() =>
-                      setCollapsedProjects((prev) => {
+                      setCollapsedUpper((prev) => {
                         const next = new Set(prev);
-                        next.has(project)
-                          ? next.delete(project)
-                          : next.add(project);
+                        next.has(upper) ? next.delete(upper) : next.add(upper);
                         return next;
                       })
                     }
                     className="flex items-center gap-2"
                   >
-                    {isProjectCollapsed ? <ChevronRight /> : <ChevronDown />}
-                    <span className="font-semibold">{project}</span>
+                    {isUpperCollapsed ? <ChevronRight /> : <ChevronDown />}
+                    <span className="font-semibold">{upper}</span>
                     <span className="text-sm text-gray-500 dark:text-gray-400">
-                      ({projectDocs.length} files)
+                      ({upperDocs.length} {upperDocs.length === 1 ? "file" : "files"})
                     </span>
                   </button>
                 </div>
 
-                {!isProjectCollapsed && (
+                {!isUpperCollapsed && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" size="sm">
@@ -355,25 +351,13 @@ export function CompactProjectView({
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onClick={() =>
-                          setSortBy({ ...sortBy, [project]: "date" })
-                        }
-                      >
+                      <DropdownMenuItem onClick={() => setSortBy({ ...sortBy, [upper]: "date" })}>
                         Date {currentSort === "date" && "✓"}
                       </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() =>
-                          setSortBy({ ...sortBy, [project]: "name" })
-                        }
-                      >
+                      <DropdownMenuItem onClick={() => setSortBy({ ...sortBy, [upper]: "name" })}>
                         Name {currentSort === "name" && "✓"}
                       </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() =>
-                          setSortBy({ ...sortBy, [project]: "size" })
-                        }
-                      >
+                      <DropdownMenuItem onClick={() => setSortBy({ ...sortBy, [upper]: "size" })}>
                         Size {currentSort === "size" && "✓"}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -381,20 +365,20 @@ export function CompactProjectView({
                 )}
               </div>
 
-              {!isProjectCollapsed &&
-                Object.entries(types).map(([docType, docs]) => {
-                  const typeKey = `${project}-${docType}`;
-                  const isTypeCollapsed = collapsedTypes.has(typeKey);
-                  const sortedDocs = getSortedDocuments(project, docs);
+              {!isUpperCollapsed &&
+                Object.entries(lowers).map(([lower, docs]) => {
+                  const typeKey = `${upper}-${lower}`;
+                  const isTypeCollapsed = collapsedLower.has(typeKey);
+                  const sortedDocs = getSortedDocuments(upper, docs);
                   const typeSel = selectionState(sortedDocs);
 
                   return (
                     <div key={typeKey}>
                       {/* Type header */}
                       <div
-                        className={`flex items-center gap-3 px-4 py-2 text-sm ${darkMode
-                          ? "bg-gray-800 border-gray-700"
-                          : "bg-gray-50 border-gray-200"
+                        className={`flex items-center gap-3 px-4 py-2 text-sm border-t ${darkMode
+                          ? "bg-gray-800/50 border-gray-700"
+                          : "bg-gray-50/80 border-gray-100"
                           }`}
                       >
                         <SelectionCheckbox
@@ -405,18 +389,16 @@ export function CompactProjectView({
 
                         <button
                           onClick={() =>
-                            setCollapsedTypes((prev) => {
+                            setCollapsedLower((prev) => {
                               const next = new Set(prev);
-                              next.has(typeKey)
-                                ? next.delete(typeKey)
-                                : next.add(typeKey);
+                              next.has(typeKey) ? next.delete(typeKey) : next.add(typeKey);
                               return next;
                             })
                           }
-                          className="flex items-center gap-2"
+                          className="flex items-center gap-2 pl-6"
                         >
                           {isTypeCollapsed ? <ChevronRight /> : <ChevronDown />}
-                          <span className="font-medium">{docType}</span>
+                          <span className="font-medium">{lower}</span>
                           <span className="text-xs text-gray-500 dark:text-gray-400">
                             ({sortedDocs.length})
                           </span>
@@ -583,6 +565,11 @@ export function CompactProjectView({
                                                 onClick={() => setMoveProjectDoc(doc)}
                                               >
                                                 Move Project
+                                              </DropdownMenuItem>
+                                            )}
+                                            {onToggleWorkspace && (
+                                              <DropdownMenuItem onClick={() => onToggleWorkspace(doc)}>
+                                                {doc.inWorkspace ? "Remove from Workspace" : "Add to Workspace"}
                                               </DropdownMenuItem>
                                             )}
                                             {onRename && (

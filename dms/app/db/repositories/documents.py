@@ -12,6 +12,27 @@ from app.db.models.enums import ProcessingStatus, DocumentClass
 from app.services.extraction.tags import normalize_tag
 
 
+def _user_passes_security_clearance(user: User | None, tags: list[str] | None) -> bool:
+    """Return True if the user has the required role for any security_clearance tags."""
+    if not tags:
+        return True
+    clearance_tags = [
+        tag
+        for tag in tags
+        if isinstance(tag, str) and tag.lower().startswith("security_clearance:")
+    ]
+    if not clearance_tags:
+        return True
+    if user is None:
+        return False
+    user_roles = {role.name.lower() for role in (user.roles or [])}
+    for tag in clearance_tags:
+        required = tag.split(":", 1)[1].strip().lower()
+        if required not in user_roles:
+            return False
+    return True
+
+
 def create_document(
     db: Session,
     filename: str,
@@ -240,7 +261,9 @@ def get_document(
     return get_document_by_id(db, document_id)
 
 
-def list_documents(db: Session, query: str | None = None):
+def list_documents(
+    db: Session, query: str | None = None, current_user: User | None = None
+):
     """Return documents.
 
     Parameters:
@@ -322,6 +345,7 @@ def list_documents(db: Session, query: str | None = None):
             ),
         )
         for doc, processing_status, classification, confidence, tags, due_date, page_count, size_bytes, workflow_notes, uploader_username in rows
+        if _user_passes_security_clearance(current_user, tags)
     ]
 
 
@@ -507,9 +531,7 @@ def list_rejected_tags(
         for tag in predicted - final:
             removal_counts[tag] = removal_counts.get(tag, 0) + 1
 
-    return sorted(
-        tag for tag, count in removal_counts.items() if count >= min_count
-    )
+    return sorted(tag for tag, count in removal_counts.items() if count >= min_count)
 
 
 def replace_document_version_tags(
@@ -674,6 +696,7 @@ def _get_next_version_number(db, document_id):
         .scalar()
     )
     return (max_version or 0) + 1
+
 
 def update_document_name(db: Session, document_id: UUID, name: str):
     document = db.query(Document).filter(Document.id == document_id).first()
