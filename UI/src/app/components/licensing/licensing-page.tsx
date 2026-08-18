@@ -6,6 +6,7 @@ import {
   getExpiringSoon,
   bulkToggleTracking,
   updateMunicipality,
+  createMunicipality,
   createLicense,
   updateLicense,
   deleteLicense,
@@ -476,6 +477,8 @@ export default function LicensingPage({ darkMode = false }: { darkMode?: boolean
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  const [addGovOpen, setAddGovOpen] = useState(false);
+
   // ---------------------------------------------------------------------------
   // Theme tokens — all colours derived from darkMode prop so the page
   // respects the DMS-wide dark mode toggle automatically.
@@ -944,6 +947,10 @@ export default function LicensingPage({ darkMode = false }: { darkMode?: boolean
             <button className="lic-pill" onClick={() => exportCSV(sortedRows)} title="Export current view as CSV">
               ↓ Export CSV
             </button>
+            {/* Add Municipality (renamed from Add Government) */}
+            <button className="lic-pill" onClick={() => setAddGovOpen(true)}>
+              + Add Municipality
+            </button>
           </div>
         </div>
 
@@ -1217,10 +1224,19 @@ export default function LicensingPage({ darkMode = false }: { darkMode?: boolean
           </div>
         </>
       )}
+      {addGovOpen && (
+        <AddGovernmentModal
+          darkMode={darkMode}
+          provinces={provinces}
+          regions={regions}
+          companies={companies}
+          onClose={() => setAddGovOpen(false)}
+          onDone={() => { setAddGovOpen(false); loadAll(); }}
+        />
+      )}
     </div>
   );
 }
-
 // ---------------------------------------------------------------------------
 // SummaryStat — one of the four header counters (Active / Expiring / etc.)
 // ---------------------------------------------------------------------------
@@ -1230,5 +1246,373 @@ function SummaryStat({ label, value, color, muted }: { label: string; value: num
       <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 22, fontWeight: 600, color }}>{value}</div>
       <div style={{ fontSize: 11, color: muted, textTransform: "uppercase", letterSpacing: "0.04em" }}>{label}</div>
     </div>
+  );
+}
+// ---------------------------------------------------------------------------
+// Add Government Modal
+// Lets users add a municipality that isn't in the seeded list —
+// e.g. a different province, or a newly incorporated municipality.
+// Province and regional district can be selected from existing ones
+// or created on the fly by typing a new name.
+// Optionally add a license in the same flow.
+// ---------------------------------------------------------------------------
+function AddGovernmentModal({
+  darkMode,
+  provinces,
+  regions,
+  companies,
+  onClose,
+  onDone,
+}: {
+  darkMode: boolean;
+  provinces: Province[];
+  regions: RegionalDistrict[];
+  companies: Company[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const surface = darkMode ? "#1F2937" : "#FFFFFF";
+  const border = darkMode ? "#374151" : "#E4DFD0";
+  const text = darkMode ? "#F9FAFB" : "#2A2820";
+  const muted = darkMode ? "#9CA3AF" : "#7A7460";
+  const subtle = darkMode ? "#374151" : "#F4F2EC";
+  const inputBg = darkMode ? "#374151" : "#FFFFFF";
+  const inputBorder = darkMode ? "#4B5563" : "#DBD6C8";
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%", fontFamily: "inherit", fontSize: 13.5,
+    padding: "7px 10px", borderRadius: 6,
+    border: `1px solid ${inputBorder}`,
+    background: inputBg, color: text, boxSizing: "border-box",
+  };
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: 12, fontWeight: 600, color: muted,
+    display: "block", marginBottom: 4,
+    textTransform: "uppercase", letterSpacing: "0.04em",
+  };
+
+  // --- Location fields ---
+  const [provinceMode, setProvinceMode] = useState<"existing" | "new">("existing");
+  const [selectedProvinceId, setSelectedProvinceId] = useState<string>("");
+  const [newProvinceName, setNewProvinceName] = useState("");
+  const [newProvinceCode, setNewProvinceCode] = useState("");
+
+  const [regionMode, setRegionMode] = useState<"existing" | "new">("existing");
+  const [selectedRegionId, setSelectedRegionId] = useState<string>("");
+  const [newRegionName, setNewRegionName] = useState("");
+
+  const [municipalityName, setMunicipalityName] = useState("");
+  const [municipalityType, setMunicipalityType] = useState("City");
+
+  // --- Optional license fields ---
+  const [addLicense, setAddLicense] = useState(false);
+  const [licenseNumber, setLicenseNumber] = useState("");
+  const [issueDate, setIssueDate] = useState("");
+  const [expiryDate, setExpiryDate] = useState("");
+  const [cost, setCost] = useState("");
+  const [scope, setScope] = useState<"Municipal" | "Intermunicipal">("Municipal");
+  const [statusOverride, setStatusOverride] = useState<LicenseStatus | "">("");
+  const [licenseCompanyIds, setLicenseCompanyIds] = useState<string[]>([]);
+  const [notes, setNotes] = useState("");
+
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Filter regions to selected province
+  const availableRegions = useMemo(() => {
+    if (!selectedProvinceId) return regions;
+    return regions.filter(r => r.province_id === selectedProvinceId);
+  }, [regions, selectedProvinceId]);
+
+  const municipalityTypes = [
+    "City", "District Municipality", "Town", "Village",
+    "Island Municipality", "Mountain Resort Municipality",
+    "Resort Municipality", "Indian Government District", "Other",
+  ];
+
+  const handleSave = async () => {
+    // Validate required fields
+    if (!municipalityName.trim()) { setError("Municipality name is required."); return; }
+    if (provinceMode === "existing" && !selectedProvinceId) { setError("Please select a province."); return; }
+    if (provinceMode === "new" && (!newProvinceName.trim() || !newProvinceCode.trim())) { setError("New province requires a name and 2-letter code."); return; }
+    if (regionMode === "existing" && !selectedRegionId) { setError("Please select a regional district."); return; }
+    if (regionMode === "new" && !newRegionName.trim()) { setError("New regional district requires a name."); return; }
+    if (addLicense && !expiryDate) { setError("Expiry date is required when adding a license."); return; }
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      // Step 1: Resolve or create province
+      let provinceId = selectedProvinceId;
+      if (provinceMode === "new") {
+        const res = await fetch("/api/licensing/provinces", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ name: newProvinceName.trim(), code: newProvinceCode.trim().toUpperCase() }),
+        });
+        if (!res.ok) throw new Error("Failed to create province");
+        const created = await res.json();
+        provinceId = created.id;
+      }
+
+      // Step 2: Resolve or create regional district
+      let regionId = selectedRegionId;
+      if (regionMode === "new") {
+        const res = await fetch("/api/licensing/regional-districts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ name: newRegionName.trim(), province_id: provinceId }),
+        });
+        if (!res.ok) throw new Error("Failed to create regional district");
+        const created = await res.json();
+        regionId = created.id;
+      }
+
+      // Step 3: Create municipality
+      const muni = await createMunicipality({
+        name: municipalityName.trim(),
+        municipality_type: municipalityType as any,
+        regional_district_id: regionId,
+        tracking_enabled: true,
+      });
+
+      // Step 4: Optionally create license
+      if (addLicense && expiryDate) {
+        const payload: CreateLicensePayload = {
+          scope,
+          expiry_date: expiryDate,
+          license_number: licenseNumber || undefined,
+          issue_date: issueDate || undefined,
+          cost: cost ? parseFloat(cost) : undefined,
+          status_override: (statusOverride as LicenseStatus) || undefined,
+          notes: notes || undefined,
+        };
+        if (scope === "Municipal") {
+          payload.municipality_id = muni.id;
+        } else {
+          payload.regional_district_id = regionId;
+        }
+        const createdLicense = await createLicense(payload);
+
+        // Assign companies
+        if (licenseCompanyIds.length > 0) {
+          await Promise.all(licenseCompanyIds.map(id => addCompanyToLicense(createdLicense.id, id)));
+        }
+      }
+
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 100 }} onClick={onClose} />
+      <div style={{
+        position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)",
+        zIndex: 101, background: surface, border: `1px solid ${border}`,
+        borderRadius: 14, padding: 28, width: 540, maxWidth: "95vw",
+        boxShadow: "0 8px 40px rgba(0,0,0,0.3)", maxHeight: "90vh", overflowY: "auto",
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+          <div>
+            <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 20, fontWeight: 600, margin: "0 0 4px", color: text }}>
+              Add Government
+            </h2>
+            <p style={{ fontSize: 12.5, color: muted, margin: 0 }}>
+              Add a municipality that isn't in the system yet
+            </p>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: muted, fontSize: 20, lineHeight: 1 }}>✕</button>
+        </div>
+
+        {error && (
+          <div style={{ padding: "8px 12px", background: darkMode ? "#3D1A1A" : "#FBEAEA", color: darkMode ? "#F87171" : "#9B2C2C", borderRadius: 6, marginBottom: 16, fontSize: 13 }}>
+            {error}
+          </div>
+        )}
+
+        {/* ---- Location section ---- */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12, paddingBottom: 6, borderBottom: `1px solid ${border}` }}>
+            Location
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+
+            {/* Province */}
+            <div style={{ gridColumn: "1 / -1" }}>
+              <label style={labelStyle}>Province</label>
+              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <button
+                  onClick={() => setProvinceMode("existing")}
+                  style={{ fontSize: 12.5, padding: "4px 12px", borderRadius: 6, border: `1px solid ${inputBorder}`, background: provinceMode === "existing" ? (darkMode ? "#3B82F6" : "#2A2820") : "none", color: provinceMode === "existing" ? "#fff" : muted, cursor: "pointer", fontFamily: "inherit" }}
+                >
+                  Existing
+                </button>
+                <button
+                  onClick={() => setProvinceMode("new")}
+                  style={{ fontSize: 12.5, padding: "4px 12px", borderRadius: 6, border: `1px solid ${inputBorder}`, background: provinceMode === "new" ? (darkMode ? "#3B82F6" : "#2A2820") : "none", color: provinceMode === "new" ? "#fff" : muted, cursor: "pointer", fontFamily: "inherit" }}
+                >
+                  + New province
+                </button>
+              </div>
+              {provinceMode === "existing" ? (
+                <select style={inputStyle} value={selectedProvinceId} onChange={e => { setSelectedProvinceId(e.target.value); setSelectedRegionId(""); }}>
+                  <option value="">Select province…</option>
+                  {provinces.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
+                  <input style={inputStyle} placeholder="Province name (e.g. Alberta)" value={newProvinceName} onChange={e => setNewProvinceName(e.target.value)} />
+                  <input style={{ ...inputStyle, width: 60 }} placeholder="AB" maxLength={2} value={newProvinceCode} onChange={e => setNewProvinceCode(e.target.value)} />
+                </div>
+              )}
+            </div>
+
+            {/* Regional District */}
+            <div style={{ gridColumn: "1 / -1" }}>
+              <label style={labelStyle}>Regional District</label>
+              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <button
+                  onClick={() => setRegionMode("existing")}
+                  style={{ fontSize: 12.5, padding: "4px 12px", borderRadius: 6, border: `1px solid ${inputBorder}`, background: regionMode === "existing" ? (darkMode ? "#3B82F6" : "#2A2820") : "none", color: regionMode === "existing" ? "#fff" : muted, cursor: "pointer", fontFamily: "inherit" }}
+                >
+                  Existing
+                </button>
+                <button
+                  onClick={() => setRegionMode("new")}
+                  style={{ fontSize: 12.5, padding: "4px 12px", borderRadius: 6, border: `1px solid ${inputBorder}`, background: regionMode === "new" ? (darkMode ? "#3B82F6" : "#2A2820") : "none", color: regionMode === "new" ? "#fff" : muted, cursor: "pointer", fontFamily: "inherit" }}
+                >
+                  + New region
+                </button>
+              </div>
+              {regionMode === "existing" ? (
+                <select style={inputStyle} value={selectedRegionId} onChange={e => setSelectedRegionId(e.target.value)}>
+                  <option value="">Select regional district…</option>
+                  {availableRegions.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                </select>
+              ) : (
+                <input style={inputStyle} placeholder="Regional district name" value={newRegionName} onChange={e => setNewRegionName(e.target.value)} />
+              )}
+            </div>
+
+            {/* Municipality name */}
+            <div>
+              <label style={labelStyle}>Municipality Name *</label>
+              <input style={inputStyle} placeholder="e.g. Red Deer" value={municipalityName} onChange={e => setMunicipalityName(e.target.value)} />
+            </div>
+
+            {/* Municipality type */}
+            <div>
+              <label style={labelStyle}>Type</label>
+              <select style={inputStyle} value={municipalityType} onChange={e => setMunicipalityType(e.target.value)}>
+                {municipalityTypes.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+
+          </div>
+        </div>
+
+        {/* ---- Optional license section ---- */}
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginBottom: addLicense ? 12 : 0 }}>
+            <input type="checkbox" checked={addLicense} onChange={e => setAddLicense(e.target.checked)} />
+            <span style={{ fontSize: 13, fontWeight: 600, color: text }}>Also add a license now</span>
+          </label>
+
+          {addLicense && (
+            <div style={{ paddingTop: 12, borderTop: `1px solid ${border}` }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label style={labelStyle}>Scope</label>
+                  <select style={inputStyle} value={scope} onChange={e => setScope(e.target.value as "Municipal" | "Intermunicipal")}>
+                    <option value="Municipal">Municipal (this city only)</option>
+                    <option value="Intermunicipal">Intermunicipal (entire region)</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>License Number</label>
+                  <input style={inputStyle} placeholder="e.g. RED-2026-001" value={licenseNumber} onChange={e => setLicenseNumber(e.target.value)} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Issuing Authority</label>
+                  <input style={inputStyle} placeholder="e.g. City of Red Deer" value={notes} onChange={e => setNotes(e.target.value)} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Issue Date</label>
+                  <input style={inputStyle} type="date" value={issueDate} onChange={e => setIssueDate(e.target.value)} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Expiry Date *</label>
+                  <input style={inputStyle} type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Cost ($)</label>
+                  <input style={inputStyle} type="number" placeholder="0.00" value={cost} onChange={e => setCost(e.target.value)} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Status Override</label>
+                  <select style={inputStyle} value={statusOverride} onChange={e => setStatusOverride(e.target.value as LicenseStatus | "")}>
+                    <option value="">Auto (from expiry date)</option>
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Expired">Expired</option>
+                  </select>
+                </div>
+                {companies.length > 0 && (
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <label style={labelStyle}>Applies to</label>
+                    <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                      {companies.map(c => (
+                        <label key={c.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5, color: text, cursor: "pointer" }}>
+                          <input
+                            type="checkbox"
+                            checked={licenseCompanyIds.includes(c.id)}
+                            onChange={e => setLicenseCompanyIds(prev =>
+                              e.target.checked ? [...prev, c.id] : prev.filter(id => id !== c.id)
+                            )}
+                          />
+                          {c.name}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ---- Actions ---- */}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button
+            onClick={onClose}
+            style={{ fontSize: 13, padding: "7px 16px", borderRadius: 7, border: `1px solid ${inputBorder}`, background: "none", cursor: "pointer", color: text, fontFamily: "inherit" }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            style={{
+              fontSize: 13, padding: "7px 20px", borderRadius: 7, border: "none",
+              background: darkMode ? "#3B82F6" : "#2A2820",
+              color: "#fff", fontWeight: 600, cursor: saving ? "not-allowed" : "pointer",
+              opacity: saving ? 0.6 : 1, fontFamily: "inherit",
+            }}
+          >
+            {saving ? "Saving…" : addLicense ? "Add Government & License" : "Add Government"}
+          </button>
+        </div>
+      </div>
+    </>
   );
 }

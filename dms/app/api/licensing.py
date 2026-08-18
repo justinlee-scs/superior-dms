@@ -333,7 +333,8 @@ def get_dashboard(
     # If filtering by company, only consider licenses assigned to that company
     if company_id:
         all_licenses = [
-            lic for lic in all_licenses
+            lic
+            for lic in all_licenses
             if any(c.id == company_id for c in lic.companies)
         ]
     by_municipality: dict[str, License] = {}
@@ -423,3 +424,25 @@ def get_expiring_soon(
         for r in all_rows
         if r.days_until_expiry is not None and 0 <= r.days_until_expiry <= within_days
     ]
+
+
+@router.post("/provinces", response_model=ProvinceOut, status_code=201)
+def create_province(payload: dict, db: Session = Depends(get_licensing_db)):
+    from app.db.models.licensing import Province
+
+    p = Province(name=payload["name"], code=payload["code"], enabled=True)
+    db.add(p)
+    db.commit()
+    db.refresh(p)
+    return p
+
+
+@router.post("/regional-districts", response_model=RegionalDistrictOut, status_code=201)
+def create_regional_district(payload: dict, db: Session = Depends(get_licensing_db)):
+    p = RegionalDistrict(
+        name=payload["name"], province_id=payload["province_id"], enabled=True
+    )
+    db.add(p)
+    db.commit()
+    db.refresh(p)
+    return p
