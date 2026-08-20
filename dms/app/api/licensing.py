@@ -30,11 +30,16 @@ from app.db.models.licensing import (
     RegionalDistrict,
     Company,
     license_companies,
+    ImblRegion,
+    imbl_region_municipalities,
 )
 from app.schemas.licensing import (
     BulkToggleRequest,
     CompanyOut,
     GovernmentLicenseRow,
+    ImblRegionOut,
+    ImblRegionCreate,
+    ImblRegionUpdate,
     LicenseCreate,
     LicenseOut,
     LicenseUpdate,
@@ -83,6 +88,88 @@ def list_companies(db: Session = Depends(get_licensing_db)):
     return db.scalars(
         select(Company).where(Company.enabled == True).order_by(Company.name)
     ).all()
+
+
+# ============================================================
+# IMBL Regions
+# ============================================================
+
+
+@router.get("/imbl-regions", response_model=list[ImblRegionOut])
+def list_imbl_regions(db: Session = Depends(get_licensing_db)):
+    return db.scalars(
+        select(ImblRegion).where(ImblRegion.enabled == True).order_by(ImblRegion.name)
+    ).all()
+
+
+@router.post("/imbl-regions", response_model=ImblRegionOut, status_code=201)
+def create_imbl_region(
+    payload: ImblRegionCreate, db: Session = Depends(get_licensing_db)
+):
+    region = ImblRegion(name=payload.name, enabled=True)
+    db.add(region)
+    db.commit()
+    db.refresh(region)
+    return region
+
+
+@router.patch("/imbl-regions/{imbl_region_id}", response_model=ImblRegionOut)
+def update_imbl_region(
+    imbl_region_id: str,
+    payload: ImblRegionUpdate,
+    db: Session = Depends(get_licensing_db),
+):
+    region = db.get(ImblRegion, imbl_region_id)
+    if not region:
+        raise HTTPException(404, "IMBL region not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(region, field, value)
+    db.commit()
+    db.refresh(region)
+    return region
+
+
+@router.delete("/imbl-regions/{imbl_region_id}", status_code=204)
+def delete_imbl_region(imbl_region_id: str, db: Session = Depends(get_licensing_db)):
+    region = db.get(ImblRegion, imbl_region_id)
+    if not region:
+        raise HTTPException(404, "IMBL region not found")
+    db.delete(region)
+    db.commit()
+
+
+@router.post(
+    "/imbl-regions/{imbl_region_id}/municipalities/{municipality_id}", status_code=200
+)
+def add_municipality_to_imbl_region(
+    imbl_region_id: str, municipality_id: str, db: Session = Depends(get_licensing_db)
+):
+    region = db.get(ImblRegion, imbl_region_id)
+    if not region:
+        raise HTTPException(404, "IMBL region not found")
+    muni = db.get(Municipality, municipality_id)
+    if not muni:
+        raise HTTPException(404, "Municipality not found")
+    if muni not in region.municipalities:
+        region.municipalities.append(muni)
+        db.commit()
+    return {"ok": True}
+
+
+@router.delete(
+    "/imbl-regions/{imbl_region_id}/municipalities/{municipality_id}", status_code=200
+)
+def remove_municipality_from_imbl_region(
+    imbl_region_id: str, municipality_id: str, db: Session = Depends(get_licensing_db)
+):
+    region = db.get(ImblRegion, imbl_region_id)
+    if not region:
+        raise HTTPException(404, "IMBL region not found")
+    muni = db.get(Municipality, municipality_id)
+    if muni and muni in region.municipalities:
+        region.municipalities.remove(muni)
+        db.commit()
+    return {"ok": True}
 
 
 # ============================================================
@@ -196,6 +283,10 @@ def _to_license_out(lic: License) -> LicenseOut:
         computed_status=status,
         days_until_expiry=days,
         company_ids=[c.id for c in lic.companies],
+        issuing_municipality_name=(
+            lic.issuing_municipality.name if lic.issuing_municipality else None
+        ),
+        imbl_region_name=lic.imbl_region.name if lic.imbl_region else None,
     )
 
 
@@ -337,18 +428,36 @@ def get_dashboard(
             for lic in all_licenses
             if any(c.id == company_id for c in lic.companies)
         ]
+
+    # Build lookups: municipality_id → best license, region_id → best license
     by_municipality: dict[str, License] = {}
     by_region: dict[str, License] = {}
+    # NEW: IMBL coverage — imbl_region_id → license, then expand to all member municipalities
+    by_imbl_region: dict[str, License] = {}
+
     for lic in all_licenses:
         if lic.scope == LicenseScope.MUNICIPAL and lic.municipality_id:
             # If multiple, keep the one with the latest expiry (most relevant/current)
             existing = by_municipality.get(lic.municipality_id)
             if not existing or lic.expiry_date > existing.expiry_date:
                 by_municipality[lic.municipality_id] = lic
-        elif lic.scope == LicenseScope.INTERMUNICIPAL and lic.regional_district_id:
-            existing = by_region.get(lic.regional_district_id)
-            if not existing or lic.expiry_date > existing.expiry_date:
-                by_region[lic.regional_district_id] = lic
+        elif lic.scope == LicenseScope.INTERMUNICIPAL:
+            if lic.imbl_region_id:
+                existing = by_imbl_region.get(lic.imbl_region_id)
+                if not existing or lic.expiry_date > existing.expiry_date:
+                    by_imbl_region[lic.imbl_region_id] = lic
+            elif lic.regional_district_id:
+                existing = by_region.get(lic.regional_district_id)
+                if not existing or lic.expiry_date > existing.expiry_date:
+                    by_region[lic.regional_district_id] = lic
+
+    # Preload IMBL region membership for all municipalities
+    all_imbl_regions = db.scalars(select(ImblRegion)).all()
+    # municipality_id → list of ImblRegion
+    muni_to_imbl: dict[str, list[ImblRegion]] = {}
+    for imbl in all_imbl_regions:
+        for m in imbl.municipalities:
+            muni_to_imbl.setdefault(m.id, []).append(imbl)
 
     rows: list[GovernmentLicenseRow] = []
     for m in municipalities:
@@ -356,16 +465,36 @@ def get_dashboard(
         province = region.province
 
         # Prefer a direct municipal license; fall back to regional intermunicipal coverage
+        # Coverage priority:
+        # 1. Direct municipal license
+        # 2. IMBL intermunicipal license covering this municipality's IMBL region(s)
+        # 3. Regional district intermunicipal license
         lic = by_municipality.get(m.id)
         covered_via_region = False
+        imbl_license = None
+        imbl_region_for_coverage = None
+
         if not lic:
+            # Check IMBL coverage
+            for imbl_region in muni_to_imbl.get(m.id, []):
+                if imbl_region.id in by_imbl_region:
+                    imbl_license = by_imbl_region[imbl_region.id]
+                    imbl_region_for_coverage = imbl_region
+                    covered_via_region = True
+                    break
+
+        if not lic and not imbl_license:
+            # Fall back to regional district coverage
             lic = by_region.get(m.regional_district_id)
             covered_via_region = lic is not None
 
-        if lic:
-            computed, days = compute_status(lic)
+        effective_lic = lic or imbl_license
+        if effective_lic:
+            computed, days = compute_status(effective_lic)
         else:
             computed, days = None, None
+
+        imbl_regions_for_muni = muni_to_imbl.get(m.id, [])
 
         row = GovernmentLicenseRow(
             province_name=province.name,
@@ -374,16 +503,22 @@ def get_dashboard(
             municipality_name=m.name,
             municipality_type=m.municipality_type,
             tracking_enabled=m.tracking_enabled,
-            license_id=lic.id if lic else None,
-            license_scope=lic.scope if lic else None,
-            license_number=lic.license_number if lic else None,
-            status_override=lic.status_override if lic else None,
-            expiry_date=lic.expiry_date if lic else None,
+            license_id=effective_lic.id if effective_lic else None,
+            license_scope=effective_lic.scope if effective_lic else None,
+            license_number=effective_lic.license_number if effective_lic else None,
+            expiry_date=effective_lic.expiry_date if effective_lic else None,
             computed_status=computed,
             days_until_expiry=days,
-            cost=lic.cost if lic else None,
-            company_ids=[c.id for c in lic.companies] if lic else [],
             covered_via_region=covered_via_region,
+            cost=effective_lic.cost if effective_lic else None,
+            company_ids=[c.id for c in effective_lic.companies] if effective_lic else [],
+            status_override=effective_lic.status_override if effective_lic else None,
+            imbl_region_ids=[ir.id for ir in imbl_regions_for_muni],
+            imbl_region_names=[ir.name for ir in imbl_regions_for_muni],
+            issuing_municipality_id=effective_lic.issuing_municipality_id if effective_lic else None,
+            issuing_municipality_name=effective_lic.issuing_municipality.name if effective_lic and effective_lic.issuing_municipality else None,
+            imbl_region_id=imbl_region_for_coverage.id if imbl_region_for_coverage else (effective_lic.imbl_region_id if effective_lic else None),
+            imbl_region_name=imbl_region_for_coverage.name if imbl_region_for_coverage else (effective_lic.imbl_region.name if effective_lic and effective_lic.imbl_region else None),
         )
 
         # Apply status_filter AFTER computing status

@@ -1,12 +1,11 @@
 from __future__ import annotations
-
-import os
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.db.models.licensing import Base
+from app.db.licensing_url import get_licensing_database_url
 import app.db.models.licensing  # noqa: F401
 
 
@@ -14,9 +13,7 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-database_url = os.getenv("LICENSING_DATABASE_URL")
-if database_url:
-    config.set_main_option("sqlalchemy.url", database_url)
+config.set_main_option("sqlalchemy.url", get_licensing_database_url())
 
 target_metadata = Base.metadata
 

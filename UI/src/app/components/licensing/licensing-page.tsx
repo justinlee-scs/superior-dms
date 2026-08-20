@@ -13,6 +13,7 @@ import {
   getCompanies,
   addCompanyToLicense,
   removeCompanyFromLicense,
+  getImblRegions,
   type Company,
   type GovernmentLicenseRow,
   type Province,
@@ -20,6 +21,7 @@ import {
   type DashboardStatusFilter,
   type LicenseStatus,
   type CreateLicensePayload,
+  type ImblRegion,
 } from "./licensing";
 
 // ---------------------------------------------------------------------------
@@ -37,89 +39,93 @@ import {
 // A municipality with an eligible IMBL region but no intermunicipal license
 // yet will show a yellow ✦ IMBL badge as a prompt to get one.
 // ---------------------------------------------------------------------------
-const IMBL_REGIONS: Record<string, string[]> = {
-  // --- Lower Mainland ---
-  "Metro West": [
-    "Burnaby", "Delta", "New Westminster", "Richmond", "Surrey", "Vancouver",
-  ],
-  "Fraser Valley": [
-    "Abbotsford", "Chilliwack", "Delta", "Harrison Hot Springs", "Hope",
-    "Kent", "Langley",          // City of Langley
-    "Langley",                  // Township = District Municipality named "Langley" in seed
-    "Maple Ridge", "Mission", "Pitt Meadows", "Surrey",
-  ],
-  "Tri-Cities": [
-    "Coquitlam", "Port Coquitlam", "Port Moody",
-  ],
-  "North Shore": [
-    "North Vancouver",   // covers both City and District (both are in seed)
-    "West Vancouver",
-  ],
-  "Sunshine Coast": [
-    "Gibsons", "Sechelt", "shishalh Nation",
-  ],
 
-  // --- Vancouver Island ---
-  "Greater Victoria": [
-    "Central Saanich", "Colwood", "Esquimalt", "Highlands", "Langford",
-    "Metchosin", "North Saanich", "Oak Bay", "Saanich", "Sidney",
-    "Sooke", "Victoria", "View Royal",
-  ],
-  "Central Vancouver Island": [
-    "Campbell River", "Comox", "Courtenay", "Cumberland", "Duncan",
-    "Ladysmith", "Lake Cowichan", "Nanaimo", "North Cowichan",
-    "Parksville", "Port Alberni", "Qualicum Beach",
-  ],
-  "Cowichan Valley": [
-    "Duncan", "Ladysmith", "Lake Cowichan", "North Cowichan",
-  ],
-  "Comox Valley": [
-    "Comox", "Courtenay",
-  ],
 
-  // --- Okanagan-Similkameen ---
-  "Okanagan-Similkameen": [
-    "Armstrong", "Coldstream", "Enderby", "Kelowna", "Keremeos",
-    "Lake Country", "Lumby", "Merritt", "Oliver", "Osoyoos",
-    "Peachland", "Penticton", "Princeton", "Revelstoke", "Salmon Arm",
-    "Sicamous", "Spallumcheen", "Summerland", "Vernon", "West Kelowna",
-  ],
+// removed constants because we don't want hard coded infrastructure right now
 
-  // --- Thompson-Nicola ---
-  "Thompson-Nicola": [
-    "Kamloops", "Merritt", "Barriere", "Clearwater", "Lillooet",
-    "Logan Lake", "Chase",
-  ],
+// const IMBL_REGIONS: Record<string, string[]> = {
+//   // --- Lower Mainland ---
+//   "Metro West": [
+//     "Burnaby", "Delta", "New Westminster", "Richmond", "Surrey", "Vancouver",
+//   ],
+//   "Fraser Valley": [
+//     "Abbotsford", "Chilliwack", "Delta", "Harrison Hot Springs", "Hope",
+//     "Kent", "Langley",          // City of Langley
+//     "Langley",                  // Township = District Municipality named "Langley" in seed
+//     "Maple Ridge", "Mission", "Pitt Meadows", "Surrey",
+//   ],
+//   "Tri-Cities": [
+//     "Coquitlam", "Port Coquitlam", "Port Moody",
+//   ],
+//   "North Shore": [
+//     "North Vancouver",   // covers both City and District (both are in seed)
+//     "West Vancouver",
+//   ],
+//   "Sunshine Coast": [
+//     "Gibsons", "Sechelt", "shishalh Nation",
+//   ],
 
-  // --- Kootenays ---
-  "Cranbrook / Kimberley": [
-    "Cranbrook", "Kimberley",
-  ],
-  "Elk Valley": [
-    "Elkford", "Fernie", "Sparwood",
-  ],
-  "Greater Trail": [
-    "Fruitvale", "Montrose", "Rossland", "Trail", "Warfield",
-  ],
-  "Kootenay": [
-    "Castlegar", "Creston", "Grand Forks", "Kaslo", "Nelson",
-    "New Denver", "Rossland", "Salmo", "Silverton", "Slocan",
-  ],
+//   // --- Vancouver Island ---
+//   "Greater Victoria": [
+//     "Central Saanich", "Colwood", "Esquimalt", "Highlands", "Langford",
+//     "Metchosin", "North Saanich", "Oak Bay", "Saanich", "Sidney",
+//     "Sooke", "Victoria", "View Royal",
+//   ],
+//   "Central Vancouver Island": [
+//     "Campbell River", "Comox", "Courtenay", "Cumberland", "Duncan",
+//     "Ladysmith", "Lake Cowichan", "Nanaimo", "North Cowichan",
+//     "Parksville", "Port Alberni", "Qualicum Beach",
+//   ],
+//   "Cowichan Valley": [
+//     "Duncan", "Ladysmith", "Lake Cowichan", "North Cowichan",
+//   ],
+//   "Comox Valley": [
+//     "Comox", "Courtenay",
+//   ],
 
-  // --- Northeast ---
-  "Northeast BC": [
-    "Chetwynd", "Dawson Creek", "Fort St. John", "Hudson's Hope",
-    "Pouce Coupe", "Taylor", "Tumbler Ridge",
-  ],
-};
+//   // --- Okanagan-Similkameen ---
+//   "Okanagan-Similkameen": [
+//     "Armstrong", "Coldstream", "Enderby", "Kelowna", "Keremeos",
+//     "Lake Country", "Lumby", "Merritt", "Oliver", "Osoyoos",
+//     "Peachland", "Penticton", "Princeton", "Revelstoke", "Salmon Arm",
+//     "Sicamous", "Spallumcheen", "Summerland", "Vernon", "West Kelowna",
+//   ],
 
-// Precomputed lookup: municipality name → IMBL region name (or null)
-const IMBL_LOOKUP: Record<string, string> = {};
-for (const [region, members] of Object.entries(IMBL_REGIONS)) {
-  for (const m of members) {
-    IMBL_LOOKUP[m] = region;
-  }
-}
+//   // --- Thompson-Nicola ---
+//   "Thompson-Nicola": [
+//     "Kamloops", "Merritt", "Barriere", "Clearwater", "Lillooet",
+//     "Logan Lake", "Chase",
+//   ],
+
+//   // --- Kootenays ---
+//   "Cranbrook / Kimberley": [
+//     "Cranbrook", "Kimberley",
+//   ],
+//   "Elk Valley": [
+//     "Elkford", "Fernie", "Sparwood",
+//   ],
+//   "Greater Trail": [
+//     "Fruitvale", "Montrose", "Rossland", "Trail", "Warfield",
+//   ],
+//   "Kootenay": [
+//     "Castlegar", "Creston", "Grand Forks", "Kaslo", "Nelson",
+//     "New Denver", "Rossland", "Salmo", "Silverton", "Slocan",
+//   ],
+
+//   // --- Northeast ---
+//   "Northeast BC": [
+//     "Chetwynd", "Dawson Creek", "Fort St. John", "Hudson's Hope",
+//     "Pouce Coupe", "Taylor", "Tumbler Ridge",
+//   ],
+// };
+
+// // Precomputed lookup: municipality name → IMBL region name (or null)
+// const IMBL_LOOKUP: Record<string, string> = {};
+// for (const [region, members] of Object.entries(IMBL_REGIONS)) {
+//   for (const m of members) {
+//     IMBL_LOOKUP[m] = region;
+//   }
+// }
 
 // ---------------------------------------------------------------------------
 // Types
@@ -139,13 +145,16 @@ interface LicenseFormState {
   scope: "Municipal" | "Intermunicipal";
   status_override: LicenseStatus | "";
   company_ids: string[];
+  issuing_municipality_id: string;
+  imbl_region_id: string;
 }
 
 const emptyForm = (): LicenseFormState => ({
   license_number: "", issue_date: "", expiry_date: "",
   cost: "", issuing_authority: "", notes: "",
   scope: "Municipal", status_override: "",
-  company_ids: [],
+  company_ids: [], issuing_municipality_id: "",
+  imbl_region_id: "",
 });
 
 // ---------------------------------------------------------------------------
@@ -153,12 +162,12 @@ const emptyForm = (): LicenseFormState => ({
 // ---------------------------------------------------------------------------
 
 const STATUS_STYLES: Record<string, { bg: string; darkBg: string; fg: string; darkFg: string; dot: string }> = {
-  "Active": { bg: "#EAF4EC", darkBg: "#1A3D28", fg: "#1F6B3A", darkFg: "#4ADE80", dot: "#2F9E50" },
-  "Expiring Soon": { bg: "#FCF1DE", darkBg: "#3D2E0A", fg: "#92600C", darkFg: "#FBB03B", dot: "#E2A12E" },
-  "Expired": { bg: "#FBEAEA", darkBg: "#3D1A1A", fg: "#9B2C2C", darkFg: "#F87171", dot: "#D14343" },
-  "Inactive": { bg: "#EEEEF0", darkBg: "#2A2A2E", fg: "#5B5B66", darkFg: "#9CA3AF", dot: "#9494A0" },
-  "Pending": { bg: "#EAEFFB", darkBg: "#1A2540", fg: "#2C4C9B", darkFg: "#93C5FD", dot: "#5478D1" },
-  "No License": { bg: "#F6F4EF", darkBg: "#1F1F1F", fg: "#8A7F66", darkFg: "#6B7280", dot: "#C9BC9C" },
+  "Active":         { bg: "#EAF4EC", darkBg: "#1A3D28", fg: "#1F6B3A", darkFg: "#4ADE80", dot: "#2F9E50" },
+  "Expiring Soon":  { bg: "#FCF1DE", darkBg: "#3D2E0A", fg: "#92600C", darkFg: "#FBB03B", dot: "#E2A12E" },
+  "Expired":        { bg: "#FBEAEA", darkBg: "#3D1A1A", fg: "#9B2C2C", darkFg: "#F87171", dot: "#D14343" },
+  "Inactive":       { bg: "#EEEEF0", darkBg: "#2A2A2E", fg: "#5B5B66", darkFg: "#9CA3AF", dot: "#9494A0" },
+  "Pending":        { bg: "#EAEFFB", darkBg: "#1A2540", fg: "#2C4C9B", darkFg: "#93C5FD", dot: "#5478D1" },
+  "No License":     { bg: "#F6F4EF", darkBg: "#1F1F1F", fg: "#8A7F66", darkFg: "#6B7280", dot: "#C9BC9C" },
 };
 
 // ---------------------------------------------------------------------------
@@ -213,8 +222,8 @@ function TrackingCell({
   const [loading, setLoading] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const surface = darkMode ? "#1F2937" : "#FFFFFF";
-  const border = darkMode ? "#374151" : "#E4DFD0";
-  const text = darkMode ? "#F9FAFB" : "#2A2820";
+  const border  = darkMode ? "#374151" : "#E4DFD0";
+  const text    = darkMode ? "#F9FAFB" : "#2A2820";
 
   const handleConfirm = async () => {
     setLoading(true);
@@ -289,9 +298,9 @@ function StatusCell({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const surface = darkMode ? "#1F2937" : "#FFFFFF";
-  const border = darkMode ? "#374151" : "#E4DFD0";
-  const text = darkMode ? "#F9FAFB" : "#2A2820";
-  const subtle = darkMode ? "#374151" : "#F4F2EC";
+  const border  = darkMode ? "#374151" : "#E4DFD0";
+  const text    = darkMode ? "#F9FAFB" : "#2A2820";
+  const subtle  = darkMode ? "#374151" : "#F4F2EC";
 
   // No license — show static badge, no interaction
   if (!row.license_id) {
@@ -307,11 +316,11 @@ function StatusCell({
 
   const statuses: (LicenseStatus | null)[] = [null, "Active", "Inactive", "Pending", "Expired"];
   const labels: Record<string, string> = {
-    "null": "Auto (from expiry date)",
-    "Active": "✅ Active",
+    "null":     "Auto (from expiry date)",
+    "Active":   "✅ Active",
     "Inactive": "⏸ Inactive",
-    "Pending": "🕐 Pending",
-    "Expired": "❌ Expired",
+    "Pending":  "🕐 Pending",
+    "Expired":  "❌ Expired",
   };
 
   return (
@@ -371,8 +380,9 @@ function InterBadge({ darkMode }: { darkMode: boolean }) {
 }
 
 // Yellow badge for municipalities eligible for an IMBL but not yet enrolled.
-// Shows the IMBL region name in a tooltip on hover.
-function ImblEligibleBadge({ regionName, darkMode }: { regionName: string; darkMode: boolean }) {
+// regionNames comes from the DB (row.imbl_region_names), not a hardcoded constant.
+// Shows all eligible IMBL region names in a tooltip on hover.
+function ImblEligibleBadge({ regionNames, darkMode }: { regionNames: string[]; darkMode: boolean }) {
   const [hover, setHover] = useState(false);
   return (
     <span
@@ -385,12 +395,11 @@ function ImblEligibleBadge({ regionName, darkMode }: { regionName: string; darkM
         padding: "2px 7px", borderRadius: 999, fontSize: 11, fontWeight: 700,
         background: darkMode ? "#3D2E0A" : "#FEF9C3",
         color: darkMode ? "#FBB03B" : "#92600C",
-        verticalAlign: "middle", letterSpacing: "0.02em",
-        cursor: "default",
+        verticalAlign: "middle", letterSpacing: "0.02em", cursor: "default",
       }}>
         ✦ IMBL
       </span>
-      {/* Tooltip showing which IMBL region this municipality belongs to */}
+      {/* Tooltip showing which IMBL region(s) this municipality belongs to */}
       {hover && (
         <span style={{
           position: "absolute", bottom: "calc(100% + 6px)", left: "50%",
@@ -401,19 +410,21 @@ function ImblEligibleBadge({ regionName, darkMode }: { regionName: string; darkM
           pointerEvents: "none", zIndex: 60,
           boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
         }}>
-          Eligible: {regionName}
+          Eligible: {regionNames.join(", ")}
         </span>
       )}
     </span>
   );
 }
 
-// CSV export — exports exactly the current filtered + sorted view
+// CSV export — exports exactly the current filtered + sorted view.
+// IMBL region names come from the row data (from DB), not hardcoded constants.
 function exportCSV(rows: GovernmentLicenseRow[]) {
   const headers = [
     "Province", "Region", "Government", "Type", "Tracking",
-    "IMBL Region", "License Scope", "License Number", "Coverage",
+    "IMBL Regions", "License Scope", "License Number", "Coverage",
     "License Status", "Expiry Date", "Days Until Expiry", "Cost",
+    "Issuing Municipality",
   ];
   const lines = rows.map(r => [
     r.province_name,
@@ -421,7 +432,7 @@ function exportCSV(rows: GovernmentLicenseRow[]) {
     r.municipality_name,
     r.municipality_type,
     r.tracking_enabled ? "Enabled" : "Disabled",
-    IMBL_LOOKUP[r.municipality_name] ?? "",
+    (r.imbl_region_names ?? []).join("; "),
     r.license_scope ?? "",
     r.license_number ?? "",
     r.covered_via_region ? "Intermunicipal" : r.license_id ? "Direct" : "None",
@@ -429,6 +440,7 @@ function exportCSV(rows: GovernmentLicenseRow[]) {
     r.expiry_date ?? "",
     r.days_until_expiry != null ? String(r.days_until_expiry) : "",
     r.cost != null ? String(r.cost) : "",
+    r.issuing_municipality_name ?? "",
   ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(","));
 
   const csv = [headers.join(","), ...lines].join("\n");
@@ -450,6 +462,7 @@ export default function LicensingPage({ darkMode = false }: { darkMode?: boolean
   const [provinces, setProvinces] = useState<Province[]>([]);
   const [regions, setRegions] = useState<RegionalDistrict[]>([]);
   const [expiringSoon, setExpiringSoon] = useState<GovernmentLicenseRow[]>([]);
+  const [imblRegions, setImblRegions] = useState<ImblRegion[]>([]);
 
   // Filters
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -461,7 +474,7 @@ export default function LicensingPage({ darkMode = false }: { darkMode?: boolean
   const [search, setSearch] = useState("");
   const [showAllTracking, setShowAllTracking] = useState(false);
 
-  // Sorting — separate from column header clicks, controlled by Sort by dropdown
+  // Sorting — controlled by Sort by dropdown
   const [sortField, setSortField] = useState<SortField>("municipality_name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
@@ -483,15 +496,15 @@ export default function LicensingPage({ darkMode = false }: { darkMode?: boolean
   // Theme tokens — all colours derived from darkMode prop so the page
   // respects the DMS-wide dark mode toggle automatically.
   // ---------------------------------------------------------------------------
-  const bg = darkMode ? "#111827" : "#FBFAF7";
-  const surface = darkMode ? "#1F2937" : "#FFFFFF";
-  const border = darkMode ? "#374151" : "#E4DFD0";
-  const text = darkMode ? "#F9FAFB" : "#2A2820";
-  const muted = darkMode ? "#9CA3AF" : "#7A7460";
-  const subtle = darkMode ? "#374151" : "#F4F2EC";
-  const inputBg = darkMode ? "#374151" : "#FFFFFF";
+  const bg          = darkMode ? "#111827" : "#FBFAF7";
+  const surface     = darkMode ? "#1F2937" : "#FFFFFF";
+  const border      = darkMode ? "#374151" : "#E4DFD0";
+  const text        = darkMode ? "#F9FAFB" : "#2A2820";
+  const muted       = darkMode ? "#9CA3AF" : "#7A7460";
+  const subtle      = darkMode ? "#374151" : "#F4F2EC";
+  const inputBg     = darkMode ? "#374151" : "#FFFFFF";
   const inputBorder = darkMode ? "#4B5563" : "#DBD6C8";
-  const accent = darkMode ? "#D97706" : "#A1944F";
+  const accent      = darkMode ? "#D97706" : "#A1944F";
 
   // ---------------------------------------------------------------------------
   // Data loading
@@ -501,20 +514,22 @@ export default function LicensingPage({ darkMode = false }: { darkMode?: boolean
     setLoading(true);
     setError(null);
     try {
-      const [companiesData, provincesData, regionsData, dashboardData, expiringData] = await Promise.all([
+      const [imblRegionsData, companiesData, provincesData, regionsData, dashboardData, expiringData] = await Promise.all([
+        getImblRegions(),
         getCompanies(),
         getProvinces(),
         getRegionalDistricts(),
         getDashboard({
           statusFilter,
-          provinceId: provinceFilter || undefined,
-          regionalDistrictId: regionFilter || undefined,
-          search: search || undefined,
-          trackingEnabledOnly: !showAllTracking,
-          companyId: activeCompanyId || undefined,
+          provinceId:           provinceFilter    || undefined,
+          regionalDistrictId:   regionFilter      || undefined,
+          search:               search            || undefined,
+          trackingEnabledOnly:  !showAllTracking,
+          companyId:            activeCompanyId   || undefined,
         }),
         getExpiringSoon(30),
       ]);
+      setImblRegions(imblRegionsData);
       setCompanies(companiesData);
       setProvinces(provincesData);
       setRegions(regionsData);
@@ -540,35 +555,33 @@ export default function LicensingPage({ darkMode = false }: { darkMode?: boolean
     return sorted.filter(r => r.province_id === provinceFilter);
   }, [regions, provinceFilter]);
 
-  // Coverage + IMBL filter applied client-side after dashboard data loads
+  // Coverage + IMBL filter applied client-side after dashboard data loads.
+  // IMBL eligibility is now determined by row.imbl_region_names (from DB),
+  // not the old hardcoded IMBL_LOOKUP constant.
   const filteredRows = useMemo(() => {
     switch (coverageFilter) {
-      case "no_license": return rows.filter(r => !r.license_id);
-      case "intermunicipal": return rows.filter(r => r.covered_via_region);
-      case "municipal": return rows.filter(r => r.license_id && !r.covered_via_region);
-      // IMBL eligible = in an IMBL region AND not already covered by intermunicipal
-      case "imbl_eligible": return rows.filter(r => IMBL_LOOKUP[r.municipality_name] && !r.covered_via_region);
-      default: return rows;
+      case "no_license":      return rows.filter(r => !r.license_id);
+      case "intermunicipal":  return rows.filter(r => r.covered_via_region);
+      case "municipal":       return rows.filter(r => r.license_id && !r.covered_via_region);
+      case "imbl_eligible":   return rows.filter(r => (r.imbl_region_names ?? []).length > 0 && !r.covered_via_region);
+      default:                return rows;
     }
   }, [rows, coverageFilter]);
 
   // Sorting applied last. Cost sort hides municipalities with no license (no cost data).
   const sortedRows = useMemo(() => {
     let base = filteredRows;
-
-    // When sorting by cost, hide rows with no license (no cost to compare)
     if (sortField === "cost") {
       base = base.filter(r => r.license_id && r.cost != null);
     }
-
     return [...base].sort((a, b) => {
       let av: string | number = "", bv: string | number = "";
       switch (sortField) {
-        case "municipality_name": av = a.municipality_name; bv = b.municipality_name; break;
-        case "region_name": av = a.region_name; bv = b.region_name; break;
-        case "computed_status": av = a.computed_status ?? ""; bv = b.computed_status ?? ""; break;
-        case "expiry_date": av = a.expiry_date ?? ""; bv = b.expiry_date ?? ""; break;
-        case "cost": av = a.cost ?? 0; bv = b.cost ?? 0; break;
+        case "municipality_name": av = a.municipality_name;     bv = b.municipality_name; break;
+        case "region_name":       av = a.region_name;           bv = b.region_name; break;
+        case "computed_status":   av = a.computed_status ?? ""; bv = b.computed_status ?? ""; break;
+        case "expiry_date":       av = a.expiry_date ?? "";     bv = b.expiry_date ?? ""; break;
+        case "cost":              av = a.cost ?? 0;             bv = b.cost ?? 0; break;
       }
       if (typeof av === "number" && typeof bv === "number") {
         return sortDir === "asc" ? av - bv : bv - av;
@@ -583,20 +596,21 @@ export default function LicensingPage({ darkMode = false }: { darkMode?: boolean
   const counts = useMemo(() => {
     const c = { active: 0, expiringSoon: 0, expired: 0, noLicense: 0 };
     for (const r of rows) {
-      if (r.computed_status === "Active") c.active++;
+      if      (r.computed_status === "Active")        c.active++;
       else if (r.computed_status === "Expiring Soon") c.expiringSoon++;
-      else if (r.computed_status === "Expired") c.expired++;
-      else if (!r.computed_status) c.noLicense++;
+      else if (r.computed_status === "Expired")       c.expired++;
+      else if (!r.computed_status)                    c.noLicense++;
     }
     return c;
   }, [rows]);
 
-  // Coverage pill counts — always reflect full (unfiltered) row set
+  // Coverage pill counts — always reflect full (unfiltered) row set.
+  // imblEligible uses DB data via row.imbl_region_names, not hardcoded lookup.
   const coverageCounts = useMemo(() => ({
-    direct: rows.filter(r => r.license_id && !r.covered_via_region).length,
-    inter: rows.filter(r => r.covered_via_region).length,
-    none: rows.filter(r => !r.license_id).length,
-    imblEligible: rows.filter(r => IMBL_LOOKUP[r.municipality_name] && !r.covered_via_region).length,
+    direct:       rows.filter(r => r.license_id && !r.covered_via_region).length,
+    inter:        rows.filter(r => r.covered_via_region).length,
+    none:         rows.filter(r => !r.license_id).length,
+    imblEligible: rows.filter(r => (r.imbl_region_names ?? []).length > 0 && !r.covered_via_region).length,
   }), [rows]);
 
   // ---------------------------------------------------------------------------
@@ -632,15 +646,17 @@ export default function LicensingPage({ darkMode = false }: { darkMode?: boolean
     setEditingRow(row);
     setFormError(null);
     setForm(row.license_id ? {
-      license_number: row.license_number ?? "",
-      issue_date: "",
-      expiry_date: row.expiry_date ?? "",
-      cost: row.cost != null ? String(row.cost) : "",
-      issuing_authority: "",
-      notes: "",
-      scope: row.license_scope ?? "Municipal",
-      status_override: row.status_override ?? "",
-      company_ids: row.company_ids ?? [],
+      license_number:           row.license_number ?? "",
+      issue_date:               "",
+      expiry_date:              row.expiry_date ?? "",
+      cost:                     row.cost != null ? String(row.cost) : "",
+      issuing_authority:        "",
+      notes:                    "",
+      scope:                    row.license_scope ?? "Municipal",
+      status_override:          row.status_override ?? "",
+      company_ids:              row.company_ids ?? [],
+      issuing_municipality_id:  row.issuing_municipality_id ?? "",
+      imbl_region_id:           row.imbl_region_id ?? "",
     } : emptyForm());
     setMenuOpenId(null);
   };
@@ -654,35 +670,39 @@ export default function LicensingPage({ darkMode = false }: { darkMode?: boolean
       if (editingRow.license_id) {
         // Update existing license
         await updateLicense(editingRow.license_id, {
-          license_number: form.license_number || undefined,
-          expiry_date: form.expiry_date,
-          issue_date: form.issue_date || undefined,
-          cost: form.cost ? parseFloat(form.cost) : undefined,
-          issuing_authority: form.issuing_authority || undefined,
-          notes: form.notes || undefined,
-          status_override: (form.status_override as LicenseStatus) || undefined,
+          license_number:           form.license_number           || undefined,
+          expiry_date:              form.expiry_date,
+          issue_date:               form.issue_date               || undefined,
+          cost:                     form.cost ? parseFloat(form.cost) : undefined,
+          issuing_authority:        form.issuing_authority        || undefined,
+          notes:                    form.notes                    || undefined,
+          status_override:          (form.status_override as LicenseStatus) || undefined,
+          issuing_municipality_id:  form.issuing_municipality_id  || undefined,
+          imbl_region_id:           form.imbl_region_id           || undefined,
         });
         // Sync company assignments — diff current vs desired
         const current = editingRow.company_ids ?? [];
         const desired = form.company_ids;
-        const toAdd = desired.filter(id => !current.includes(id));
+        const toAdd    = desired.filter(id => !current.includes(id));
         const toRemove = current.filter(id => !desired.includes(id));
         await Promise.all([
-          ...toAdd.map(id => addCompanyToLicense(editingRow.license_id!, id)),
+          ...toAdd.map(id    => addCompanyToLicense(editingRow.license_id!, id)),
           ...toRemove.map(id => removeCompanyFromLicense(editingRow.license_id!, id)),
         ]);
       } else {
         // Create new license — scope determines whether to attach to
         // municipality_id (Municipal) or regional_district_id (Intermunicipal)
         const payload: CreateLicensePayload = {
-          scope: form.scope,
-          expiry_date: form.expiry_date,
-          license_number: form.license_number || undefined,
-          issue_date: form.issue_date || undefined,
-          cost: form.cost ? parseFloat(form.cost) : undefined,
-          issuing_authority: form.issuing_authority || undefined,
-          notes: form.notes || undefined,
-          status_override: (form.status_override as LicenseStatus) || undefined,
+          scope:                    form.scope,
+          expiry_date:              form.expiry_date,
+          license_number:           form.license_number           || undefined,
+          issue_date:               form.issue_date               || undefined,
+          cost:                     form.cost ? parseFloat(form.cost) : undefined,
+          issuing_authority:        form.issuing_authority        || undefined,
+          notes:                    form.notes                    || undefined,
+          status_override:          (form.status_override as LicenseStatus) || undefined,
+          issuing_municipality_id:  form.issuing_municipality_id  || undefined,
+          imbl_region_id:           form.imbl_region_id           || undefined,
         };
         if (form.scope === "Municipal") {
           payload.municipality_id = editingRow.municipality_id;
@@ -739,19 +759,19 @@ export default function LicensingPage({ darkMode = false }: { darkMode?: boolean
   };
 
   const coverageOptions: { value: CoverageFilter; label: string; count: number }[] = [
-    { value: "all", label: "All", count: rows.length },
-    { value: "municipal", label: "Direct license", count: coverageCounts.direct },
-    { value: "intermunicipal", label: "Intermunicipal", count: coverageCounts.inter },
-    { value: "no_license", label: "No license", count: coverageCounts.none },
-    { value: "imbl_eligible", label: "✦ IMBL eligible", count: coverageCounts.imblEligible },
+    { value: "all",            label: "All",             count: rows.length },
+    { value: "municipal",      label: "Direct license",  count: coverageCounts.direct },
+    { value: "intermunicipal", label: "Intermunicipal",  count: coverageCounts.inter },
+    { value: "no_license",     label: "No license",      count: coverageCounts.none },
+    { value: "imbl_eligible",  label: "✦ IMBL eligible", count: coverageCounts.imblEligible },
   ];
 
   const sortOptions: { value: SortField; label: string }[] = [
     { value: "municipality_name", label: "Government name" },
-    { value: "region_name", label: "Region" },
-    { value: "computed_status", label: "License status" },
-    { value: "expiry_date", label: "Expiry date" },
-    { value: "cost", label: "Cost (hides unlicensed)" },
+    { value: "region_name",       label: "Region" },
+    { value: "computed_status",   label: "License status" },
+    { value: "expiry_date",       label: "Expiry date" },
+    { value: "cost",              label: "Cost (hides unlicensed)" },
   ];
 
   // ---------------------------------------------------------------------------
@@ -781,7 +801,7 @@ export default function LicensingPage({ darkMode = false }: { darkMode?: boolean
       `}</style>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Header — title + summary stat row                                   */}
+      {/* Header — title + company switcher + summary stat row                */}
       {/* ------------------------------------------------------------------ */}
       <div style={{ borderBottom: `1px solid ${border}`, padding: "28px 32px 22px", background: bg }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
@@ -814,10 +834,10 @@ export default function LicensingPage({ darkMode = false }: { darkMode?: boolean
             )}
           </div>
           <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
-            <SummaryStat label="Active" value={counts.active} color="#2F9E50" muted={muted} />
-            <SummaryStat label="Expiring soon" value={counts.expiringSoon} color="#E2A12E" muted={muted} />
-            <SummaryStat label="Expired" value={counts.expired} color="#D14343" muted={muted} />
-            <SummaryStat label="No license" value={counts.noLicense} color={darkMode ? "#6B7280" : "#C9BC9C"} muted={muted} />
+            <SummaryStat label="Active"        value={counts.active}       color="#2F9E50"                          muted={muted} />
+            <SummaryStat label="Expiring soon" value={counts.expiringSoon} color="#E2A12E"                          muted={muted} />
+            <SummaryStat label="Expired"       value={counts.expired}      color="#D14343"                          muted={muted} />
+            <SummaryStat label="No license"    value={counts.noLicense}    color={darkMode ? "#6B7280" : "#C9BC9C"} muted={muted} />
           </div>
         </div>
       </div>
@@ -927,7 +947,7 @@ export default function LicensingPage({ darkMode = false }: { darkMode?: boolean
             Show disabled
           </label>
 
-          {/* Right-side actions: bulk toggles + CSV export */}
+          {/* Right-side actions: bulk toggles + CSV export + Add Municipality */}
           <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
             {/* Province-level bulk toggle — only when a province is selected and no region */}
             {provinceFilter && !regionFilter && (
@@ -943,11 +963,11 @@ export default function LicensingPage({ darkMode = false }: { darkMode?: boolean
                 <button className="lic-pill" onClick={() => handleRegionBulkToggle(regionFilter, false)}>Disable all in region</button>
               </>
             )}
-            {/* CSV export — exports current filtered + sorted view, including IMBL column */}
+            {/* CSV export — exports current filtered + sorted view */}
             <button className="lic-pill" onClick={() => exportCSV(sortedRows)} title="Export current view as CSV">
               ↓ Export CSV
             </button>
-            {/* Add Municipality (renamed from Add Government) */}
+            {/* Add Municipality — for governments not in the seeded list */}
             <button className="lic-pill" onClick={() => setAddGovOpen(true)}>
               + Add Municipality
             </button>
@@ -1004,13 +1024,13 @@ export default function LicensingPage({ darkMode = false }: { darkMode?: boolean
                 <tr><td colSpan={8} style={{ padding: 32, textAlign: "center", color: muted }}>No governments match these filters.</td></tr>
               ) : (
                 sortedRows.map(row => {
-                  // Determine IMBL badge to show:
-                  // - Blue INTER: already covered by an intermunicipal license
-                  // - Yellow IMBL: eligible for IMBL but not yet enrolled
-                  // - Nothing: not in any IMBL region
-                  const imblRegion = IMBL_LOOKUP[row.municipality_name];
-                  const showInterBadge = row.covered_via_region;
-                  const showImblBadge = imblRegion && !row.covered_via_region;
+                  // Determine which badges to show:
+                  // - Blue 🌐 INTER: already covered by an intermunicipal license
+                  // - Yellow ✦ IMBL: eligible for one or more IMBL regions but not yet enrolled
+                  //   regionNames comes from DB (row.imbl_region_names), not hardcoded constant
+                  const imblRegionNames = row.imbl_region_names ?? [];
+                  const showInterBadge  = row.covered_via_region;
+                  const showImblBadge   = imblRegionNames.length > 0 && !row.covered_via_region;
 
                   return (
                     <tr key={row.municipality_id} className="lic-row" style={{ borderBottom: `1px solid ${border}`, background: surface }}>
@@ -1022,9 +1042,17 @@ export default function LicensingPage({ darkMode = false }: { darkMode?: boolean
                           {/* Blue badge: already covered by an intermunicipal license */}
                           {showInterBadge && <InterBadge darkMode={darkMode} />}
                           {/* Yellow badge: eligible for IMBL but not yet enrolled */}
-                          {showImblBadge && <ImblEligibleBadge regionName={imblRegion} darkMode={darkMode} />}
+                          {showImblBadge && (
+                            <ImblEligibleBadge regionNames={imblRegionNames} darkMode={darkMode} />
+                          )}
                         </div>
                         <div style={{ fontSize: 11.5, color: accent }}>{row.municipality_type}</div>
+                        {/* Show issuing municipality for IMBL-covered rows */}
+                        {row.issuing_municipality_name && row.covered_via_region && (
+                          <div style={{ fontSize: 11, color: muted, marginTop: 2 }}>
+                            Issued by {row.issuing_municipality_name}
+                          </div>
+                        )}
                       </td>
                       <td style={{ padding: "11px 16px" }}>
                         {/* Inline confirm popover — click to toggle tracking */}
@@ -1115,7 +1143,7 @@ export default function LicensingPage({ darkMode = false }: { darkMode?: boolean
           <div style={{
             position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)",
             zIndex: 101, background: surface, border: `1px solid ${border}`,
-            borderRadius: 14, padding: 28, width: 480, maxWidth: "95vw",
+            borderRadius: 14, padding: 28, width: 520, maxWidth: "95vw",
             boxShadow: "0 8px 40px rgba(0,0,0,0.3)", maxHeight: "90vh", overflowY: "auto",
           }}>
             <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 20, fontWeight: 600, margin: "0 0 4px", color: text }}>
@@ -1124,10 +1152,12 @@ export default function LicensingPage({ darkMode = false }: { darkMode?: boolean
             <p style={{ fontSize: 13, color: muted, margin: "0 0 4px" }}>
               {editingRow.municipality_name} · {editingRow.region_name}
             </p>
-            {/* Show IMBL eligibility hint in the modal if applicable */}
-            {IMBL_LOOKUP[editingRow.municipality_name] && !editingRow.covered_via_region && (
+
+            {/* IMBL eligibility hint — shown when municipality is in IMBL regions but not enrolled */}
+            {(editingRow.imbl_region_names ?? []).length > 0 && !editingRow.covered_via_region && (
               <p style={{ fontSize: 12.5, color: darkMode ? "#FBB03B" : "#92600C", margin: "0 0 16px" }}>
-                ✦ This municipality is eligible for the <strong>{IMBL_LOOKUP[editingRow.municipality_name]}</strong> IMBL.
+                ✦ This municipality is eligible for:{" "}
+                <strong>{(editingRow.imbl_region_names ?? []).join(", ")}</strong>.
                 Consider adding an Intermunicipal-scope license to cover the whole region at once.
               </p>
             )}
@@ -1139,13 +1169,65 @@ export default function LicensingPage({ darkMode = false }: { darkMode?: boolean
             )}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+
+              {/* Scope */}
               <div style={{ gridColumn: "1 / -1" }}>
                 <label style={labelStyle}>Scope</label>
-                <select style={inputStyle} value={form.scope} onChange={e => setForm(f => ({ ...f, scope: e.target.value as "Municipal" | "Intermunicipal" }))}>
+                <select style={inputStyle} value={form.scope} onChange={e => setForm(f => ({ ...f, scope: e.target.value as "Municipal" | "Intermunicipal", imbl_region_id: "", issuing_municipality_id: "" }))}>
                   <option value="Municipal">Municipal (this city only)</option>
                   <option value="Intermunicipal">Intermunicipal (entire region)</option>
                 </select>
               </div>
+
+              {/* IMBL region + issuing municipality — only for intermunicipal scope */}
+              {form.scope === "Intermunicipal" && (
+                <>
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <label style={labelStyle}>IMBL Region</label>
+                    <select
+                      style={inputStyle}
+                      value={form.imbl_region_id}
+                      onChange={e => setForm(f => ({ ...f, imbl_region_id: e.target.value, issuing_municipality_id: "" }))}
+                    >
+                      <option value="">Select IMBL region…</option>
+                      {/* Regions this municipality belongs to shown first */}
+                      {imblRegions
+                        .filter(ir => ir.municipalities.some(m => m.id === editingRow.municipality_id))
+                        .map(ir => <option key={ir.id} value={ir.id}>{ir.name}</option>)
+                      }
+                      {/* Other regions shown below with a separator label */}
+                      {imblRegions
+                        .filter(ir => !ir.municipalities.some(m => m.id === editingRow.municipality_id))
+                        .map(ir => <option key={ir.id} value={ir.id}>{ir.name} (not a member)</option>)
+                      }
+                    </select>
+                    {form.imbl_region_id && (
+                      <div style={{ fontSize: 12, color: muted, marginTop: 4 }}>
+                        Covers {imblRegions.find(ir => ir.id === form.imbl_region_id)?.municipalities.length ?? 0} municipalities
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Issuing municipality — who you deal with for this license */}
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <label style={labelStyle}>Issuing Municipality</label>
+                    <select
+                      style={inputStyle}
+                      value={form.issuing_municipality_id}
+                      onChange={e => setForm(f => ({ ...f, issuing_municipality_id: e.target.value }))}
+                    >
+                      <option value="">Select issuing municipality…</option>
+                      {(imblRegions.find(ir => ir.id === form.imbl_region_id)?.municipalities ?? [])
+                        .map(m => <option key={m.id} value={m.id}>{m.name}</option>)
+                      }
+                    </select>
+                    <div style={{ fontSize: 12, color: muted, marginTop: 4 }}>
+                      The city you obtained this license from — who you contact for renewals.
+                    </div>
+                  </div>
+                </>
+              )}
+
               <div>
                 <label style={labelStyle}>License Number</label>
                 <input style={inputStyle} value={form.license_number} onChange={e => setForm(f => ({ ...f, license_number: e.target.value }))} placeholder="e.g. SUR-2026-001" />
@@ -1189,10 +1271,7 @@ export default function LicensingPage({ darkMode = false }: { darkMode?: boolean
                 <label style={labelStyle}>Applies to</label>
                 <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
                   {companies.map(c => (
-                    <label
-                      key={c.id}
-                      style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5, color: text, cursor: "pointer" }}
-                    >
+                    <label key={c.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5, color: text, cursor: "pointer" }}>
                       <input
                         type="checkbox"
                         checked={form.company_ids.includes(c.id)}
@@ -1224,6 +1303,10 @@ export default function LicensingPage({ darkMode = false }: { darkMode?: boolean
           </div>
         </>
       )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Add Municipality modal                                               */}
+      {/* ------------------------------------------------------------------ */}
       {addGovOpen && (
         <AddGovernmentModal
           darkMode={darkMode}
@@ -1237,6 +1320,7 @@ export default function LicensingPage({ darkMode = false }: { darkMode?: boolean
     </div>
   );
 }
+
 // ---------------------------------------------------------------------------
 // SummaryStat — one of the four header counters (Active / Expiring / etc.)
 // ---------------------------------------------------------------------------
@@ -1248,6 +1332,7 @@ function SummaryStat({ label, value, color, muted }: { label: string; value: num
     </div>
   );
 }
+
 // ---------------------------------------------------------------------------
 // Add Government Modal
 // Lets users add a municipality that isn't in the seeded list —
@@ -1271,12 +1356,11 @@ function AddGovernmentModal({
   onClose: () => void;
   onDone: () => void;
 }) {
-  const surface = darkMode ? "#1F2937" : "#FFFFFF";
-  const border = darkMode ? "#374151" : "#E4DFD0";
-  const text = darkMode ? "#F9FAFB" : "#2A2820";
-  const muted = darkMode ? "#9CA3AF" : "#7A7460";
-  const subtle = darkMode ? "#374151" : "#F4F2EC";
-  const inputBg = darkMode ? "#374151" : "#FFFFFF";
+  const surface     = darkMode ? "#1F2937" : "#FFFFFF";
+  const border      = darkMode ? "#374151" : "#E4DFD0";
+  const text        = darkMode ? "#F9FAFB" : "#2A2820";
+  const muted       = darkMode ? "#9CA3AF" : "#7A7460";
+  const inputBg     = darkMode ? "#374151" : "#FFFFFF";
   const inputBorder = darkMode ? "#4B5563" : "#DBD6C8";
 
   const inputStyle: React.CSSProperties = {
@@ -1314,7 +1398,7 @@ function AddGovernmentModal({
   const [scope, setScope] = useState<"Municipal" | "Intermunicipal">("Municipal");
   const [statusOverride, setStatusOverride] = useState<LicenseStatus | "">("");
   const [licenseCompanyIds, setLicenseCompanyIds] = useState<string[]>([]);
-  const [notes, setNotes] = useState("");
+  const [licenseNotes, setLicenseNotes] = useState("");
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1332,13 +1416,12 @@ function AddGovernmentModal({
   ];
 
   const handleSave = async () => {
-    // Validate required fields
-    if (!municipalityName.trim()) { setError("Municipality name is required."); return; }
-    if (provinceMode === "existing" && !selectedProvinceId) { setError("Please select a province."); return; }
+    if (!municipalityName.trim())                                                    { setError("Municipality name is required."); return; }
+    if (provinceMode === "existing" && !selectedProvinceId)                         { setError("Please select a province."); return; }
     if (provinceMode === "new" && (!newProvinceName.trim() || !newProvinceCode.trim())) { setError("New province requires a name and 2-letter code."); return; }
-    if (regionMode === "existing" && !selectedRegionId) { setError("Please select a regional district."); return; }
-    if (regionMode === "new" && !newRegionName.trim()) { setError("New regional district requires a name."); return; }
-    if (addLicense && !expiryDate) { setError("Expiry date is required when adding a license."); return; }
+    if (regionMode === "existing" && !selectedRegionId)                             { setError("Please select a regional district."); return; }
+    if (regionMode === "new" && !newRegionName.trim())                              { setError("New regional district requires a name."); return; }
+    if (addLicense && !expiryDate)                                                  { setError("Expiry date is required when adding a license."); return; }
 
     setSaving(true);
     setError(null);
@@ -1374,22 +1457,22 @@ function AddGovernmentModal({
 
       // Step 3: Create municipality
       const muni = await createMunicipality({
-        name: municipalityName.trim(),
-        municipality_type: municipalityType as any,
-        regional_district_id: regionId,
-        tracking_enabled: true,
+        name:                  municipalityName.trim(),
+        municipality_type:     municipalityType as any,
+        regional_district_id:  regionId,
+        tracking_enabled:      true,
       });
 
       // Step 4: Optionally create license
       if (addLicense && expiryDate) {
         const payload: CreateLicensePayload = {
           scope,
-          expiry_date: expiryDate,
-          license_number: licenseNumber || undefined,
-          issue_date: issueDate || undefined,
-          cost: cost ? parseFloat(cost) : undefined,
-          status_override: (statusOverride as LicenseStatus) || undefined,
-          notes: notes || undefined,
+          expiry_date:    expiryDate,
+          license_number: licenseNumber  || undefined,
+          issue_date:     issueDate      || undefined,
+          cost:           cost ? parseFloat(cost) : undefined,
+          status_override:(statusOverride as LicenseStatus) || undefined,
+          notes:          licenseNotes   || undefined,
         };
         if (scope === "Municipal") {
           payload.municipality_id = muni.id;
@@ -1397,8 +1480,6 @@ function AddGovernmentModal({
           payload.regional_district_id = regionId;
         }
         const createdLicense = await createLicense(payload);
-
-        // Assign companies
         if (licenseCompanyIds.length > 0) {
           await Promise.all(licenseCompanyIds.map(id => addCompanyToLicense(createdLicense.id, id)));
         }
@@ -1424,10 +1505,10 @@ function AddGovernmentModal({
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
           <div>
             <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 20, fontWeight: 600, margin: "0 0 4px", color: text }}>
-              Add Government
+              Add Municipality
             </h2>
             <p style={{ fontSize: 12.5, color: muted, margin: 0 }}>
-              Add a municipality that isn't in the system yet
+              Add a government that isn't in the system yet
             </p>
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: muted, fontSize: 20, lineHeight: 1 }}>✕</button>
@@ -1450,18 +1531,15 @@ function AddGovernmentModal({
             <div style={{ gridColumn: "1 / -1" }}>
               <label style={labelStyle}>Province</label>
               <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                <button
-                  onClick={() => setProvinceMode("existing")}
-                  style={{ fontSize: 12.5, padding: "4px 12px", borderRadius: 6, border: `1px solid ${inputBorder}`, background: provinceMode === "existing" ? (darkMode ? "#3B82F6" : "#2A2820") : "none", color: provinceMode === "existing" ? "#fff" : muted, cursor: "pointer", fontFamily: "inherit" }}
-                >
-                  Existing
-                </button>
-                <button
-                  onClick={() => setProvinceMode("new")}
-                  style={{ fontSize: 12.5, padding: "4px 12px", borderRadius: 6, border: `1px solid ${inputBorder}`, background: provinceMode === "new" ? (darkMode ? "#3B82F6" : "#2A2820") : "none", color: provinceMode === "new" ? "#fff" : muted, cursor: "pointer", fontFamily: "inherit" }}
-                >
-                  + New province
-                </button>
+                {(["existing", "new"] as const).map(mode => (
+                  <button
+                    key={mode}
+                    onClick={() => setProvinceMode(mode)}
+                    style={{ fontSize: 12.5, padding: "4px 12px", borderRadius: 6, border: `1px solid ${inputBorder}`, background: provinceMode === mode ? (darkMode ? "#3B82F6" : "#2A2820") : "none", color: provinceMode === mode ? "#fff" : muted, cursor: "pointer", fontFamily: "inherit" }}
+                  >
+                    {mode === "existing" ? "Existing" : "+ New province"}
+                  </button>
+                ))}
               </div>
               {provinceMode === "existing" ? (
                 <select style={inputStyle} value={selectedProvinceId} onChange={e => { setSelectedProvinceId(e.target.value); setSelectedRegionId(""); }}>
@@ -1480,18 +1558,15 @@ function AddGovernmentModal({
             <div style={{ gridColumn: "1 / -1" }}>
               <label style={labelStyle}>Regional District</label>
               <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                <button
-                  onClick={() => setRegionMode("existing")}
-                  style={{ fontSize: 12.5, padding: "4px 12px", borderRadius: 6, border: `1px solid ${inputBorder}`, background: regionMode === "existing" ? (darkMode ? "#3B82F6" : "#2A2820") : "none", color: regionMode === "existing" ? "#fff" : muted, cursor: "pointer", fontFamily: "inherit" }}
-                >
-                  Existing
-                </button>
-                <button
-                  onClick={() => setRegionMode("new")}
-                  style={{ fontSize: 12.5, padding: "4px 12px", borderRadius: 6, border: `1px solid ${inputBorder}`, background: regionMode === "new" ? (darkMode ? "#3B82F6" : "#2A2820") : "none", color: regionMode === "new" ? "#fff" : muted, cursor: "pointer", fontFamily: "inherit" }}
-                >
-                  + New region
-                </button>
+                {(["existing", "new"] as const).map(mode => (
+                  <button
+                    key={mode}
+                    onClick={() => setRegionMode(mode)}
+                    style={{ fontSize: 12.5, padding: "4px 12px", borderRadius: 6, border: `1px solid ${inputBorder}`, background: regionMode === mode ? (darkMode ? "#3B82F6" : "#2A2820") : "none", color: regionMode === mode ? "#fff" : muted, cursor: "pointer", fontFamily: "inherit" }}
+                  >
+                    {mode === "existing" ? "Existing" : "+ New region"}
+                  </button>
+                ))}
               </div>
               {regionMode === "existing" ? (
                 <select style={inputStyle} value={selectedRegionId} onChange={e => setSelectedRegionId(e.target.value)}>
@@ -1543,7 +1618,7 @@ function AddGovernmentModal({
                 </div>
                 <div>
                   <label style={labelStyle}>Issuing Authority</label>
-                  <input style={inputStyle} placeholder="e.g. City of Red Deer" value={notes} onChange={e => setNotes(e.target.value)} />
+                  <input style={inputStyle} placeholder="e.g. City of Red Deer" value={licenseNotes} onChange={e => setLicenseNotes(e.target.value)} />
                 </div>
                 <div>
                   <label style={labelStyle}>Issue Date</label>
@@ -1605,11 +1680,12 @@ function AddGovernmentModal({
             style={{
               fontSize: 13, padding: "7px 20px", borderRadius: 7, border: "none",
               background: darkMode ? "#3B82F6" : "#2A2820",
-              color: "#fff", fontWeight: 600, cursor: saving ? "not-allowed" : "pointer",
+              color: "#fff", fontWeight: 600,
+              cursor: saving ? "not-allowed" : "pointer",
               opacity: saving ? 0.6 : 1, fontFamily: "inherit",
             }}
           >
-            {saving ? "Saving…" : addLicense ? "Add Government & License" : "Add Government"}
+            {saving ? "Saving…" : addLicense ? "Add Municipality & License" : "Add Municipality"}
           </button>
         </div>
       </div>

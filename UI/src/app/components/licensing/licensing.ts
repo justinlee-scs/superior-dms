@@ -90,6 +90,12 @@ export interface GovernmentLicenseRow {
   cost?: number | null;
   covered_via_region: boolean;
   company_ids: string[];
+  imbl_region_ids: string[];
+  imbl_region_names: string[];
+  issuing_municipality_id?: string | null;
+  issuing_municipality_name?: string | null;
+  imbl_region_id?: string | null;
+  imbl_region_name?: string | null;
 }
 
 export type DashboardStatusFilter = "active" | "inactive" | "all";
@@ -189,6 +195,45 @@ export function bulkToggleTracking(payload: {
   return request("/municipalities/bulk-toggle", { method: "POST", body: JSON.stringify(payload) });
 }
 
+// ---------- IMBL ----------
+export interface ImblRegionMember {
+  id: string;
+  name: string;
+  municipality_type: MunicipalityType;
+  regional_district_id: string;
+}
+
+export interface ImblRegion {
+  id: string;
+  name: string;
+  enabled: boolean;
+  municipalities: ImblRegionMember[];
+}
+
+export function getImblRegions(): Promise<ImblRegion[]> {
+  return request("/imbl-regions");
+}
+
+export function createImblRegion(name: string): Promise<ImblRegion> {
+  return request("/imbl-regions", { method: "POST", body: JSON.stringify({ name }) });
+}
+
+export function updateImblRegion(id: string, payload: { name?: string; enabled?: boolean }): Promise<ImblRegion> {
+  return request(`/imbl-regions/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+
+export function deleteImblRegion(id: string): Promise<void> {
+  return request(`/imbl-regions/${id}`, { method: "DELETE" });
+}
+
+export function addMunicipalityToImblRegion(imblRegionId: string, municipalityId: string): Promise<void> {
+  return request(`/imbl-regions/${imblRegionId}/municipalities/${municipalityId}`, { method: "POST" });
+}
+
+export function removeMunicipalityFromImblRegion(imblRegionId: string, municipalityId: string): Promise<void> {
+  return request(`/imbl-regions/${imblRegionId}/municipalities/${municipalityId}`, { method: "DELETE" });
+}
+
 // ---------- Licenses ----------
 
 export interface ListLicensesParams {
@@ -217,6 +262,8 @@ export interface CreateLicensePayload {
   warning_threshold_days?: number;
   document_reference?: string;
   notes?: string;
+  issuing_municipality_id?: string;
+  imbl_region_id?: string;
 }
 
 export function createLicense(payload: CreateLicensePayload): Promise<License> {

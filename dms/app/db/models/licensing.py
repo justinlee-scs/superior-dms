@@ -55,6 +55,47 @@ license_companies = Table(
     ),
 )
 
+# Association table — links IMBL regions to their member municipalities.
+# A municipality can belong to multiple IMBL regions (e.g. Surrey is in
+# both Metro West and Fraser Valley).
+imbl_region_municipalities = Table(
+    "imbl_region_municipalities",
+    Base.metadata,
+    Column(
+        "imbl_region_id",
+        ForeignKey("imbl_regions.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "municipality_id",
+        ForeignKey("municipalities.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+
+class ImblRegion(Base):
+    """
+    An Inter-Municipal Business License region — a named group of
+    municipalities that participate in a shared IMBL program.
+    Distinct from BC Regional Districts: IMBL regions are defined by
+    the participating municipalities, not by administrative boundaries.
+    A municipality can belong to multiple IMBL regions.
+    """
+
+    __tablename__ = "imbl_regions"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=gen_uuid
+    )
+    name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    municipalities: Mapped[list["Municipality"]] = relationship(
+        secondary=imbl_region_municipalities,
+        back_populates="imbl_regions",
+    )
+
 
 class MunicipalityType(str, enum.Enum):
     CITY = "City"
@@ -189,6 +230,11 @@ class Municipality(Base):
         cascade="all, delete-orphan",
     )
 
+    imbl_regions: Mapped[list["ImblRegion"]] = relationship(
+        secondary=imbl_region_municipalities,
+        back_populates="municipalities",
+    )
+
 
 class License(Base):
     """
@@ -258,6 +304,25 @@ class License(Base):
 
     companies: Mapped[list["Company"]] = relationship(
         secondary=license_companies, back_populates="licenses"
+    )
+
+    # For intermunicipal licenses: the specific municipality within the IMBL
+    # region that issued the license — the one you deal with for renewals.
+    issuing_municipality_id: Mapped[str | None] = mapped_column(
+        ForeignKey("municipalities.id"), nullable=True
+    )
+
+    # The IMBL region this intermunicipal license covers.
+    # When set, all municipalities in this IMBL region are considered covered.
+    imbl_region_id: Mapped[str | None] = mapped_column(
+        ForeignKey("imbl_regions.id"), nullable=True
+    )
+
+    issuing_municipality: Mapped["Municipality | None"] = relationship(
+        foreign_keys=[issuing_municipality_id]
+    )
+    imbl_region: Mapped["ImblRegion | None"] = relationship(
+        foreign_keys=[imbl_region_id]
     )
 
 

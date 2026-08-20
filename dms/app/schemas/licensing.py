@@ -7,8 +7,8 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.db.models.licensing import LicenseScope, LicenseStatus, MunicipalityType
 
-
 # ---------- Province ----------
+
 
 class ProvinceOut(BaseModel):
     id: str
@@ -22,6 +22,7 @@ class ProvinceOut(BaseModel):
 
 # ---------- Regional District ----------
 
+
 class RegionalDistrictOut(BaseModel):
     id: str
     province_id: str
@@ -33,6 +34,7 @@ class RegionalDistrictOut(BaseModel):
 
 
 # ---------- Municipality ----------
+
 
 class MunicipalityCreate(BaseModel):
     name: str
@@ -64,6 +66,7 @@ class MunicipalityOut(BaseModel):
 
 # ---------- License ----------
 
+
 class LicenseCreate(BaseModel):
     scope: LicenseScope
     municipality_id: Optional[str] = None
@@ -77,6 +80,8 @@ class LicenseCreate(BaseModel):
     warning_threshold_days: Optional[int] = None
     document_reference: Optional[str] = None
     notes: Optional[str] = None
+    issuing_municipality_id: Optional[str] = None
+    imbl_region_id: Optional[str] = None
 
     @model_validator(mode="after")
     def check_scope_target(self):
@@ -103,6 +108,8 @@ class LicenseUpdate(BaseModel):
     warning_threshold_days: Optional[int] = None
     document_reference: Optional[str] = None
     notes: Optional[str] = None
+    issuing_municipality_id: Optional[str] = None
+    imbl_region_id: Optional[str] = None
 
 
 class LicenseOut(BaseModel):
@@ -120,6 +127,10 @@ class LicenseOut(BaseModel):
     document_reference: Optional[str] = None
     notes: Optional[str] = None
     company_ids: list[str] = []
+    issuing_municipality_id: Optional[str] = None
+    issuing_municipality_name: Optional[str] = None
+    imbl_region_id: Optional[str] = None
+    imbl_region_name: Optional[str] = None
 
     # Computed (not a DB column) - filled in by the service layer
     computed_status: LicenseStatus
@@ -131,6 +142,7 @@ class LicenseOut(BaseModel):
 
 # ---------- Dashboard row (the main table the UI renders) ----------
 
+
 class GovernmentLicenseRow(BaseModel):
     """
     One row per (municipality, applicable license) for the main dashboard
@@ -139,6 +151,7 @@ class GovernmentLicenseRow(BaseModel):
     If a municipality has neither, it still appears with no license info
     so gaps are visible.
     """
+
     province_name: str
     region_name: str
     municipality_id: str
@@ -156,6 +169,12 @@ class GovernmentLicenseRow(BaseModel):
     cost: Optional[float] = None
     covered_via_region: bool = False  # True if covered by an intermunicipal license
     company_ids: list[str] = []  # which companies this license is assigned to
+    imbl_region_ids: list[str] = []  # which IMBL regions this municipality belongs to
+    imbl_region_names: list[str] = []  # names of those regions
+    issuing_municipality_id: Optional[str] = None  # for IMBL licenses: who issued it
+    issuing_municipality_name: Optional[str] = None
+    imbl_region_id: Optional[str] = None  # which IMBL region the license covers
+    imbl_region_name: Optional[str] = None
 
 
 class BulkToggleRequest(BaseModel):
@@ -168,8 +187,10 @@ class BulkToggleRequest(BaseModel):
         if not self.province_id and not self.regional_district_id:
             raise ValueError("Provide either province_id or regional_district_id.")
         return self
-    
+
+
 # ---------- Company ----------
+
 
 class CompanyOut(BaseModel):
     id: str
@@ -179,3 +200,35 @@ class CompanyOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ---------- IMBL Region ----------
+
+
+class ImblRegionMemberOut(BaseModel):
+    id: str
+    name: str
+    municipality_type: MunicipalityType
+    regional_district_id: str
+
+    class Config:
+        from_attributes = True
+
+
+class ImblRegionOut(BaseModel):
+    id: str
+    name: str
+    enabled: bool
+    municipalities: list[ImblRegionMemberOut] = []
+
+    class Config:
+        from_attributes = True
+
+
+class ImblRegionCreate(BaseModel):
+    name: str
+
+
+class ImblRegionUpdate(BaseModel):
+    name: Optional[str] = None
+    enabled: Optional[bool] = None
