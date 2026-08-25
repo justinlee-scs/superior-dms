@@ -19,8 +19,8 @@ python "${ROOT_DIR}/scripts/training/prepare_labelstudio.py" \
 
 echo "Augmenting datasets with UI feedback..."
 python "${ROOT_DIR}/scripts/training/augment_with_feedback.py" \
-  --doc-class "${TRAIN_DIR}/doc_class.csv" \
-  --tags "${TRAIN_DIR}/tags.csv"
+  --doc-class "${TRAIN_DIR}/doc_class.jsonl" \
+  --tags "${TRAIN_DIR}/tags.jsonl"
 
 if [[ "${SKIP_FIELD_EXTRACTOR:-false}" == "true" ]]; then
   echo "Skipping field extractor training (SKIP_FIELD_EXTRACTOR=true)."
@@ -28,11 +28,11 @@ else
   echo "Building field extractor dataset..."
   python "${ROOT_DIR}/scripts/training/build_field_dataset.py" \
     --input "${OUTPUT_DIR}/labelstudio_export.json" \
-    --output "${TRAIN_DIR}/field_tokens.csv"
+    --output "${TRAIN_DIR}/field_tokens.jsonl"
 
   echo "Training field extractor..."
   python "${ROOT_DIR}/scripts/training/train_field_extractor.py" \
-    --input "${TRAIN_DIR}/field_tokens.csv" \
+    --input "${TRAIN_DIR}/field_tokens.jsonl" \
     --output "${MODEL_DIR}/field_extractor.joblib"
 fi
 
@@ -41,23 +41,23 @@ if [[ "${SKIP_LILT:-true}" == "true" ]]; then
 else
   echo "Training LiLT token classifier..."
   python "${ROOT_DIR}/scripts/training/train_lilt.py" \
-    --input "${TRAIN_DIR}/field_tokens.csv" \
+    --input "${TRAIN_DIR}/field_tokens.jsonl" \
     --output "${MODEL_DIR}/lilt"
 fi
 
 echo "Training document classifier..."
 python "${ROOT_DIR}/scripts/training/train_doc_classifier.py" \
-  --input "${TRAIN_DIR}/doc_class.csv" \
+  --input "${TRAIN_DIR}/doc_class.jsonl" \
   --output "${MODEL_DIR}/doc_classifier.joblib"
 
 echo "Training tagger..."
 python "${ROOT_DIR}/scripts/training/train_tagger.py" \
-  --input "${TRAIN_DIR}/tags.csv" \
+  --input "${TRAIN_DIR}/tags.jsonl" \
   --output "${MODEL_DIR}/tagger.joblib"
 
 echo "Training handwriting classifier..."
 python "${ROOT_DIR}/scripts/training/train_handwriting.py" \
-  --input "${TRAIN_DIR}/handwriting.csv" \
+  --input "${TRAIN_DIR}/handwriting.jsonl" \
   --output "${MODEL_DIR}/handwriting.pt"
 
 if [[ "${SKIP_TROCR:-false}" == "true" ]]; then

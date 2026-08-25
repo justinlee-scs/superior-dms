@@ -19,6 +19,7 @@ def test_pdf_to_images_flattens_nested_lists(monkeypatch: pytest.MonkeyPatch) ->
     img1 = Image.new("RGB", (2, 2))
     img2 = Image.new("RGB", (2, 2))
     monkeypatch.setattr("app.services.extraction.pdf.convert_from_bytes", lambda _b: [img1, [img2]])
+    monkeypatch.setenv("OCR_OPENCV_PDF", "false")
 
     images = pdf_to_images(b"%PDF-1.7")
     assert images == [img1, img2]
@@ -37,8 +38,27 @@ def test_run_tesseract_handles_text_confidence_and_invalid_conf(monkeypatch: pyt
     img2 = Image.new("RGB", (2, 2))
     text, confidence = run_tesseract([img1, img2])
 
-    assert text == "hello world\nignored"
+    assert text == "hello world\n\nignored"
     assert confidence == 85.0
+
+
+def test_run_tesseract_preserves_line_breaks_with_layout_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.services.extraction.ocr.pytesseract.image_to_data",
+        lambda *_a, **_k: {
+            "text": ["invoice", "123", "total", "99.95"],
+            "conf": ["90", "88", "95", "93"],
+            "block_num": [1, 1, 2, 2],
+            "par_num": [1, 1, 1, 1],
+            "line_num": [1, 1, 1, 1],
+        },
+    )
+
+    img = Image.new("RGB", (2, 2))
+    text, confidence = run_tesseract([img])
+
+    assert text == "invoice 123\ntotal 99.95"
+    assert confidence == 91.5
 
 
 def test_tesseract_provider_office_pdf_and_image_paths(monkeypatch: pytest.MonkeyPatch) -> None:

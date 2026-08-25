@@ -34,3 +34,26 @@ output/
 /output/models/
 *.safetensors
 .env
+postgres_data/
+
+# Label Studio and training scratch artifacts
+scripts/training/*-at-*.json
+scripts/training/project-*.json
+scripts/training/*_export.json
+scripts/training/*_tasks.json
+scripts/training/*_smoke*/
+scripts/training/parser_report.json
+scripts/training/augment_with_feedback.py
+scripts/training/build_datasets.py
+scripts/training/build_field_dataset.py
+scripts/training/export_labelstudio.py
+scripts/training/export_pdf_images.py
+scripts/training/export_text_tasks.py
+scripts/training/generate_labelstudio_tasks.sh
+scripts/training/merge_csv_datasets.py
+scripts/training/prepare_labelstudio.py
+scripts/training/run_labelstudio_loop.sh
+scripts/training/run_ocr_server.sh
+scripts/training/eval_*.py
+scripts/training/prepare_*.py
+scripts/training/train_*.py

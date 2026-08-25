@@ -65,6 +65,7 @@ services:
     environment:
       APP_ENV: development
       DATABASE_URL: postgresql+psycopg://dms_user:psqladminpass@db:5432/dms
+      LICENSING_DATABASE_URL: postgresql+psycopg://dms_user:psqladminpass@db:5432/licensing_db
       OBJECT_STORAGE_ENABLED: "true"
       OBJECT_STORAGE_BACKEND: minio
       OBJECT_STORAGE_BUCKET: dms

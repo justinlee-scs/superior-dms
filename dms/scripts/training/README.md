@@ -29,16 +29,48 @@ python scripts/training/prepare_labelstudio.py \
 ```
 
 Outputs:
-- `output/training/doc_class.csv` (text,label)
-- `output/training/tags.csv` (text,tags)
-- `output/training/handwriting.csv` (image_path,label)
+- `output/training/doc_class.jsonl`
+- `output/training/tags.jsonl`
+- `output/training/handwriting.jsonl`
 - `output/training/trocr.jsonl` (image_path,text)
-- `output/training/field_tokens.csv` (token-level field labels)
+- `output/training/field_tokens.jsonl` (token-level field labels)
+
+If you already have a flattened annotation export like `ai-training/data/processed/annotations.json`,
+you can convert it into the same training formats with:
+
+```bash
+python ai-training/scripts/prepare_sroie_invoice_warmstart_json.py \
+  --input-json ai-training/data/processed/annotations.json \
+  --output-dir ai-training/data/processed/dms_annotated \
+  --image-root ai-training/eval-docs
+```
+
+That converter produces:
+- `doc_class.jsonl`
+- `tags.jsonl`
+- `field_tokens.jsonl`
+- `parser_report.json`
+
+For a quick smoke test, add `--max-documents 5`.
+
+To compare OCR text against Docling layout text, pass:
+
+```bash
+python ai-training/scripts/prepare_sroie_invoice_warmstart_json.py \
+  --input-json ai-training/data/processed/annotations.json \
+  --output-dir ai-training/data/processed/dms_annotated_docling \
+  --image-root ai-training/eval-docs \
+  --text-parser docling
+```
+
+Use `--text-parser auto` to try Docling first and fall back to OCR when Docling
+cannot run in the current environment. If you have local Docling artifacts,
+you can point the converter at them with `--docling-artifacts-path /path/to/artifacts`.
 
 Due date tagging (recommended):
 - Add a free-text field in Label Studio named `due_date`.
 - Enter dates as `due_date:YYYY-MM-DD` (example: `due_date:2024-03-15`).
-- `prepare_labelstudio.py` will normalize this into a tag and include it in `tags.csv`.
+- `prepare_labelstudio.py` will normalize this into a tag and include it in `tags.jsonl`.
 
 Example Label Studio config snippet:
 ```xml
@@ -80,7 +112,7 @@ Document classifier:
 
 ```bash
 python scripts/training/train_doc_classifier.py \
-  --input output/training/doc_class.csv \
+  --input output/training/doc_class.jsonl \
   --output output/models/doc_classifier.joblib
 ```
 
@@ -88,7 +120,7 @@ Tagger (multi-label):
 
 ```bash
 python scripts/training/train_tagger.py \
-  --input output/training/tags.csv \
+  --input output/training/tags.jsonl \
   --output output/models/tagger.joblib
 ```
 
@@ -96,7 +128,7 @@ Handwriting classifier:
 
 ```bash
 python scripts/training/train_handwriting.py \
-  --input output/training/handwriting.csv \
+  --input output/training/handwriting.jsonl \
   --output output/models/handwriting.pt
 ```
 
@@ -112,10 +144,10 @@ Field extractor (token classifier):
 ```bash
 python scripts/training/build_field_dataset.py \
   --input output/labelstudio_export.json \
-  --output output/training/field_tokens.csv
+  --output output/training/field_tokens.jsonl
 
 python scripts/training/train_field_extractor.py \
-  --input output/training/field_tokens.csv \
+  --input output/training/field_tokens.jsonl \
   --output output/models/field_extractor.joblib
 ```
 ```
@@ -151,20 +183,20 @@ These scripts produce model files in `output/models/`. You then point the app at
 
 ```bash
 python scripts/training/eval_doc_classifier.py \
-  --input output/training/doc_class.csv \
+  --input output/training/doc_class.jsonl \
   --model output/models/doc_classifier.joblib
 
 python scripts/training/eval_tagger.py \
-  --input output/training/tags.csv \
+  --input output/training/tags.jsonl \
   --model output/models/tagger.joblib
 
 python scripts/training/eval_tagger_thresholds.py \
-  --input output/training/tags.csv \
+  --input output/training/tags.jsonl \
   --model output/models/tagger.joblib \
-  --output output/training/tag_thresholds.csv
+  --output output/training/tag_thresholds.jsonl
 
 python scripts/training/eval_handwriting.py \
-  --input output/training/handwriting.csv \
+  --input output/training/handwriting.jsonl \
   --model output/models/handwriting.pt
 
 python scripts/training/eval_trocr.py \

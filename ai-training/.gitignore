@@ -6,3 +6,27 @@ data/processed/
 models/
 logs/
 eval-docs/
+eval-docs-10/
+results/
+
+# Experimental / scratch scripts
+batch_test.sh
+test_doctr.py
+test_onnxtr.py
+scripts/eval_kie.py
+scripts/eval_*.py
+scripts/prepare_*.py
+scripts/doctr_pipeline.py
+scripts/extract_invoice.py
+scripts/extract_invoice_doctr.py
+scripts/extraction_step_results.py
+scripts/extraction_step_results_no_markdown.py
+scripts/train_doc_classifier_with_rvl.py
+scripts/train_layoutlmv3_kie.py
+scripts/train_lilt_kie.py
+scripts/train_rvl_cdip.py
+
+# Generated outputs from experiments
+*_output.json
+doctr_*_output.json
+onnxtr_output.json
