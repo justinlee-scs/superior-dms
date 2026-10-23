@@ -20,4 +20,5 @@ from app.db.models.user_user_management import user_user_management
 
 from app.db.models.user_permission_override import UserPermissionOverride
 
+from app.db.models.ocr_correction import OCRCorrectionQueue, OCRWordBox, ExtractionFieldCorrection
 #__all__ = ["Document", "DocumentVersion"]

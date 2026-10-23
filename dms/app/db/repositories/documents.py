@@ -5,10 +5,11 @@ import uuid
 from uuid import UUID
 
 from app.db.models import Document, DocumentVersion
-from app.db.models.documents import DocumentType
+from app.db.models.tag_catalog import TagCatalog
 from app.db.models.user import User
 from app.db.models.training_feedback_event import TrainingFeedbackEvent
-from app.db.models.enums import ProcessingStatus, DocumentClass
+from app.db.models.enums import ProcessingStatus
+from app.db.models.ocr_correction import CorrectionStatus, OCRCorrectionQueue, OCRWordBox
 from app.services.extraction.tags import normalize_tag
 
 
@@ -52,7 +53,6 @@ def create_document(
     document = Document(
         id=uuid.uuid4(),
         filename=filename,
-        content_hash=content_hash,
         uploaded_by_user_id=uploaded_by_user_id,
     )
     db.add(document)
@@ -75,6 +75,7 @@ def create_document_version(
     storage_key: str | None = None,
     storage_etag: str | None = None,
     storage_size_bytes: int | None = None,
+    content_hash: str | None = None,
     layout_json: dict | None = None,
     commit: bool = True,
 ) -> DocumentVersion:
@@ -122,7 +123,8 @@ def create_document_version(
         storage_size_bytes=storage_size_bytes
         or (len(file_bytes) if file_bytes is not None else None),
         created_by_user_id=created_by_user_id,
-        layout_json=layout_json,
+        ocr_meta={"layout": layout_json} if layout_json is not None else None,
+        content_hash=content_hash,
         version_number=version_number,
         processing_status=ProcessingStatus.processing,
     )
@@ -206,14 +208,17 @@ def update_processing_results(
         raise ValueError("DocumentVersion not found")
 
     version.extracted_text = extracted_text
-    version.classification = classification
-    version.confidence = confidence
-    version.tags = tags or []
-    version.ocr_raw_confidence = ocr_raw_confidence
-    version.ocr_engine = ocr_engine
-    version.ocr_model_version = ocr_model_version
-    version.ocr_latency_ms = ocr_latency_ms
-    version.due_date = due_date
+    version.document.document_type = classification
+    version.ocr_meta = {
+        **(version.ocr_meta or {}),
+        "confidence": confidence,
+        "raw_confidence": ocr_raw_confidence,
+        "engine": ocr_engine,
+        "model_version": ocr_model_version,
+        "latency_ms": ocr_latency_ms,
+    }
+    version.document.label_tags = tags or []
+    version.document.due_date = due_date
     version.page_count = page_count
     version.processing_status = ProcessingStatus.uploaded
 
@@ -231,7 +236,11 @@ def get_document_by_hash(
         content_hash (type=str): Function argument used by this operation.
     """
     return (
-        db.query(Document).filter(Document.content_hash == content_hash).one_or_none()
+        db.query(Document)
+        .join(DocumentVersion, DocumentVersion.document_id == Document.id)
+        .filter(DocumentVersion.content_hash == content_hash)
+        .order_by(DocumentVersion.created_at.desc())
+        .first()
     )
 
 
@@ -270,107 +279,102 @@ def list_documents(
         db (type=Session): Database session used for persistence operations.
     """
     rows_query = (
-        db.query(
-            Document,
-            DocumentVersion.processing_status,
-            DocumentVersion.classification,
-            DocumentVersion.confidence,
-            DocumentVersion.tags,
-            DocumentVersion.due_date,
-            DocumentVersion.page_count,
-            DocumentVersion.storage_size_bytes,
-            DocumentVersion.workflow_notes,
-            func.coalesce(User.full_name, User.username),
-        )
-        .outerjoin(
-            DocumentVersion,
-            Document.current_version_id == DocumentVersion.id,
-        )
-        .outerjoin(
-            User,
-            Document.uploaded_by_user_id == User.id,
-        )
+        db.query(Document, DocumentVersion, func.coalesce(User.full_name, User.username))
+        .outerjoin(DocumentVersion, Document.current_version_id == DocumentVersion.id)
+        .outerjoin(User, Document.uploaded_by_user_id == User.id)
     )
-
     search = (query or "").strip()
     if search:
         pattern = f"%{search.lower()}%"
-        rows_query = rows_query.filter(
-            or_(
-                func.lower(Document.filename).like(pattern),
-                func.lower(User.username).like(pattern),
-                func.lower(func.coalesce(User.full_name, "")).like(pattern),
-                func.lower(func.coalesce(DocumentVersion.extracted_text, "")).like(
-                    pattern
-                ),
-            )
-        )
-
+        rows_query = rows_query.filter(or_(
+            func.lower(Document.filename).like(pattern),
+            func.lower(User.username).like(pattern),
+            func.lower(func.coalesce(User.full_name, "")).like(pattern),
+            func.lower(func.coalesce(DocumentVersion.extracted_text, "")).like(pattern),
+        ))
     rows = rows_query.order_by(Document.created_at.desc()).all()
-
-    document_ids = [doc.id for doc, *_ in rows]
-    if not document_ids:
-        return []
-
-    versions = (
-        db.query(DocumentVersion.document_id, DocumentVersion.id)
-        .filter(DocumentVersion.document_id.in_(document_ids))
-        .order_by(DocumentVersion.document_id.asc(), DocumentVersion.created_at.asc())
-        .all()
-    )
-
-    version_ids_by_document: dict[UUID, list[UUID]] = {}
-    for document_id, version_id in versions:
-        version_ids_by_document.setdefault(document_id, []).append(version_id)
-
-    return [
-        (
-            doc,
-            processing_status,
-            classification,
-            confidence,
-            tags,
-            due_date,
-            page_count,
-            size_bytes,
-            workflow_notes,
-            uploader_username,
-            len(version_ids_by_document.get(doc.id, [])),
-            (
-                version_ids_by_document.get(doc.id, []).index(doc.current_version_id)
-                + 1
-                if doc.current_version_id
-                and doc.current_version_id in version_ids_by_document.get(doc.id, [])
-                else None
-            ),
-        )
-        for doc, processing_status, classification, confidence, tags, due_date, page_count, size_bytes, workflow_notes, uploader_username in rows
-        if _user_passes_security_clearance(current_user, tags)
-    ]
+    ids = [doc.id for doc, _, _ in rows]
+    version_rows = (db.query(DocumentVersion.document_id, DocumentVersion.id)
+                    .filter(DocumentVersion.document_id.in_(ids))
+                    .order_by(DocumentVersion.document_id, DocumentVersion.created_at).all()) if ids else []
+    ids_by_doc: dict[UUID, list[UUID]] = {}
+    for did, vid in version_rows:
+        ids_by_doc.setdefault(did, []).append(vid)
+    result = []
+    for doc, version, uploader in rows:
+        labels = [tag.name for tag in (doc.tags or []) if tag.kind == "label"]
+        if not _user_passes_security_clearance(current_user, labels):
+            continue
+        ids_for_doc = ids_by_doc.get(doc.id, [])
+        result.append((doc, version.processing_status if version else None,
+                       doc.document_type, (version.ocr_meta or {}).get("confidence") if version else None,
+                       labels, doc.due_date, version.page_count if version else None,
+                       version.storage_size_bytes if version else None, doc.workflow_notes,
+                       uploader, len(ids_for_doc),
+                       ids_for_doc.index(doc.current_version_id) + 1 if doc.current_version_id in ids_for_doc else None))
+    return result
 
 
-def update_document_type(
-    db: Session,
-    document_id: UUID,
-    document_type: str,
-) -> Document | None:
-    """Update document type.
-
-    Parameters:
-        db (type=Session): Database session used for persistence operations.
-        document_id (type=UUID): Identifier used to locate the target record.
-        document_type (type=str): Function argument used by this operation.
-    """
+def set_document_type(db: Session, document_id: UUID, tag_id: UUID) -> Document | None:
     document = db.get(Document, document_id)
-
+    tag = db.get(TagCatalog, tag_id)
     if not document:
         return None
-
-    document.document_type = document_type
+    if not tag or tag.kind != "document_type":
+        raise ValueError("Tag must exist and have kind='document_type'")
+    document.document_type_tag = tag
     db.commit()
     db.refresh(document)
-
     return document
+
+
+def clear_document_type(db: Session, document_id: UUID) -> Document | None:
+    document = db.get(Document, document_id)
+    if not document:
+        return None
+    document.document_type_tag = None
+    db.commit()
+    db.refresh(document)
+    return document
+
+
+def update_document_type(db: Session, document_id: UUID, document_type: str) -> Document | None:
+    document = db.get(Document, document_id)
+    if not document:
+        return None
+    name = str(getattr(document_type, "value", document_type)).lower()
+    tag = db.query(TagCatalog).filter_by(name=name, kind="document_type").one_or_none()
+    if not tag:
+        raise ValueError("Unknown document_type tag")
+    document.document_type_tag = tag
+    db.commit()
+    db.refresh(document)
+    return document
+
+
+def add_tag(db: Session, document_id: UUID, tag_id: UUID) -> list[str]:
+    document = db.get(Document, document_id)
+    tag = db.get(TagCatalog, tag_id)
+    if not document:
+        raise ValueError("Document not found")
+    if not tag or tag.kind != "label":
+        raise ValueError("Tag must exist and have kind='label'")
+    if tag not in document.tags:
+        document.tags.append(tag)
+    db.commit()
+    return sorted(t.name for t in document.tags if t.kind == "label")
+
+
+def remove_tag(db: Session, document_id: UUID, tag_id: UUID) -> list[str]:
+    document = db.get(Document, document_id)
+    tag = db.get(TagCatalog, tag_id)
+    if not document:
+        raise ValueError("Document not found")
+    if not tag or tag.kind != "label":
+        raise ValueError("Tag must exist and have kind='label'")
+    document.tags = [t for t in document.tags if t.id != tag.id]
+    db.commit()
+    return sorted(t.name for t in document.tags if t.kind == "label")
 
 
 def get_document_version(
@@ -418,17 +422,37 @@ def reset_processing_state(
     if not version:
         return None
 
+    # Reprocessing produces a fresh extraction. Clear the previous values so
+    # the UI cannot present stale OCR output while the worker is running.
     version.extracted_text = None
-    version.classification = None
-    version.confidence = None
-    version.ocr_raw_confidence = None
-    version.ocr_engine = None
-    version.ocr_model_version = None
-    version.ocr_latency_ms = None
-    version.tags = []
-    version.due_date = None
+    version.extraction = None
+    version.extraction_raw = None
+    version.ocr_meta = None
     version.page_count = None
     version.processing_status = ProcessingStatus.processing
+
+    document = version.document
+    document.data = {}
+    document.document_type_tag = None
+    document.label_tags = []
+    document.due_date = None
+
+    # Word boxes belong to this OCR run. Keep field correction rows as audit
+    # history, but remove obsolete OCR evidence.
+    db.query(OCRWordBox).filter(
+        OCRWordBox.document_version_id == version.id
+    ).delete(synchronize_session=False)
+
+    # A confirmed correction applies to the old extraction. Require review of
+    # the new OCR result after reprocessing, while preserving the queue row.
+    queue_item = db.query(OCRCorrectionQueue).filter_by(
+        document_version_id=version.id
+    ).one_or_none()
+    if queue_item:
+        queue_item.status = CorrectionStatus.pending
+        queue_item.confirmed_at = None
+        queue_item.confirmed_by = None
+
     db.commit()
     db.refresh(version)
     return version
@@ -444,7 +468,7 @@ def update_document_workflow(
     if not version:
         return None
     version.processing_status = status.value
-    version.workflow_notes = notes.strip() if notes else None
+    version.document.workflow_notes = notes.strip() if notes else None
     db.commit()
     db.refresh(version)
     return version
@@ -455,26 +479,22 @@ def list_upcoming_due_payments(
     *,
     start_date: date,
     end_date: date,
-    limit: int = 50,
+    limit: int | None = None,
 ) -> list[tuple[Document, DocumentVersion]]:
-    """Return upcoming due payments for incoming invoices."""
-    rows = (
+    """Return current document versions with a due date in the requested window."""
+    query = (
         db.query(Document, DocumentVersion)
         .join(DocumentVersion, Document.current_version_id == DocumentVersion.id)
         .filter(
-            DocumentVersion.due_date.isnot(None),
-            DocumentVersion.due_date >= start_date,
-            DocumentVersion.due_date <= end_date,
-            or_(
-                Document.document_type == DocumentType.incoming_invoice,
-                DocumentVersion.classification == DocumentClass.INCOMING_INVOICE,
-            ),
+            Document.due_date.isnot(None),
+            Document.due_date >= start_date,
+            Document.due_date <= end_date,
         )
-        .order_by(DocumentVersion.due_date.asc(), Document.created_at.asc())
-        .limit(limit)
-        .all()
+        .order_by(Document.due_date.asc(), Document.created_at.asc())
     )
-    return rows
+    if limit is not None:
+        query = query.limit(limit)
+    return query.all()
 
 
 def list_existing_tags(
@@ -485,17 +505,12 @@ def list_existing_tags(
     Parameters:
         db (type=Session): Database session used for persistence operations.
     """
-    rows = db.query(DocumentVersion.tags).filter(DocumentVersion.tags.isnot(None)).all()
-    values: set[str] = set()
-    for (tags,) in rows:
-        if not tags:
-            continue
-        for tag in tags:
-            if isinstance(tag, str):
-                normalized = normalize_tag(tag)
-                if normalized:
-                    values.add(normalized)
-    return sorted(values)
+    rows = db.query(TagCatalog).filter(
+        TagCatalog.kind == "label",
+        ~TagCatalog.name.like("due_date:%"),
+        ~TagCatalog.name.like("payment_due_date:%"),
+    ).order_by(TagCatalog.name).all()
+    return [row.name for row in rows]
 
 
 def list_rejected_tags(
@@ -534,66 +549,39 @@ def list_rejected_tags(
     return sorted(tag for tag, count in removal_counts.items() if count >= min_count)
 
 
-def replace_document_version_tags(
-    db: Session,
-    version: DocumentVersion,
-    tags: list[str],
-) -> list[str]:
-    """Handle replace document version tags.
-
-    Parameters:
-        db (type=Session): Database session used for persistence operations.
-        version (type=DocumentVersion): Function argument used by this operation.
-        tags (type=list[str]): Function argument used by this operation.
-    """
-    normalized = sorted({t for t in (normalize_tag(tag) for tag in tags) if t})
-    version.tags = normalized
+def replace_document_version_tags(db: Session, version: DocumentVersion, tags: list[str]) -> list[str]:
+    document = version.document
+    normalized = sorted({
+        t for t in (normalize_tag(tag) for tag in tags)
+        if t and not t.startswith(("due_date:", "payment_due_date:"))
+    })
+    rows = []
+    for name in normalized:
+        row = db.query(TagCatalog).filter_by(name=name).one_or_none()
+        if row is None:
+            row = TagCatalog(name=name, kind="label")
+            db.add(row)
+            db.flush()
+        if row.kind != "label":
+            continue
+        rows.append(row)
+    document.tags = [t for t in document.tags if t.kind != "label"] + rows
     db.commit()
-    db.refresh(version)
-    return version.tags or []
+    return sorted(t.name for t in document.tags if t.kind == "label")
 
 
-def add_document_version_tags(
-    db: Session,
-    version: DocumentVersion,
-    tags: list[str],
-) -> list[str]:
-    """Add document version tags.
-
-    Parameters:
-        db (type=Session): Database session used for persistence operations.
-        version (type=DocumentVersion): Function argument used by this operation.
-        tags (type=list[str]): Function argument used by this operation.
-    """
-    existing = set(version.tags or [])
-    for tag in tags:
-        normalized = normalize_tag(tag)
-        if normalized:
-            existing.add(normalized)
-    version.tags = sorted(existing)
-    db.commit()
-    db.refresh(version)
-    return version.tags or []
+def add_document_version_tags(db: Session, version: DocumentVersion, tags: list[str]) -> list[str]:
+    current = set(version.document.label_tags or [])
+    current.update(
+        t for t in (normalize_tag(tag) for tag in tags)
+        if t and not t.startswith(("due_date:", "payment_due_date:"))
+    )
+    return replace_document_version_tags(db, version, sorted(current))
 
 
-def remove_document_version_tags(
-    db: Session,
-    version: DocumentVersion,
-    tags: list[str],
-) -> list[str]:
-    """Remove document version tags.
-
-    Parameters:
-        db (type=Session): Database session used for persistence operations.
-        version (type=DocumentVersion): Function argument used by this operation.
-        tags (type=list[str]): Function argument used by this operation.
-    """
+def remove_document_version_tags(db: Session, version: DocumentVersion, tags: list[str]) -> list[str]:
     remove = {t for t in (normalize_tag(tag) for tag in tags) if t}
-    current = set(version.tags or [])
-    version.tags = sorted(current - remove)
-    db.commit()
-    db.refresh(version)
-    return version.tags or []
+    return replace_document_version_tags(db, version, sorted(set(version.document.label_tags or []) - remove))
 
 
 def list_document_versions(

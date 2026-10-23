@@ -3,7 +3,6 @@ from sqlalchemy.orm import sessionmaker, Session
 
 import app.db.models
 from app.db.base import Base
-from app.db.licensing_url import get_licensing_database_url
 from app.core.config import settings
 
 DATABASE_URL = settings.database_url
@@ -25,7 +24,7 @@ def get_db():
 
 
 # --- Licensing DB ---
-LICENSING_DATABASE_URL = get_licensing_database_url()
+LICENSING_DATABASE_URL = settings.licensing_database_url
 
 licensing_engine = create_engine(LICENSING_DATABASE_URL, echo=False, future=True, pool_pre_ping=True)
 

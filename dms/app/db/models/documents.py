@@ -1,8 +1,9 @@
 import enum
 import sqlalchemy as sa
-from sqlalchemy import Column, ForeignKey
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Column, ForeignKey, Table
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, object_session
 from datetime import datetime
 
 from app.db.base import Base
@@ -52,9 +53,8 @@ class Document(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True)
     filename = Column(sa.String, nullable=False)
-    created_at = Column(sa.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(sa.DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
-    content_hash = Column(sa.String(64), index=True, nullable=False)
     uploaded_by_user_id = Column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
@@ -62,15 +62,63 @@ class Document(Base):
         index=True,
     )
 
-    document_type = Column(
-        sa.Enum(
-            DocumentType,
-            name="document_type_enum",
-            native_enum=True,
-            validate_strings=True,
-        ),
-        nullable=True,
-    )
+    document_type_tag_id = Column(UUID(as_uuid=True), ForeignKey("tag_catalog.id", ondelete="SET NULL", name="fk_documents_document_type_tag_id"), nullable=True)
+    data = Column(JSONB, nullable=False, default=dict, server_default=sa.text("'{}'::jsonb"))
+    due_date = Column(sa.Date, nullable=True)
+    workflow_notes = Column(sa.Text, nullable=True)
+
+    document_type_tag = relationship("TagCatalog", foreign_keys=[document_type_tag_id])
+    tags = relationship("TagCatalog", secondary="document_tags", lazy="selectin")
+
+    @property
+    def document_type(self):
+        return self.document_type_tag.name if self.document_type_tag else None
+
+    @property
+    def label_tags(self):
+        return [
+            tag.name for tag in (self.tags or [])
+            if tag.kind == "label"
+            and not tag.name.startswith(("due_date:", "payment_due_date:"))
+        ]
+
+    @label_tags.setter
+    def label_tags(self, names):
+        from app.db.models.tag_catalog import TagCatalog
+        db = object_session(self)
+        desired = set(names or [])
+        keep = [
+            tag for tag in (self.tags or [])
+            if tag.kind != "label"
+            and not tag.name.startswith(("due_date:", "payment_due_date:"))
+        ]
+        for name in sorted(desired):
+            row = db.query(TagCatalog).filter_by(name=name).one_or_none() if db else None
+            if row is None and db:
+                row = TagCatalog(name=name, kind="label")
+                db.add(row)
+                db.flush()
+            if row and row.kind == "label":
+                keep.append(row)
+        self.tags = keep
+
+    @document_type.setter
+    def document_type(self, name):
+        if name is None:
+            self.document_type_tag = None
+            return
+        from app.db.models.tag_catalog import TagCatalog
+        db = object_session(self)
+        if db is None:
+            raise ValueError("Document must be attached to a session to set its type")
+        name = str(getattr(name, "value", name)).lower()
+        tag = db.query(TagCatalog).filter_by(name=name, kind="document_type").one_or_none()
+        if tag is None:
+            tag = TagCatalog(name=name, kind="document_type")
+            db.add(tag)
+            db.flush()
+        self.document_type_tag = tag
+
 
     # POINTS TO THE ACTIVE VERSION
     current_version_id = Column(
@@ -100,3 +148,13 @@ class Document(Base):
         foreign_keys=[uploaded_by_user_id],
         lazy="selectin",
     )
+
+
+# Association table added by migration 20260925_0019.
+document_tags = Table(
+    "document_tags",
+    Base.metadata,
+    Column("document_id", UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True),
+    Column("tag_id", UUID(as_uuid=True), ForeignKey("tag_catalog.id", ondelete="CASCADE"), primary_key=True, index=True),
+    Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+)

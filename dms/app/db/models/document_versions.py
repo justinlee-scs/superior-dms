@@ -1,8 +1,8 @@
 import sqlalchemy as sa
 from sqlalchemy import Column, ForeignKey, Text, Float, LargeBinary
 from datetime import datetime
-from app.db.models.enums import DocumentClass, ProcessingStatus
-from sqlalchemy.dialects.postgresql import UUID
+from app.db.models.enums import ProcessingStatus
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 
 from app.db.session import Base
@@ -48,7 +48,7 @@ class DocumentVersion(Base):
     storage_bucket = Column(sa.String(128), nullable=True)
     storage_key = Column(sa.String(512), nullable=True)
     storage_etag = Column(sa.String(128), nullable=True)
-    storage_size_bytes = Column(sa.Integer, nullable=True)
+    storage_size_bytes = Column(sa.BigInteger, nullable=True)
     created_by_user_id = Column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
@@ -58,28 +58,16 @@ class DocumentVersion(Base):
 
     extracted_text = Column(Text, nullable=True)
 
-    due_date = Column(sa.Date, nullable=True)
+    kind = Column(sa.String(16), nullable=False, default="original", server_default="original")
+    content_hash = Column(sa.String, nullable=True, index=True)
 
-    classification = Column(
-        sa.Enum(
-            DocumentClass,
-            name="document_class_enum",
-            native_enum=True,
-        ),
-        nullable=True,
-    )
-
-    confidence = Column(Float, nullable=True)
-    ocr_raw_confidence = Column(Float, nullable=True)
-    ocr_engine = Column(sa.String(64), nullable=True)
-    ocr_model_version = Column(sa.String(128), nullable=True)
-    ocr_latency_ms = Column(sa.Integer, nullable=True)
-
-    tags = Column(sa.JSON, nullable=False, default=list)
+    extraction = Column(JSONB, nullable=True)
+    extraction_raw = Column(JSONB, nullable=True)
+    ocr_meta = Column(JSONB, nullable=True)
 
     page_count = Column(sa.Integer, nullable=True)
 
-    created_at = Column(sa.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(sa.DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
     processing_status = Column(
         sa.Enum(
@@ -92,8 +80,6 @@ class DocumentVersion(Base):
         default=ProcessingStatus.processing,
     )
 
-    layout_json = Column(sa.JSON, nullable=True)
-    workflow_notes = Column(sa.Text, nullable=True)
 
     # THIS relationship uses document_id
     document = relationship(

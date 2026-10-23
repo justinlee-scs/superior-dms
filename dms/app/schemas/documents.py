@@ -27,6 +27,7 @@ class DocumentResponse(BaseModel):
     author: str | None = None
     status: str | None = None
     document_type: str | None = None
+    document_type_tag_id: UUID | None = None
     confidence: float | None = None
     created_at: datetime
     current_version_id: UUID | None = None
@@ -94,12 +95,13 @@ class DocumentRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 class DocumentTypeUpdate(BaseModel):
+    tag_id: UUID | None = None
     """Request payload for updating a document's type.
 
     Parameters:
         document_type (type=DocumentTypeEnum): Document type/category assigned to the record.
     """
-    document_type: DocumentTypeEnum
+    document_type: DocumentTypeEnum | None = None
 
 
 class BulkDownloadRequest(BaseModel):
