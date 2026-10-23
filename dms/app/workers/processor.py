@@ -7,7 +7,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from app.processing.pipeline import process_document
+from app.processing.pipeline import process_document_version as run_pipeline_document_version
 from app.db.repositories.documents import load_document_version_bytes
 from app.db.models.document_versions import DocumentVersion
 from app.db.models.enums import ProcessingStatus
@@ -37,7 +37,7 @@ def process_document_version(db: Session, version_id: str | UUID) -> None:
 
         file_bytes = load_document_version_bytes(db, normalized_version_id)
 
-        process_document(
+        run_pipeline_document_version(
             db=db,
             version_id=normalized_version_id,
             file_bytes=file_bytes,

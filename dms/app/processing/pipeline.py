@@ -1,29 +1,31 @@
-from marshal import version
-import os
 import logging
+import os
 from pathlib import Path
+
 from sqlalchemy.orm import Session
 
 from app.db.models.document_versions import DocumentVersion
-from app.db.models.enums import ProcessingStatus, DocumentClass
 from app.db.models.documents import DocumentType
+from app.db.models.enums import DocumentClass, ProcessingStatus
+from app.db.models.ocr_correction import OCRCorrectionQueue, OCRWordBox, CorrectionStatus
 from app.db.repositories.documents import list_existing_tags, list_rejected_tags
 from app.db.repositories.tags import create_tag_pool_entry
-
+from app.services.extraction.classify import classify_document
+from app.services.extraction.due_dates import extract_due_date, parse_date_value
+from app.services.extraction.doctr_engine import run_doctr_extraction
+from app.services.extraction.field_extractor import (
+    extract_fields,
+    fields_to_tags,
+    normalize_extracted_fields,
+)
 from app.services.extraction.handwriting import is_handwritten
 from app.services.extraction.icr import run_icr_model
-from app.services.extraction.classify import classify_document
 from app.services.extraction.tags import derive_tags, normalize_tag
-from app.services.extraction.due_dates import extract_due_date
-from app.services.extraction.field_extractor import extract_fields, fields_to_tags
-from app.services.extraction.lilt import run_lilt_model
-
 from app.services.extraction.ocr_sync import extract_text_with_metadata
-from app.services.labelstudio.client import LabelStudioClient, LabelStudioConfig
 
 logger = logging.getLogger(__name__)
 
-_LILT_IMAGE_EXTENSIONS = {
+_OCR_IMAGE_EXTENSIONS = {
     ".png",
     ".jpg",
     ".jpeg",
@@ -39,26 +41,26 @@ _LILT_IMAGE_EXTENSIONS = {
 _INVOICE_REQUIRED_TAGS = (
     "vendor",
     "document_date",
-    "payment_due_date",
     "grand_total",
     "invoice_number",
 )
 
 
-def _can_run_lilt(filename: str | None) -> bool:
+def _supports_document_ocr(filename: str | None) -> bool:
     suffix = Path(filename or "").suffix.lower()
-    return suffix in _LILT_IMAGE_EXTENSIONS
+    return suffix in _OCR_IMAGE_EXTENSIONS
 
 
-def _lilt_company_tag_strict() -> bool:
-    return os.getenv("LILT_COMPANY_TAG_STRICT", "true").strip().lower() in {
+def _prefer_doctr_vendor_tag() -> bool:
+    setting = os.getenv("DOCTR_VENDOR_TAG_STRICT", os.getenv("DOCTR_COMPANY_TAG_STRICT", "true"))
+    return setting.strip().lower() in {
         "1",
         "true",
         "yes",
     }
 
 
-def _extract_company_tag_from_fields(fields: dict[str, object] | None) -> str | None:
+def _extract_vendor_tag(fields: dict[str, object] | None) -> str | None:
     if not fields:
         return None
 
@@ -69,7 +71,6 @@ def _extract_company_tag_from_fields(fields: dict[str, object] | None) -> str | 
         "supplier_name",
         "company",
         "company_name",
-        "bill_to",
     )
 
     normalized_map: dict[str, str] = {}
@@ -82,105 +83,54 @@ def _extract_company_tag_from_fields(fields: dict[str, object] | None) -> str | 
 
     for key in preferred_keys:
         if key in normalized_map:
-            tag = normalize_tag(f"company:{normalized_map[key]}")
-            if tag and tag != "company:":
+            tag = normalize_tag(f"vendor:{normalized_map[key]}")
+            if tag and tag != "vendor:":
                 return tag
 
     return None
 
 
-def _label_studio_enabled() -> bool:
-    return os.getenv("LABEL_STUDIO_ENABLED", "false").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-    }
-
-
-def _is_invoice_classification(classification: DocumentClass | None) -> bool:
+def _is_invoice_classification_result(classification: DocumentClass | None) -> bool:
     return classification in {
         DocumentClass.INCOMING_INVOICE,
         DocumentClass.OUTGOING_INVOICE,
     }
 
 
-def _is_invoice_doc_type(document_type: DocumentType | None) -> bool:
+def _is_invoice_document_type(document_type: DocumentType | None) -> bool:
     return document_type in {
         DocumentType.incoming_invoice,
         DocumentType.outgoing_invoice,
     }
 
 
-def _has_prefixed_tag(tags: list[str], prefix: str) -> bool:
+def _has_tag_with_prefix(tags: list[str], prefix: str) -> bool:
     return any(tag.startswith(f"{prefix}:") for tag in tags)
 
 
-def _ensure_invoice_required_tags(tags: list[str]) -> tuple[list[str], list[str]]:
+def _normalize_invoice_required_tags(tags: list[str]) -> tuple[list[str], list[str]]:
     """Normalize invoice tags and return (normalized_tags, missing_required_fields)."""
     normalized = list(tags)
 
-    # Normalize legacy/alternate prefixes to required invoice schema.
-    # company:* -> vendor:*
-    vendor_from_company = next(
-        (t.split(":", 1)[1] for t in normalized if t.startswith("company:")),
-        None,
-    )
-    if vendor_from_company and not _has_prefixed_tag(normalized, "vendor"):
-        normalized.append(f"vendor:{vendor_from_company}")
-
-    # due_date:* -> payment_due_date:*
-    payment_due_from_due_date = next(
-        (t.split(":", 1)[1] for t in normalized if t.startswith("due_date:")),
-        None,
-    )
-    if payment_due_from_due_date and not _has_prefixed_tag(normalized, "payment_due_date"):
-        normalized.append(f"payment_due_date:{payment_due_from_due_date}")
+    normalized = [
+        f"vendor:{tag.split(':', 1)[1]}" if tag.startswith("company:") else tag
+        for tag in normalized
+    ]
 
     missing = [
-        key for key in _INVOICE_REQUIRED_TAGS if not _has_prefixed_tag(normalized, key)
+        key for key in _INVOICE_REQUIRED_TAGS if not _has_tag_with_prefix(normalized, key)
     ]
     return sorted(set(normalized)), missing
 
 
-def _notify_label_studio(*, document_id: str, filename: str, text: str) -> None:
-    if not _label_studio_enabled():
-        return
-    base_url = os.getenv("LABEL_STUDIO_URL", "").strip()
-    api_token = os.getenv("LABEL_STUDIO_API_TOKEN", "").strip()
-    project_id = int(os.getenv("LABEL_STUDIO_PROJECT_ID", "0") or "0")
-    if not base_url or not api_token or project_id <= 0:
-        logger.warning("Label Studio config missing; skipping export.")
-        return
-    client = LabelStudioClient(
-        LabelStudioConfig(
-            base_url=base_url.rstrip("/"),
-            api_token=api_token,
-            project_id=project_id,
-        )
-    )
-    try:
-        client.create_task_for_document(
-            doc_id=document_id, filename=filename, text=text
-        )
-    except Exception as exc:
-        logger.warning("Label Studio export failed: %s", exc)
-
-
-def process_document(
+def process_document_version(
     db: Session,
     version_id: str,
     file_bytes: bytes,
     *,
     commit: bool = True,
 ) -> None:
-    """Process document.
-
-    Parameters:
-        db (type=Session): Database session used for persistence operations.
-        version_id (type=str): Identifier used to locate the target record.
-        file_bytes (type=bytes): Raw file content used for validation or processing.
-        commit (type=bool, default=True): Flag controlling whether to commit the transaction.
-    """
+    """Process a document version through OCR, extraction, and tagging."""
     version = (
         db.query(DocumentVersion).filter(DocumentVersion.id == version_id).one_or_none()
     )
@@ -190,12 +140,13 @@ def process_document(
 
     try:
         logger.info(
-            "Pipeline start version_id=%s filename=%s", version.id, version.document.filename
+            "Pipeline start version_id=%s filename=%s",
+            version.id,
+            version.document.filename,
         )
         version.processing_status = ProcessingStatus.processing
         rejected_tags = set(list_rejected_tags(db))
 
-        # ---- OCR EXTRACTION ----
         logger.info("Pipeline stage=ocr_start version_id=%s", version.id)
         extraction = extract_text_with_metadata(
             file_bytes=file_bytes,
@@ -211,37 +162,58 @@ def process_document(
         text = extraction.text
         confidence = extraction.confidence
 
-        # ---- LiLT STRUCTURED EXTRACTION (PRIMARY FOR SUPPORTED IMAGES) ----
-        lilt_result = None
-        lilt_status = "skipped_unsupported_type"
-        if _can_run_lilt(version.document.filename):
-            try:
-                logger.info("Pipeline stage=lilt_start version_id=%s", version.id)
-                lilt_result = run_lilt_model(
-                    file_bytes=file_bytes,
-                    filename=version.document.filename,
-                )
-                lilt_status = "used" if lilt_result else "empty_result"
-                logger.info(
-                    "Pipeline stage=lilt_done version_id=%s status=%s",
-                    version.id,
-                    lilt_status,
-                )
-            except Exception as exc:
-                lilt_status = "failed_fallback"
-                logger.warning(
-                    "LiLT extraction failed for version %s (%s): %s",
-                    version.id,
-                    version.document.filename,
-                    exc,
-                )
+        # ---- DocTR STRUCTURED EXTRACTION (PRIMARY FOR SUPPORTED IMAGES) ----
+        doctr_result = None
+        doctr_status = "skipped_unsupported_type"
+        if _supports_document_ocr(version.document.filename):
+            # No try/except here on purpose. Zero tolerance means a DocTR
+            # failure on a supported file type fails the whole document -
+            # it propagates to the outer try/except in this function,
+            # which marks processing_status=failed and re-raises. A
+            # silent fallback to plain OCR (no field extraction, no
+            # confidence data) contradicts the "perfect source-of-truth
+            # data" requirement: nobody would know it happened.
+            logger.info("Pipeline stage=doctr_start version_id=%s", version.id)
+            doctr_result = run_doctr_extraction(
+                file_bytes=file_bytes,
+                filename=version.document.filename,
+            )
+            doctr_status = "used" if doctr_result else "empty_result"
+            logger.info(
+                "Pipeline stage=doctr_done version_id=%s status=%s",
+                version.id,
+                doctr_status,
+            )
 
-        # merge LiLT extracted text if available
-        if lilt_result and lilt_result.text:
-            text = lilt_result.text
-            confidence = lilt_result.confidence or confidence
+        if doctr_result and doctr_result.text:
+            text = doctr_result.text
+            confidence = doctr_result.confidence or confidence
 
-        # ---- CLASSIFICATION ----
+        # ---- OCR CONFIDENCE TRACKING + CORRECTION QUEUE ----
+        # DocTR gives per-word confidence that OCR/field_extractor never
+        # did. Zero tolerance: ANY word below threshold (set in
+        # doctr_engine.py) flags the whole document into the queue.
+        logger.info("Pipeline stage=confidence_tracking_start version_id=%s", version.id)
+
+        version.ocr_meta = {
+            **(version.ocr_meta or {}),
+            "confidence_average": getattr(doctr_result, "ocr_confidence_average", None) if doctr_result else None,
+            "confidence_lowest": getattr(doctr_result, "ocr_confidence_lowest", None) if doctr_result else None,
+            "low_confidence": bool(getattr(doctr_result, "ocr_low_confidence", False)) if doctr_result else False,
+            "processing_log": getattr(doctr_result, "processing_log", None) if doctr_result else None,
+        }
+
+        if doctr_result and getattr(doctr_result, "extraction_raw_jsonb", None):
+            version.extraction_raw = doctr_result.extraction_raw_jsonb
+        if doctr_result and doctr_result.fields:
+            version.extraction = normalize_extracted_fields(doctr_result.fields)
+
+        logger.info(
+            "Pipeline stage=confidence_tracking_done version_id=%s low_confidence=%s",
+            version.id,
+            (version.ocr_meta or {}).get("low_confidence"),
+        )
+
         logger.info("Pipeline stage=classification_start version_id=%s", version.id)
         classification = classify_document(text)
         logger.info(
@@ -252,7 +224,6 @@ def process_document(
 
         existing_tags = [tag for tag in list_existing_tags(db) if tag not in rejected_tags]
 
-        # ---- TAG DERIVATION ----
         logger.info("Pipeline stage=tag_derivation_start version_id=%s", version.id)
         derived_tags = set(
             derive_tags(
@@ -264,14 +235,15 @@ def process_document(
             )
         ) - rejected_tags
 
-        # ---- FIELD EXTRACTION (LiLT PRIORITY) ----
         logger.info("Pipeline stage=field_extraction_start version_id=%s", version.id)
         field_values = None
 
-        if lilt_result and lilt_result.fields:
-            field_values = lilt_result.fields
+        if doctr_result and doctr_result.fields:
+            field_values = normalize_extracted_fields(doctr_result.fields)
         else:
-            field_values = extract_fields(file_bytes, version.document.filename)
+            field_values = normalize_extracted_fields(
+                extract_fields(file_bytes, version.document.filename)
+            )
         logger.info(
             "Pipeline stage=field_extraction_done version_id=%s has_fields=%s",
             version.id,
@@ -283,50 +255,63 @@ def process_document(
 
         new_system_tags = derived_tags.union(field_tags)
 
-        existing_tags_set = set(version.tags or [])
-        user_tags = {t for t in existing_tags_set if not t.startswith("system:")}
+        existing_tags_set = set(version.document.label_tags or [])
+        existing_vendor_tags = {t for t in existing_tags_set if t.startswith("vendor:")}
+        user_tags = {t for t in existing_tags_set if not t.startswith(("system:", "company:"))}
+        if not existing_vendor_tags:
+            user_tags.update(
+                "vendor:" + t.split(":", 1)[1]
+                for t in existing_tags_set
+                if t.startswith("company:")
+            )
 
         tags = sorted(user_tags.union(new_system_tags) - rejected_tags)
 
-        company_tag_from_lilt = _extract_company_tag_from_fields(
-            lilt_result.fields if lilt_result else None
+        vendor_tag_from_doctr = _extract_vendor_tag(
+            normalize_extracted_fields(doctr_result.fields) if doctr_result else None
         )
-        company_tag_from_fields = _extract_company_tag_from_fields(field_values)
+        vendor_tag_from_fields = _extract_vendor_tag(field_values)
 
-        company_tag_to_apply = company_tag_from_fields
-        if _can_run_lilt(version.document.filename) and _lilt_company_tag_strict():
-            company_tag_to_apply = company_tag_from_lilt
+        vendor_tag_to_apply = vendor_tag_from_fields
+        if _supports_document_ocr(version.document.filename) and _prefer_doctr_vendor_tag():
+            vendor_tag_to_apply = vendor_tag_from_doctr
 
-        if company_tag_to_apply:
-            tags = [t for t in tags if not t.startswith("company:")]
-            tags.append(company_tag_to_apply)
+        if vendor_tag_to_apply:
+            tags = [t for t in tags if not t.startswith(("company:", "vendor:"))]
+            tags.append(vendor_tag_to_apply)
             tags = sorted(set(tags))
 
-        # ---- DUE DATE ----
         logger.info("Pipeline stage=due_date_start version_id=%s", version.id)
         due_date = None
-        is_invoice = _is_invoice_classification(classification) or _is_invoice_doc_type(
-            version.document.document_type
-        )
+        is_invoice = _is_invoice_classification_result(
+            classification
+        ) or _is_invoice_document_type(version.document.document_type)
 
         if is_invoice:
-            if lilt_result and lilt_result.fields and "due_date" in lilt_result.fields:
-                due_date = lilt_result.fields.get("due_date")
-            else:
+            extracted_due_date = (
+                doctr_result.fields.get("due_date")
+                if doctr_result and doctr_result.fields
+                else None
+            )
+            due_date = parse_date_value(extracted_due_date)
+            if due_date is None:
+                # Ollama returns JSON strings; only persist valid dates and
+                # fall back to the explicit OCR-text parser when needed.
                 due_date = extract_due_date(text)
 
-        if due_date:
-            tags = [t for t in tags if not t.startswith("due_date:")]
-            tags.append(f"due_date:{due_date.isoformat()}")
-            if not any(t.startswith("payment_due_date:") for t in tags):
-                tags.append(f"payment_due_date:{due_date.isoformat()}")
+        # Date is stored once on documents.due_date and edited with the
+        # calendar control; strip legacy/model-generated date labels.
+        tags = [
+            t for t in tags
+            if not t.startswith("due_date:")
+            and not t.startswith("payment_due_date:")
+        ]
         logger.info(
             "Pipeline stage=due_date_done version_id=%s due_date=%s",
             version.id,
             due_date.isoformat() if due_date else "",
         )
 
-        # ---- PAGE COUNT ----
         logger.info("Pipeline stage=page_count_start version_id=%s", version.id)
         page_count = extraction.metadata.get("page_count")
         if page_count is None:
@@ -344,21 +329,22 @@ def process_document(
             page_count,
         )
 
-        # ---- REVIEW FLAG ----
         logger.info("Pipeline stage=review_flag_start version_id=%s", version.id)
         needs_review = False
 
         if confidence is not None and confidence < 0.75:
             needs_review = True
 
-        required_prefixes = ("company:", "project:", "document_type:")
+        required_prefixes = ("vendor:", "project:", "document_type:")
         for prefix in required_prefixes:
             if not any(tag.startswith(prefix) for tag in tags):
                 needs_review = True
                 break
 
         if is_invoice:
-            tags, missing_invoice_fields = _ensure_invoice_required_tags(tags)
+            tags, missing_invoice_fields = _normalize_invoice_required_tags(tags)
+            if due_date is None:
+                missing_invoice_fields.append("due_date")
             if missing_invoice_fields:
                 needs_review = True
 
@@ -366,11 +352,11 @@ def process_document(
             tags.append("needs_review")
 
         if (
-            _can_run_lilt(version.document.filename)
-            and _lilt_company_tag_strict()
-            and not company_tag_from_lilt
+            _supports_document_ocr(version.document.filename)
+            and _prefer_doctr_vendor_tag()
+            and not vendor_tag_from_doctr
         ):
-            tags.append("lilt_company_missing")
+            tags.append("doctr_vendor_missing")
             if "needs_review" not in tags:
                 tags.append("needs_review")
         logger.info(
@@ -379,7 +365,6 @@ def process_document(
             needs_review,
         )
 
-        # ---- TAG POOL ----
         logger.info("Pipeline stage=tag_pool_start version_id=%s", version.id)
         for tag in tags:
             try:
@@ -388,22 +373,77 @@ def process_document(
                 continue
         logger.info("Pipeline stage=tag_pool_done version_id=%s", version.id)
 
-        # ---- ASSIGN ----
         logger.info("Pipeline stage=assign_start version_id=%s", version.id)
         version.extracted_text = text
-        version.classification = classification
-        version.confidence = confidence
-        version.ocr_raw_confidence = extraction.raw_confidence
-        version.ocr_engine = "lilt+ocr"
-        version.ocr_model_version = "lilt"
-        version.ocr_latency_ms = extraction.latency_ms
+        version.ocr_meta = {
+            **(version.ocr_meta or {}),
+            "confidence": confidence,
+            "raw_confidence": extraction.raw_confidence,
+            "engine": doctr_result.engine if doctr_result else "ocr_only",
+            "model_version": doctr_result.engine_meta.get("recognition_arch", "unknown") if doctr_result else "none",
+            "latency_ms": extraction.latency_ms,
+        }
 
-        version.tags = list(tags)
-        version.due_date = due_date
+        is_current_version = (
+            not version.document.current_version_id
+            or version.document.current_version_id == version.id
+        )
+        if is_current_version:
+            version.document.document_type = classification
+            version.document.label_tags = [tag for tag in tags if not tag.startswith("document_type:")]
+            version.document.due_date = due_date
+            # Keep the document-level JSON field store aligned with the
+            # current version's extracted values. Dedicated columns remain
+            # authoritative for document type and due date.
+            document_data = dict(version.document.data or {})
+            document_data.update(version.extraction or {})
+            document_data["document_type"] = version.document.document_type
+            document_data["due_date"] = due_date.isoformat() if due_date else None
+            version.document.data = document_data
+            if (version.document.workflow_notes or "").startswith("Processing failed:"):
+                version.document.workflow_notes = None
         version.page_count = page_count
 
         if version.storage_size_bytes is None and file_bytes is not None:
             version.storage_size_bytes = len(file_bytes)
+
+        # Every successfully processed upload must be reviewed, regardless
+        # of OCR confidence. Keep this at the end of processing so failed
+        # extraction does not leave a queue item that looks ready to review.
+        # The unique-per-version queue row is preserved on reprocessing so
+        # an existing review status is not reset to pending.
+        existing_queue_item = (
+            db.query(OCRCorrectionQueue)
+            .filter(OCRCorrectionQueue.document_version_id == version.id)
+            .one_or_none()
+        )
+        if not existing_queue_item:
+            db.add(OCRCorrectionQueue(
+                document_version_id=version.id,
+                status=CorrectionStatus.pending,
+            ))
+
+            # Word-level evidence is retained for low-confidence OCR only;
+            # high-confidence documents still get a correction queue row.
+            word_boxes = (
+                getattr(doctr_result, "word_boxes", None) or []
+                if (version.ocr_meta or {}).get("low_confidence")
+                else []
+            )
+            for wb in word_boxes:
+                db.add(OCRWordBox(
+                    document_version_id=version.id,
+                    page=wb["page"],
+                    bbox=wb["bbox"],
+                    text_raw=wb["text"],
+                    confidence=wb["confidence"],
+                ))
+            logger.info(
+                "Pipeline stage=correction_queue_created version_id=%s low_confidence=%s word_count=%s",
+                version.id,
+                (version.ocr_meta or {}).get("low_confidence"),
+                len(word_boxes),
+            )
 
         version.processing_status = ProcessingStatus.uploaded
         logger.info(
@@ -413,12 +453,12 @@ def process_document(
             len(tags),
         )
         logger.info(
-            "Document processed version_id=%s filename=%s status=%s lilt=%s lilt_company_tag=%s classification=%s confidence=%s tags=%s company_tag=%s",
+            "Document processed version_id=%s filename=%s status=%s doctr=%s doctr_vendor_tag=%s classification=%s confidence=%s tags=%s vendor_tag=%s",
             version.id,
             version.document.filename,
             version.processing_status.value,
-            lilt_status,
-            company_tag_from_lilt or "",
+            doctr_status,
+            vendor_tag_from_doctr or "",
             (
                 classification.value
                 if hasattr(classification, "value")
@@ -426,18 +466,17 @@ def process_document(
             ),
             confidence,
             len(tags),
-            next((t for t in tags if t.startswith("company:")), ""),
+            next((t for t in tags if t.startswith("vendor:")), ""),
         )
 
-        _notify_label_studio(
-            document_id=str(version.document_id),
-            filename=version.document.filename,
-            text=text,
-        )
-        logger.info("Pipeline stage=label_studio_done version_id=%s", version.id)
-
-    except Exception:
+    except Exception as exc:
         version.processing_status = ProcessingStatus.failed
+        # Flag WHY it failed, not just that it did. workflow_notes is
+        # already surfaced in the existing WorkflowEditor UI, so this is
+        # visible to a person looking at the document - not just a log
+        # line nobody sees. Truncated: this is a note field, not a log.
+        failure_note = f"Processing failed: {exc}"
+        version.document.workflow_notes = failure_note[:2000]
         if commit:
             db.commit()
         else:

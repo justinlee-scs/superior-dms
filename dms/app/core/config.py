@@ -37,6 +37,7 @@ def _load_dotenv_file(path: Path) -> None:
 class Settings:
     app_env: str
     database_url: str
+    licensing_database_url: str
     jwt_secret: str
     jwt_algorithm: str
     access_token_expire_minutes: int
@@ -61,6 +62,8 @@ def _build_settings() -> Settings:
         if app_env == "production":
             raise RuntimeError("DATABASE_URL is required when APP_ENV=production")
         database_url = "postgresql+psycopg://dms_user:dms_password@localhost:5432/dms"
+    
+    licensing_database_url = os.getenv("LICENSING_DATABASE_URL", "").strip()
 
     jwt_secret = os.getenv("JWT_SECRET")
     if not jwt_secret:
@@ -103,6 +106,7 @@ def _build_settings() -> Settings:
     return Settings(
         app_env=app_env,
         database_url=database_url,
+        licensing_database_url=licensing_database_url,
         jwt_secret=jwt_secret,
         jwt_algorithm=jwt_algorithm,
         access_token_expire_minutes=access_token_expire_minutes,

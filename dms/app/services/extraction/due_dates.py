@@ -39,6 +39,17 @@ def _parse_date(value: str) -> date | None:
     return None
 
 
+def parse_date_value(value: object) -> date | None:
+    """Normalize a date value returned by an extractor into ``date``."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        return _parse_date(value)
+    return None
+
+
 def extract_due_date(text: str) -> date | None:
     """Extract a due date from OCR text, preferring explicit due-date labels."""
     if not text:

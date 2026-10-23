@@ -32,9 +32,23 @@ class OCRToken:
 
 
 FIELD_TAG_MAP: dict[str, str] = {
-    "Vendor": "company",
+    # Ollama KIE output uses these snake_case field names. Keep the older
+    # display-name aliases below for the legacy extractor.
+    "company": "vendor",
+    "company_name": "vendor",
+    "vendor": "vendor",
+    "vendor_name": "vendor",
+    "supplier": "vendor",
+    "supplier_name": "vendor",
+    "document_date": "document_date",
+    "grand_total": "grand_total",
+    "invoice_number": "invoice_number",
+    "account_number": "account_number",
+    "gst_number": "gst_number",
+    "pst_number": "pst_number",
+    "Vendor": "vendor",
+    "Company": "vendor",
     "Document Date": "document_date",
-    "Payment Due Date": "due_date",
     "Pre-Tax Line Total": "pretax_total",
     "Post-Tax Line Total": "posttax_total",
     "Grand Total": "grand_total",
@@ -64,6 +78,30 @@ FIELD_TAG_MAP: dict[str, str] = {
 }
 
 ALLOWED_FIELD_TAG_PREFIXES = set(FIELD_TAG_MAP.values())
+_VENDOR_FIELD_ALIASES = ("vendor", "vendor_name", "supplier", "supplier_name", "company", "company_name")
+
+
+def normalize_extracted_fields(fields: dict[str, object] | None) -> dict[str, object]:
+    """Normalize legacy company/supplier field names to the canonical vendor key."""
+    if not fields:
+        return {}
+
+    aliases = set(_VENDOR_FIELD_ALIASES)
+    normalized: dict[str, object] = {}
+    vendor_candidates: dict[str, object] = {}
+    for key, value in fields.items():
+        normalized_key = str(key).strip().lower().replace(" ", "_")
+        if normalized_key in aliases:
+            vendor_candidates[normalized_key] = value
+        else:
+            normalized[key] = value
+    vendor_value = next(
+        (vendor_candidates[name] for name in _VENDOR_FIELD_ALIASES if vendor_candidates.get(name) not in (None, "")),
+        None,
+    )
+    if vendor_value is not None:
+        normalized["vendor"] = vendor_value
+    return normalized
 DATE_FIELD_TAG_PREFIXES = {"due_date", "document_date", "service_date"}
 NUMERIC_FIELD_TAG_PREFIXES = {
     "grand_total",
@@ -142,10 +180,14 @@ def _parse_date(value: str) -> date | None:
     return None
 
 
-def fields_to_tags(fields: dict[str, str]) -> list[str]:
+def fields_to_tags(fields: dict[str, object]) -> list[str]:
     tags: list[str] = []
     for field, raw_value in fields.items():
-        value = _clean_value(raw_value)
+        # Ollama can return nested JSON (notably bill_to); those structures
+        # are useful extraction data but are not safe/meaningful tag values.
+        if not isinstance(raw_value, (str, int, float)):
+            continue
+        value = _clean_value(str(raw_value))
         if not value:
             continue
         prefix = FIELD_TAG_MAP.get(field)
@@ -162,6 +204,9 @@ def fields_to_tags(fields: dict[str, str]) -> list[str]:
                 continue
             if _looks_like_junk_text(value):
                 continue
+            if prefix in {"grand_total", "posttax_total", "pretax_total", "unit_price", "subtotal", "discount"}:
+                # Preserve the decimal boundary after normalize_tag removes punctuation.
+                value = re.sub(r"(?<=\d)\.(?=\d)", "_", value.replace(",", ""))
             tag = f"{prefix}:{value}"
         else:
             if _looks_like_junk_text(value):

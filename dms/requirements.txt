@@ -6,6 +6,7 @@ torch
 pillow
 pdf2image
 pytesseract
+python-doctr
 
 uvicorn
 fastapi

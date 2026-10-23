@@ -14,6 +14,7 @@ RUN apt-get update \
         poppler-utils \
         libjpeg-dev \
         zlib1g-dev \
+        libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/

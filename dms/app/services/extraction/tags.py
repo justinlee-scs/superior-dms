@@ -43,8 +43,9 @@ RESERVED_TAG_PREFIXES = (
     "project:",
     "document_type:",
     "security_clearance:",
-    "company:",
+    "vendor:",
     "due_date:",
+    "payment_due_date:",
 )
 
 MAX_TAG_LENGTH = 80
@@ -105,12 +106,12 @@ def _derive_project_tag(text: str, filename: str | None) -> str:
     return "project:unassigned"
 
 
-def _derive_company_tag(
+def _derive_vendor_tag(
     text: str,
     filename: str | None,
     existing_tags: list[str] | None,
 ) -> str:
-    """Handle derive company tag.
+    """Derive the canonical vendor tag, accepting legacy company aliases.
 
     Parameters:
         text (type=str): Function argument used by this operation.
@@ -124,15 +125,15 @@ def _derive_company_tag(
         words = set(normalized_text.split())
         for raw in existing_tags:
             candidate = normalize_tag(raw)
-            if not candidate or not candidate.startswith("company:"):
+            if not candidate or not candidate.startswith(("vendor:", "company:")):
                 continue
             base = candidate.split(":", 1)[1]
             phrase = re.sub(r"[_-]+", " ", base).strip()
             if len(phrase) >= 3 and phrase in normalized_text:
-                return candidate
+                return "vendor:" + base
             parts = [p for p in phrase.split() if len(p) >= 3]
             if parts and all(part in words for part in parts):
-                return candidate
+                return "vendor:" + base
 
     patterns = (
         r"\bcompany[\s:#-]+([A-Za-z0-9][A-Za-z0-9_.-]{1,63})\b",
@@ -142,17 +143,17 @@ def _derive_company_tag(
     for pattern in patterns:
         match = re.search(pattern, lowered)
         if match:
-            return f"company:{match.group(1)}"
+            return f"vendor:{match.group(1)}"
 
     if filename:
-        # Accept explicit file naming conventions like company_acme_invoice.pdf
+        # Accept legacy company naming and canonical vendor naming.
         base = filename.rsplit("/", 1)[-1].rsplit("\\", 1)[-1].lower()
         match = re.search(
-            r"(?:^|[_\-.])company[_\-.]?([a-z0-9][a-z0-9_.-]{1,63})(?:[_\-.]|$)",
+            r"(?:^|[_\-.])(?:vendor|company)[_\-.]?([a-z0-9][a-z0-9_.-]{1,63})(?:[_\-.]|$)",
             base,
         )
         if match:
-            return f"company:{match.group(1)}"
+            return f"vendor:{match.group(1)}"
 
     return ""
 
@@ -339,9 +340,9 @@ def derive_tags(
 
     # Mandatory tags on every document.
     tags.add(normalize_tag(_derive_project_tag(normalized, filename)))
-    company_tag = normalize_tag(_derive_company_tag(normalized, filename, existing_tags))
-    if company_tag:
-        tags.add(company_tag)
+    vendor_tag = normalize_tag(_derive_vendor_tag(normalized, filename, existing_tags))
+    if vendor_tag:
+        tags.add(vendor_tag)
     tags.add(normalize_tag(_derive_document_type_tag(document_type, classification)))
     tags.add(
         normalize_tag(
