@@ -25,6 +25,8 @@ export const PERMISSION_LABELS: Record<string, string> = {
   "tags.read": "View Tags",
   "tags.edit": "Edit Tags",
   "tags.delete": "Delete Tag Pool Tags",
+  "tags.document_type_create": "Create Document Types",
+  "tags.document_type_delete": "Delete Document Types",
 };
 
 export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
@@ -54,6 +56,8 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   "tags.read": "Can view the tag pool and existing document tags.",
   "tags.edit": "Can add, update, or replace document tags.",
   "tags.delete": "Can delete tags from the global tag pool.",
+  "tags.document_type_create": "Can add options to the document type dropdown.",
+  "tags.document_type_delete": "Can remove unused options from the document type dropdown.",
 };
 
 export function permissionGroup(permissionKey: string): string {

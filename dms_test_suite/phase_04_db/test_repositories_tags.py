@@ -18,9 +18,11 @@ class _Field:
 
 class _TagCatalogStub:
     name = _Field()
+    kind = _Field()
 
-    def __init__(self, name):
+    def __init__(self, name, kind="label"):
         self.name = name
+        self.kind = kind
 
 
 class _Query:
@@ -75,6 +77,7 @@ def test_list_tag_pool_orders_and_filters(monkeypatch: pytest.MonkeyPatch) -> No
 
     assert query_obj.filtered == ("ilike", "%alpha%")
     assert query_obj.ordered is True
+    assert query_obj.ordered is True
     assert tags == ["invoice", "project:alpha"]
 
 
@@ -92,6 +95,7 @@ def test_create_tag_pool_entry_existing_new_and_empty(monkeypatch: pytest.Monkey
     assert db_new.commits == 1
     assert len(db_new.added) == 1
     assert db_new.added[0].name == "project_beta"
+    assert db_new.added[0].kind == "label"
     assert db_new.refreshed == [db_new.added[0]]
 
     with pytest.raises(ValueError):

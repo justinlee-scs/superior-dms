@@ -30,6 +30,8 @@ ROLE_PERMISSION_MAP = {
         "tags.read",
         "tags.edit",
         "tags.delete",
+        "tags.document_type_create",
+        "tags.document_type_delete",
         "document.due_payments",
         "user.password_set_self",
     ],

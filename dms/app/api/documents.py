@@ -37,6 +37,8 @@ from app.db.repositories.documents import (
     replace_document_version_tags,
     update_document_name,
     update_document_type,
+    set_document_type as set_document_type_repo,
+    clear_document_type as clear_document_type_repo,
     update_document_workflow,
     delete_document_version as delete_document_version_repo,
     get_document_version,
@@ -52,6 +54,9 @@ from app.db.repositories.tags import (
     create_tag_pool_entry,
     delete_tag_pool_entry,
     list_tag_pool,
+    list_tag_catalog,
+    create_document_type,
+    delete_document_type,
 )
 
 from app.schemas.documents import (
@@ -80,7 +85,6 @@ from app.schemas.tags import (
     TagPoolResponse,
     TagUpdateRequest,
 )
-from app.processing.pipeline import process_document
 from app.services.extraction.tags import normalize_tag
 from app.services.extraction.office import (
     OFFICE_EXTENSIONS,
@@ -296,6 +300,7 @@ async def upload_document(
             storage_key=storage_ref.key if storage_ref else None,
             storage_etag=storage_ref.etag if storage_ref else None,
             storage_size_bytes=storage_ref.size_bytes if storage_ref else None,
+            content_hash=content_hash,
             commit=False,
         )
 
@@ -312,14 +317,15 @@ async def upload_document(
         author=current_user.full_name or current_user.username,
         status=version.processing_status,
         document_type=document.document_type,
-        confidence=version.confidence,
+        document_type_tag_id=document.document_type_tag_id,
+        confidence=(version.ocr_meta or {}).get("confidence"),
         created_at=document.created_at,
         current_version_id=version.id,
-        tags=version.tags or [],
-        due_date=version.due_date,
+        tags=version.document.label_tags or [],
+        due_date=document.due_date,
         size_bytes=version.storage_size_bytes,
         page_count=version.page_count,
-        workflow_notes=version.workflow_notes,
+        workflow_notes=document.workflow_notes,
         in_workspace=bool(document.in_workspace),
     )
 
@@ -347,6 +353,7 @@ def get_documents(
             author=uploader_username or "System",
             status=processing_status,
             document_type=doc.document_type or CLASSIFICATION,
+            document_type_tag_id=doc.document_type_tag_id,
             confidence=confidence,
             created_at=doc.created_at,
             current_version_id=doc.current_version_id,
@@ -380,6 +387,38 @@ def get_tag_pool(
     # Include tags already present on document versions as part of selectable pool.
     pool.update(list_existing_tags(db=db))
     return TagPoolResponse(tags=sorted(pool))
+
+
+@router.get("/tag-catalog")
+def get_tag_catalog(db: Session = Depends(get_db), _=Depends(require_permission(Permissions.DOCUMENT_TAG_READ))):
+    return [{"id": str(tag.id), "name": tag.name, "kind": tag.kind} for tag in list_tag_catalog(db)]
+
+
+@router.post("/tag-catalog/document-types", status_code=status.HTTP_201_CREATED)
+def create_document_type_option(
+    payload: TagPoolCreateRequest,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permissions.DOCUMENT_TYPE_CREATE)),
+):
+    try:
+        tag = create_document_type(db, name=payload.tag)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"id": str(tag.id), "name": tag.name, "kind": tag.kind}
+
+
+@router.delete("/tag-catalog/document-types/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_document_type_option(
+    tag_id: UUID,
+    db: Session = Depends(get_db),
+    _=Depends(require_permission(Permissions.DOCUMENT_TYPE_DELETE)),
+):
+    try:
+        deleted = delete_document_type(db, tag_id=tag_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Document type not found")
 
 
 @router.post(
@@ -427,14 +466,14 @@ def delete_tag_pool(
 @router.get("/upcoming-due-payments", response_model=list[DuePaymentItem])
 def get_upcoming_due_payments(
     days_ahead: int = 30,
-    limit: int = 50,
+    limit: int | None = None,
     db: Session = Depends(get_db),
     _=Depends(require_permission(Permissions.DOCUMENT_DUE_PAYMENTS)),
 ):
     """Return upcoming due payments for incoming invoices."""
     if days_ahead < 0:
         raise HTTPException(status_code=400, detail="days_ahead must be >= 0")
-    if limit <= 0:
+    if limit is not None and limit <= 0:
         raise HTTPException(status_code=400, detail="limit must be > 0")
 
     start = date.today()
@@ -444,7 +483,7 @@ def get_upcoming_due_payments(
         db=db,
         start_date=start,
         end_date=end,
-        limit=min(limit, 200),
+        limit=min(limit, 200) if limit is not None else None,
     )
 
     return [
@@ -452,10 +491,10 @@ def get_upcoming_due_payments(
             document_id=doc.id,
             version_id=version.id,
             filename=doc.filename,
-            due_date=version.due_date,
+            due_date=version.document.due_date,
         )
         for doc, version in rows
-        if version.due_date is not None
+        if doc.due_date is not None
     ]
 
 
@@ -545,7 +584,7 @@ def get_document(
 
     current_version = get_document_version(db=db, document_id=document_id)
     if not _user_passes_security_clearance(
-        current_user, current_version.tags if current_version else []
+        current_user, current_version.document.label_tags if current_version else []
     ):
         raise HTTPException(status_code=403, detail="Insufficient clearance")
     versions = list_document_versions(db=db, document_id=document_id)
@@ -566,16 +605,17 @@ def get_document(
         ),
         status=current_version.processing_status if current_version else None,
         document_type=document.document_type,
-        confidence=current_version.confidence if current_version else None,
+        document_type_tag_id=document.document_type_tag_id,
+        confidence=(current_version.ocr_meta or {}).get("confidence") if current_version else None,
         created_at=document.created_at,
         current_version_id=document.current_version_id,
         version_count=len(versions) or 1,
         current_version_number=current_version_number or 1,
-        tags=(current_version.tags if current_version else []) or [],
-        due_date=current_version.due_date if current_version else None,
+        tags=(current_version.document.label_tags if current_version else []) or [],
+        due_date=document.due_date,
         size_bytes=current_version.storage_size_bytes if current_version else None,
         page_count=current_version.page_count if current_version else None,
-        workflow_notes=current_version.workflow_notes if current_version else None,
+        workflow_notes=document.workflow_notes,
         in_workspace=bool(document.in_workspace),
     )
 
@@ -602,11 +642,15 @@ def set_document_type(
         current_version.document.document_type if current_version else None
     )
 
-    document = update_document_type(
-        db=db,
-        document_id=document_id,
-        document_type=payload.document_type,
-    )
+    try:
+        if payload.tag_id:
+            document = set_document_type_repo(db, document_id, payload.tag_id)
+        elif payload.document_type:
+            document = update_document_type(db, document_id, payload.document_type)
+        else:
+            document = clear_document_type_repo(db, document_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -621,16 +665,16 @@ def set_document_type(
             document_version_id=current_version.id if current_version else None,
             edited_by_user_id=current_user.id,
             event_type="document_type_set",
-            predicted_tags=current_version.tags if current_version else [],
-            final_tags=current_version.tags if current_version else [],
+            predicted_tags=current_version.document.label_tags if current_version else [],
+            final_tags=current_version.document.label_tags if current_version else [],
             predicted_document_type=old_document_type,
             final_document_type=document.document_type,
             extracted_text_snapshot=(
                 current_version.extracted_text if current_version else None
             ),
-            model_confidence=current_version.confidence if current_version else None,
+            model_confidence=(current_version.ocr_meta or {}).get("confidence") if current_version else None,
             model_version=(
-                current_version.ocr_model_version if current_version else None
+                (current_version.ocr_meta or {}).get("model_version") if current_version else None
             ),
         )
     except Exception:
@@ -646,15 +690,16 @@ def set_document_type(
         ),
         status=current_version.processing_status if current_version else None,
         document_type=document.document_type,
-        confidence=current_version.confidence if current_version else None,
+        document_type_tag_id=document.document_type_tag_id,
+        confidence=(current_version.ocr_meta or {}).get("confidence") if current_version else None,
         created_at=document.created_at,
         current_version_id=document.current_version_id,
         version_count=len(versions) or 1,
-        tags=(current_version.tags if current_version else []) or [],
-        due_date=current_version.due_date if current_version else None,
+        tags=(current_version.document.label_tags if current_version else []) or [],
+        due_date=document.due_date,
         size_bytes=current_version.storage_size_bytes if current_version else None,
         page_count=current_version.page_count if current_version else None,
-        workflow_notes=current_version.workflow_notes if current_version else None,
+        workflow_notes=document.workflow_notes,
         in_workspace=bool(document.in_workspace),
     )
 
@@ -683,7 +728,7 @@ def set_document_workflow(
         document_id=document_id,
         version_id=version.id,
         status=version.processing_status,
-        notes=version.workflow_notes,
+        notes=version.document.workflow_notes,
     )
 
 
@@ -709,16 +754,16 @@ def get_document_output(
         document_id=version.document_id,
         processing_status=version.processing_status,
         extracted_text=version.extracted_text,
-        classification=version.classification,
-        confidence=version.confidence,
-        ocr_raw_confidence=version.ocr_raw_confidence,
-        ocr_engine=version.ocr_engine,
-        ocr_model_version=version.ocr_model_version,
-        ocr_latency_ms=version.ocr_latency_ms,
-        tags=version.tags or [],
-        layout_json=version.layout_json,
+        classification=version.document.document_type,
+        confidence=(version.ocr_meta or {}).get("confidence"),
+        ocr_raw_confidence=(version.ocr_meta or {}).get("raw_confidence"),
+        ocr_engine=(version.ocr_meta or {}).get("engine"),
+        ocr_model_version=(version.ocr_meta or {}).get("model_version"),
+        ocr_latency_ms=(version.ocr_meta or {}).get("latency_ms"),
+        tags=version.document.label_tags or [],
+        layout_json=(version.ocr_meta or {}).get("layout"),
         created_at=version.created_at,
-        due_date=version.due_date,
+        due_date=version.document.due_date,
         page_count=version.page_count,
     )
 
@@ -848,11 +893,11 @@ def get_document_versions(
             version_number=index + 1,
             is_current=document.current_version_id == version.id,
             processing_status=version.processing_status,
-            classification=version.classification,
-            confidence=version.confidence,
-            ocr_engine=version.ocr_engine,
-            ocr_model_version=version.ocr_model_version,
-            tags=version.tags or [],
+            classification=version.document.document_type,
+            confidence=(version.ocr_meta or {}).get("confidence"),
+            ocr_engine=(version.ocr_meta or {}).get("engine"),
+            ocr_model_version=(version.ocr_meta or {}).get("model_version"),
+            tags=version.document.label_tags or [],
             created_at=version.created_at,
             author=(
                 (version.created_by_user.full_name or version.created_by_user.username)
@@ -868,7 +913,7 @@ def get_document_versions(
             ),
             size_bytes=version.storage_size_bytes
             or (len(version.content) if version.content else 0),
-            due_date=version.due_date,
+            due_date=version.document.due_date,
             page_count=version.page_count,
         )
         for index, version in enumerate(versions)
@@ -924,6 +969,9 @@ async def create_new_document_version(
                 detail=f"Failed to store file in object storage: {exc}",
             ) from exc
 
+    from app.services.hash import compute_content_hash
+    version_content_hash = compute_content_hash(file_bytes)
+
     try:
         parsed_layout_json = None
         if layout_json:
@@ -946,6 +994,7 @@ async def create_new_document_version(
             storage_etag=storage_ref.etag if storage_ref else None,
             storage_size_bytes=storage_ref.size_bytes if storage_ref else None,
             layout_json=parsed_layout_json,
+            content_hash=version_content_hash,
             commit=False,
         )
 
@@ -1122,7 +1171,7 @@ def get_document_version_tags(
     return DocumentVersionTagsResponse(
         document_id=document_id,
         version_id=version_id,
-        tags=version.tags or [],
+        tags=version.document.label_tags or [],
     )
 
 
@@ -1151,7 +1200,7 @@ def replace_tags_on_document_version(
     if not version or version.document_id != document_id:
         raise HTTPException(status_code=404, detail="Document version not found")
 
-    old_tags = list(version.tags or [])
+    old_tags = list(version.document.label_tags or [])
     tags = replace_document_version_tags(db=db, version=version, tags=payload.tags)
     try:
         capture_feedback_event(
@@ -1165,8 +1214,8 @@ def replace_tags_on_document_version(
             predicted_document_type=version.document.document_type,
             final_document_type=version.document.document_type,
             extracted_text_snapshot=version.extracted_text,
-            model_confidence=version.confidence,
-            model_version=version.ocr_model_version,
+            model_confidence=(version.ocr_meta or {}).get("confidence"),
+            model_version=(version.ocr_meta or {}).get("model_version"),
         )
     except Exception:
         pass
@@ -1202,7 +1251,7 @@ def add_tags_to_document_version(
     if not version or version.document_id != document_id:
         raise HTTPException(status_code=404, detail="Document version not found")
 
-    old_tags = list(version.tags or [])
+    old_tags = list(version.document.label_tags or [])
     tags = add_document_version_tags(db=db, version=version, tags=payload.tags)
     try:
         capture_feedback_event(
@@ -1216,8 +1265,8 @@ def add_tags_to_document_version(
             predicted_document_type=version.document.document_type,
             final_document_type=version.document.document_type,
             extracted_text_snapshot=version.extracted_text,
-            model_confidence=version.confidence,
-            model_version=version.ocr_model_version,
+            model_confidence=(version.ocr_meta or {}).get("confidence"),
+            model_version=(version.ocr_meta or {}).get("model_version"),
         )
     except Exception:
         pass
@@ -1253,7 +1302,7 @@ def remove_tags_from_document_version(
     if not version or version.document_id != document_id:
         raise HTTPException(status_code=404, detail="Document version not found")
 
-    old_tags = list(version.tags or [])
+    old_tags = list(version.document.label_tags or [])
     tags = remove_document_version_tags(db=db, version=version, tags=payload.tags)
     try:
         capture_feedback_event(
@@ -1267,8 +1316,8 @@ def remove_tags_from_document_version(
             predicted_document_type=version.document.document_type,
             final_document_type=version.document.document_type,
             extracted_text_snapshot=version.extracted_text,
-            model_confidence=version.confidence,
-            model_version=version.ocr_model_version,
+            model_confidence=(version.ocr_meta or {}).get("confidence"),
+            model_version=(version.ocr_meta or {}).get("model_version"),
         )
     except Exception:
         pass
@@ -1309,7 +1358,7 @@ def move_document_project(
         normalized if normalized.startswith("project:") else f"project:{normalized}"
     )
 
-    existing_tags = list(version.tags or [])
+    existing_tags = list(version.document.label_tags or [])
     next_tags = [tag for tag in existing_tags if not tag.startswith("project:")]
     next_tags.append(project_tag)
 
@@ -1355,15 +1404,16 @@ def rename_document(
         ),
         status=current_version.processing_status if current_version else None,
         document_type=document.document_type,
-        confidence=current_version.confidence if current_version else None,
+        document_type_tag_id=document.document_type_tag_id,
+        confidence=(current_version.ocr_meta or {}).get("confidence") if current_version else None,
         created_at=document.created_at,
         current_version_id=document.current_version_id,
         version_count=len(versions) or 1,
-        tags=(current_version.tags if current_version else []) or [],
-        due_date=current_version.due_date if current_version else None,
+        tags=(current_version.document.label_tags if current_version else []) or [],
+        due_date=document.due_date,
         size_bytes=current_version.storage_size_bytes if current_version else None,
         page_count=current_version.page_count if current_version else None,
-        workflow_notes=current_version.workflow_notes if current_version else None,
+        workflow_notes=document.workflow_notes,
         in_workspace=bool(document.in_workspace),
     )
 

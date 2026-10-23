@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.db.models.enums import ProcessingStatus
-from app.processing.pipeline import process_document
+from app.processing.pipeline import process_document_version
 
 
 class _FakeQuery:
@@ -37,15 +37,13 @@ def _version():
     return SimpleNamespace(
         id="v-1",
         document_id="doc-1",
-        document=SimpleNamespace(filename="invoice.pdf", document_type="incoming_invoice"),
+        document=SimpleNamespace(filename="invoice.pdf", document_type="incoming_invoice", label_tags=[], due_date=None, workflow_notes=None),
         extracted_text=None,
-        classification=None,
-        confidence=None,
-        ocr_raw_confidence=None,
-        ocr_engine=None,
-        ocr_model_version=None,
-        ocr_latency_ms=None,
-        tags=[],
+        extraction=None,
+        extraction_raw=None,
+        ocr_meta={},
+        storage_size_bytes=None,
+        page_count=None,
         processing_status=None,
     )
 
@@ -53,7 +51,7 @@ def _version():
 def test_process_document_returns_when_version_missing() -> None:
     db = _FakeDB(version=None)
 
-    process_document(db=db, version_id="missing", file_bytes=b"x", commit=True)
+    process_document_version(db=db, version_id="missing", file_bytes=b"x", commit=True)
 
     assert db.commits == 0
     assert db.flushes == 0
@@ -72,6 +70,9 @@ def test_process_document_success_writes_extraction_and_tags(monkeypatch: pytest
         metadata={"handwriting_confidence": 0.1, "icr_confidence": 0.2},
     )
 
+    monkeypatch.setattr("app.processing.pipeline.list_rejected_tags", lambda _db: [])
+    monkeypatch.setattr("app.processing.pipeline._supports_document_ocr", lambda _filename: False)
+    monkeypatch.setattr("app.processing.pipeline.extract_fields", lambda *_args: {})
     monkeypatch.setattr("app.processing.pipeline.extract_text_with_metadata", lambda **_kwargs: extraction)
     monkeypatch.setattr("app.processing.pipeline.classify_document", lambda text: "invoice")
     monkeypatch.setattr("app.processing.pipeline.list_existing_tags", lambda _db: ["invoice", "project:alpha"])
@@ -81,21 +82,18 @@ def test_process_document_success_writes_extraction_and_tags(monkeypatch: pytest
         lambda *_args, **_kwargs: ["document_type:incoming_invoice", "invoice", "project:alpha", "company:acme"],
     )
 
-    process_document(db=db, version_id="v-1", file_bytes=b"file-bytes", commit=True)
+    process_document_version(db=db, version_id="v-1", file_bytes=b"file-bytes", commit=True)
 
     assert version.extracted_text == "invoice text"
-    assert version.classification == "invoice"
-    assert version.confidence == 0.93
-    assert version.ocr_raw_confidence == 0.89
-    assert version.ocr_engine == "tesseract"
-    assert version.ocr_model_version == "pytesseract"
-    assert version.ocr_latency_ms == 87
-    assert version.tags == [
-        "document_type:incoming_invoice",
+    assert version.document.document_type == "invoice"
+    assert version.ocr_meta["confidence"] == 0.93
+    assert version.ocr_meta["raw_confidence"] == 0.89
+    assert version.ocr_meta["engine"] == "ocr_only"
+    assert version.ocr_meta["model_version"] == "none"
+    assert version.document.label_tags == [
+        "company:acme",
         "invoice",
         "project:alpha",
-        "company:acme",
-        "needs_review",
     ]
     assert version.processing_status == ProcessingStatus.uploaded
     assert db.commits == 1
@@ -109,10 +107,11 @@ def test_process_document_failure_sets_failed_and_commits(monkeypatch: pytest.Mo
     def _raise(**_kwargs):
         raise RuntimeError("ocr crashed")
 
+    monkeypatch.setattr("app.processing.pipeline.list_rejected_tags", lambda _db: [])
     monkeypatch.setattr("app.processing.pipeline.extract_text_with_metadata", _raise)
 
     with pytest.raises(RuntimeError):
-        process_document(db=db, version_id="v-1", file_bytes=b"file-bytes", commit=True)
+        process_document_version(db=db, version_id="v-1", file_bytes=b"file-bytes", commit=True)
 
     assert version.processing_status == ProcessingStatus.failed
     assert db.commits == 1
@@ -128,10 +127,11 @@ def test_process_document_failure_sets_failed_and_flushes_when_commit_false(
     def _raise(**_kwargs):
         raise RuntimeError("ocr crashed")
 
+    monkeypatch.setattr("app.processing.pipeline.list_rejected_tags", lambda _db: [])
     monkeypatch.setattr("app.processing.pipeline.extract_text_with_metadata", _raise)
 
     with pytest.raises(RuntimeError):
-        process_document(db=db, version_id="v-1", file_bytes=b"file-bytes", commit=False)
+        process_document_version(db=db, version_id="v-1", file_bytes=b"file-bytes", commit=False)
 
     assert version.processing_status == ProcessingStatus.failed
     assert db.commits == 0
@@ -150,6 +150,9 @@ def test_process_document_success_flushes_when_commit_false(monkeypatch: pytest.
         latency_ms=1,
         metadata={},
     )
+    monkeypatch.setattr("app.processing.pipeline.list_rejected_tags", lambda _db: [])
+    monkeypatch.setattr("app.processing.pipeline._supports_document_ocr", lambda _filename: False)
+    monkeypatch.setattr("app.processing.pipeline.extract_fields", lambda *_args: {})
     monkeypatch.setattr("app.processing.pipeline.extract_text_with_metadata", lambda **_kwargs: extraction)
     monkeypatch.setattr("app.processing.pipeline.classify_document", lambda _text: "unknown")
     monkeypatch.setattr("app.processing.pipeline.list_existing_tags", lambda _db: [])
@@ -159,7 +162,7 @@ def test_process_document_success_flushes_when_commit_false(monkeypatch: pytest.
         lambda *_a, **_k: ["document_type:document", "project:alpha", "company:acme"],
     )
 
-    process_document(db=db, version_id="v-1", file_bytes=b"x", commit=False)
+    process_document_version(db=db, version_id="v-1", file_bytes=b"x", commit=False)
 
     assert version.processing_status == ProcessingStatus.uploaded
     assert db.commits == 0

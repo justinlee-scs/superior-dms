@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { DocumentCard, type Document } from "@/app/components/document-card";
-import { FileText, Image, FileSpreadsheet, File } from "lucide-react";
+import { FileText } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { MoveProjectDialog } from "@/app/components/move-project-dialog";
 
@@ -19,31 +19,15 @@ interface GroupedDocumentsProps {
 }
 
 const getDocumentTypeLabel = (type: string) => {
-  if (type.includes("pdf")) return "PDF Documents";
-  if (type.includes("document")) return "Documents";
-  if (type.includes("spreadsheet") || type.includes("excel"))
-    return "Spreadsheets";
-  if (type.includes("image")) return "Images";
-  return "Other Files";
+  if (!type || type === "Other") return "Other";
+  return type
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 };
 
-const getDocumentTypeIcon = (type: string) => {
-  if (type.includes("pdf")) return FileText;
-  if (type.includes("document")) return FileText;
-  if (type.includes("spreadsheet") || type.includes("excel"))
-    return FileSpreadsheet;
-  if (type.includes("image")) return Image;
-  return File;
-};
-
-const getTypeCategory = (type: string) => {
-  if (type.includes("pdf")) return "pdf";
-  if (type.includes("document")) return "document";
-  if (type.includes("spreadsheet") || type.includes("excel"))
-    return "spreadsheet";
-  if (type.includes("image")) return "image";
-  return "other";
-};
+const getDocumentTypeIcon = (_type: string) => FileText;
 
 export function GroupedDocuments({
   documents,

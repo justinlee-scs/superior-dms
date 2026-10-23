@@ -8,6 +8,7 @@ from app.api.processing import router as processing_router
 from app.api.labelstudio_ml import router as labelstudio_router
 from app.api.admin_training import router as admin_training_router
 from app.api.licensing import router as licensing_router
+from app.api.correction_queue import router as correction_queue_router
 
 import app.db.models
 
@@ -38,7 +39,7 @@ app.include_router(rbac_router, prefix="/rbac")
 app.include_router(labelstudio_router)
 app.include_router(admin_training_router)
 app.include_router(licensing_router)
-
+app.include_router(correction_queue_router)
 
 @app.on_event("startup")
 def _startup_jobs() -> None:

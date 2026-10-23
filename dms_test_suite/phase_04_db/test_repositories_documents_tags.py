@@ -1,66 +1,73 @@
 from types import SimpleNamespace
+from uuid import uuid4
 
-from app.db.repositories.documents import (
-    add_document_version_tags,
-    list_existing_tags,
-    remove_document_version_tags,
-    replace_document_version_tags,
-)
+import pytest
+
+from app.db.repositories import documents as repo
 
 
-class _FakeQuery:
-    def __init__(self, rows):
-        self._rows = rows
-
-    def filter(self, *_args, **_kwargs):
-        return self
-
-    def all(self):
-        return self._rows
+class _Tag:
+    def __init__(self, id, name, kind="label"):
+        self.id, self.name, self.kind = id, name, kind
 
 
-class _FakeDB:
-    def __init__(self, rows=None):
-        self.rows = rows or []
+class _Document:
+    def __init__(self, tags=None):
+        self.tags = list(tags or [])
+
+
+class _DB:
+    def __init__(self, document=None, tags=None):
+        self.document = document
+        self.tags = {tag.id: tag for tag in (tags or [])}
         self.commits = 0
-        self.refreshed = []
 
-    def query(self, *_args, **_kwargs):
-        return _FakeQuery(self.rows)
+    def get(self, model, key):
+        return self.document if model is repo.Document else self.tags.get(key)
 
     def commit(self):
         self.commits += 1
 
-    def refresh(self, obj):
-        self.refreshed.append(obj)
 
+def test_add_remove_and_set_type_validate_catalog_entries(monkeypatch):
+    monkeypatch.setattr(repo, "Document", object)
+    monkeypatch.setattr(repo, "TagCatalog", type("TagCatalog", (), {}))
+    document_id, label_id, type_id, wrong_id = (uuid4() for _ in range(4))
+    label = _Tag(label_id, "invoice")
+    doc_type = _Tag(type_id, "invoice", "document_type")
+    wrong_kind = _Tag(wrong_id, "wrong")
+    document = _Document()
+    db = _DB(document, [label, doc_type, wrong_kind])
 
-def test_list_existing_tags_normalizes_deduplicates_and_sorts() -> None:
-    db = _FakeDB(
-        rows=[
-            (["  Project:Alpha  ", "Invoice", "bad*&tag"],),
-            (None,),
-            (["invoice", "project:alpha", ""],),
-        ]
-    )
-
-    tags = list_existing_tags(db)
-
-    assert tags == ["badtag", "invoice", "project:alpha"]
-
-
-def test_replace_add_remove_document_version_tags() -> None:
-    db = _FakeDB()
-    version = SimpleNamespace(tags=["invoice"])
-
-    replaced = replace_document_version_tags(db, version, [" Invoice ", "project:Alpha", ""])
-    assert replaced == ["invoice", "project:alpha"]
-
-    added = add_document_version_tags(db, version, ["invoice", "payment", "Payment", " "])
-    assert added == ["invoice", "payment", "project:alpha"]
-
-    removed = remove_document_version_tags(db, version, ["payment", "does-not-exist"])
-    assert removed == ["invoice", "project:alpha"]
-
+    assert repo.add_tag(db, document_id, label_id) == ["invoice"]
+    assert repo.add_tag(db, document_id, label_id) == ["invoice"]
+    assert repo.remove_tag(db, document_id, label_id) == []
+    with pytest.raises(ValueError, match="kind='label'"):
+        repo.add_tag(db, document_id, type_id)
+    with pytest.raises(ValueError, match="kind='label'"):
+        repo.remove_tag(db, document_id, uuid4())
     assert db.commits == 3
-    assert db.refreshed == [version, version, version]
+
+    # set_document_type uses get() for the actual mapped Document/TagCatalog classes.
+    # Exercise its validation independently with model sentinels.
+    class DocumentSentinel: pass
+    class TagSentinel: pass
+    monkeypatch.setattr(repo, "Document", DocumentSentinel)
+    monkeypatch.setattr(repo, "TagCatalog", TagSentinel)
+    class TypeDB:
+        def get(self, model, key):
+            return document if model is DocumentSentinel else doc_type if key == type_id else wrong_kind
+        def commit(self): pass
+        def refresh(self, value): pass
+    typed = TypeDB()
+    assert repo.set_document_type(typed, document_id, type_id) is document
+    assert document.document_type_tag is doc_type
+    with pytest.raises(ValueError, match="kind='document_type'"):
+        repo.set_document_type(typed, document_id, wrong_id)
+
+def test_document_tag_operations_fail_for_missing_document(monkeypatch):
+    monkeypatch.setattr(repo, "Document", object)
+    monkeypatch.setattr(repo, "TagCatalog", object)
+    db = _DB(None)
+    with pytest.raises(ValueError, match="Document not found"):
+        repo.add_tag(db, uuid4(), uuid4())

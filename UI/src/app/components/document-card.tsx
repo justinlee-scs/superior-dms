@@ -21,6 +21,7 @@ import {
 } from "@/app/components/ui/dropdown-menu";
 import { formatBytes, formatLocalDateFromDateOnly, formatPageCount } from "@/lib/format";
 import { normalizeWorkflowStatus } from "@/lib/dms";
+import { tagsForDisplay } from "@/lib/tag-display";
 import { MoveProjectDialog } from "@/app/components/move-project-dialog";
 import { RenameDocumentDialog } from "@/app/components/rename-document-dialog";
 
@@ -36,6 +37,7 @@ export interface Document {
   workflow: string;
   project: string;
   documentType?: string;
+  documentTypeTagId?: string | null;
   vendor?: string;
   projectNumber?: string;
   currentVersionId?: string;
@@ -105,6 +107,22 @@ const getWorkflowIcon = (workflow: string) => {
   }
 };
 
+function formatTagLabel(tag: string): string {
+  const colon = tag.indexOf(":");
+  if (colon < 0) return tag.replace(/_/g, " ");
+  const kind = tag.slice(0, colon).replace(/_/g, " ");
+  const value = tag.slice(colon + 1).replace(/_/g, " ");
+  return `${kind.charAt(0).toUpperCase()}${kind.slice(1)}: ${value}`;
+}
+
+function formatDocumentType(type: string): string {
+  return type
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 export function DocumentCard({
   document,
   onPreview,
@@ -119,6 +137,7 @@ export function DocumentCard({
   darkMode,
 }: DocumentCardProps) {
   const FileIcon = getFileIcon(document.type);
+  const displayedTags = tagsForDisplay(document.tags);
   const [moveProjectOpen, setMoveProjectOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
 
@@ -137,6 +156,24 @@ export function DocumentCard({
           <div className={`text-xs truncate ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
             {document.author} • {formatLocalDateFromDateOnly(document.date)} • {formatPageCount(document.pageCount)} • {formatBytes(document.sizeBytes)}
           </div>
+          {document.documentType && (
+            <div className={`mt-1 text-xs ${darkMode ? "text-indigo-300" : "text-indigo-700"}`}>
+              Type: {formatDocumentType(document.documentType)}
+            </div>
+          )}
+          {displayedTags.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1" aria-label="Document tags">
+              {displayedTags.map((tag) => (
+                <span
+                  key={tag}
+                  title={tag}
+                  className={`inline-flex max-w-full items-center rounded px-1.5 py-0.5 text-[10px] leading-4 ${darkMode ? "bg-gray-700 text-gray-200" : "bg-gray-100 text-gray-700"}`}
+                >
+                  <span className="truncate">{formatTagLabel(tag)}</span>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Workflow Badge */}

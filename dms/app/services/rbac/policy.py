@@ -21,6 +21,7 @@ class Permissions:
         DOCUMENT_TAG_EDIT: Parameter.
         DOCUMENT_TAG_DELETE: Parameter.
         DOCUMENT_DUE_PAYMENTS: Parameter.
+        DOCUMENT_CORRECTION_REVIEW: Parameter.
         WORKFLOW_ASSIGN: Parameter.
         WORKFLOW_ADVANCE: Parameter.
         ADMIN_USERS: Parameter.
@@ -46,7 +47,10 @@ class Permissions:
     DOCUMENT_TAG_READ = "tags.read"
     DOCUMENT_TAG_EDIT = "tags.edit"
     DOCUMENT_TAG_DELETE = "tags.delete"
+    DOCUMENT_TYPE_CREATE = "tags.document_type_create"
+    DOCUMENT_TYPE_DELETE = "tags.document_type_delete"
     DOCUMENT_DUE_PAYMENTS = "document.due_payments"
+    DOCUMENT_CORRECTION_REVIEW = "document.correction_review" 
     USER_PASSWORD_SET_SELF = "user.password_set_self"
     USER_PASSWORD_CHANGE_OTHER = "user.password_change_other"
 

@@ -337,11 +337,9 @@ export async function bulkDownloadDocuments(documentIds: string[]) {
   return res.blob();
 }
 
-export function listUpcomingDuePayments(daysAhead = 30, limit = 50) {
-  const params = new URLSearchParams({
-    days_ahead: String(daysAhead),
-    limit: String(limit),
-  });
+export function listUpcomingDuePayments(daysAhead = 30, limit?: number) {
+  const params = new URLSearchParams({ days_ahead: String(daysAhead) });
+  if (limit !== undefined) params.set("limit", String(limit));
   return apiFetch<DuePaymentItem[]>(`/documents/upcoming-due-payments?${params.toString()}`);
 }
 
@@ -392,5 +390,30 @@ export function updateDocumentWorkflow(
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+  });
+}
+
+
+export type TagCatalogItem = { id: string; name: string; kind: "label" | "document_type" };
+export function listTagCatalog() {
+  return apiFetch<TagCatalogItem[]>("/documents/tag-catalog");
+}
+export function createDocumentType(name: string) {
+  return apiFetch<TagCatalogItem>("/documents/tag-catalog/document-types", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tag: name }),
+  });
+}
+export function deleteDocumentType(tagId: string) {
+  return apiFetch<void>(`/documents/tag-catalog/document-types/${tagId}`, {
+    method: "DELETE",
+  });
+}
+export function setDocumentTypeTag(documentId: string, tagId: string | null) {
+  return apiFetch(`/documents/${documentId}/type`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tag_id: tagId }),
   });
 }

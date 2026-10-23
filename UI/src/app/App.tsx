@@ -29,6 +29,9 @@ import {
 //business license tracking
 import LicensingPage from "@/app/components/licensing/licensing-page";
 
+//correction queue for AI training
+import CorrectionQueuePage from "@/app/components/correction-queue-page";
+
 import { Button } from "@/app/components/ui/button";
 import {
   Drawer,
@@ -56,6 +59,8 @@ import {
   UserCircle2,
   SlidersHorizontal,
   BadgeCheck,
+  ClipboardCheck,
+  ExternalLink,
 } from "lucide-react";
 
 import { toast } from "sonner";
@@ -72,6 +77,7 @@ import {
   moveDocumentProject,
   removeDocumentVersionTags,
   replaceDocumentVersionTags,
+  setDocumentTypeTag,
   updateDocumentVersionDueDate,
   updateDocumentWorkflow,
   updateDocumentWorkspace,
@@ -81,6 +87,7 @@ import { API_BASE_URL } from "@/lib/api";
 import { getMyAccess } from "@/lib/rbac";
 import { formatBytes } from "@/lib/format";
 import { normalizeWorkflowStatus } from "@/lib/dms";
+import { tagsForDisplay } from "@/lib/tag-display";
 import { openLoadingPreviewWindow } from "@/lib/preview";
 import { getCurrentUserProfile, updateCurrentUserProfile } from "@/lib/profile";
 import { isOfficeFilename, isPdfFilename } from "@/lib/file-types";
@@ -125,7 +132,10 @@ function toLocalDateOnly(value?: string | null): string {
 
 function mapApiDocument(doc: any): Document {
   const extension = (doc.filename?.split(".").pop() ?? "file").toLowerCase();
-  const tags = doc.tags ?? [];
+  const tags = tagsForDisplay(doc.tags ?? []);
+  const vendorTag = tags.find((tag: string) => tag.startsWith("vendor:"));
+  const legacyCompanyTag = tags.find((tag: string) => tag.startsWith("company:"));
+  const vendorFromTag = (vendorTag ?? legacyCompanyTag)?.split(":", 2)[1]?.replace(/_/g, " ") ?? null;
   return {
     id: doc.id,
     name: doc.filename,
@@ -138,7 +148,8 @@ function mapApiDocument(doc: any): Document {
     workflow: normalizeWorkflowStatus(doc.status),
     project: getProjectFromTags(tags),
     documentType: doc.document_type ?? "Document",
-    vendor: doc.vendor,
+    documentTypeTagId: doc.document_type_tag_id ?? null,
+    vendor: doc.vendor ?? vendorFromTag,
     projectNumber: doc.project_number,
     currentVersionId: doc.current_version_id,
     currentVersionNumber: doc.current_version_number ?? 1,
@@ -177,10 +188,11 @@ function AppInner() {
     () => initialUiPreferences.darkMode,
   );
   const [isAdmin, setIsAdmin] = useState(false);
+  const [canReviewCorrections, setCanReviewCorrections] = useState(false);
   const [versionModalDoc, setVersionModalDoc] = useState<Document | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"documents" | "workspace" | "upload" | "admin">(
+  const [activeTab, setActiveTab] = useState<"documents" | "workspace" | "upload" | "admin" | "correction">(
     "documents",
   );
   const [tagPool, setTagPool] = useState<string[]>([]);
@@ -262,7 +274,7 @@ function AppInner() {
 
   const refreshTagPool = async () => {
     const data = await listTagPool();
-    setTagPool(data.tags ?? []);
+    setTagPool(tagsForDisplay(data.tags ?? []));
   };
 
   const refreshDuePayments = async () => {
@@ -273,7 +285,7 @@ function AppInner() {
     }
     setDuePaymentsLoading(true);
     try {
-      const items = await listUpcomingDuePayments(duePaymentsWindowDays, 12);
+      const items = await listUpcomingDuePayments(duePaymentsWindowDays);
       setDuePayments(
         items.map((item) => ({
           documentId: item.document_id,
@@ -330,6 +342,8 @@ function AppInner() {
         const hasAdminTraining = access.permissions.includes("admin.training");
         setAccessPermissions(new Set(access.permissions));
         setIsAdmin(hasAdminUsers || hasAdminRoles || hasAdminTraining);
+        const hasCorrectionAccess = access.permissions.includes("document.correction_review");
+        setCanReviewCorrections(hasCorrectionAccess);
       })
       .catch(() => {
         setIsAdmin(false);
@@ -1064,7 +1078,7 @@ function AppInner() {
   };
 
   const handleSaveDocumentTags = async (
-    payload: { tags: string[]; dueDate: string | null },
+    payload: { tags: string[]; dueDate: string | null; documentTypeTagId?: string | null },
     targetDoc?: Document | null,
   ) => {
     const doc = targetDoc ?? editingTagsDoc;
@@ -1082,6 +1096,10 @@ function AppInner() {
       doc.currentVersionId,
       payload.tags,
     );
+    const nextTypeId = payload.documentTypeTagId ?? null;
+    if (nextTypeId !== (doc.documentTypeTagId ?? null)) {
+      await setDocumentTypeTag(doc.id, nextTypeId);
+    }
     await updateDocumentVersionDueDate(
       doc.id,
       doc.currentVersionId,
@@ -1217,6 +1235,18 @@ function AppInner() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
+                  <a
+                    href="/software_licenses.html"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`inline-flex h-9 items-center rounded-md border px-3 text-sm font-medium transition-colors ${darkMode
+                      ? "border-gray-700 text-gray-200 hover:bg-gray-800"
+                      : "border-gray-200 text-gray-700 hover:bg-gray-100"
+                      }`}
+                  >
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    Software Licenses
+                  </a>
                   <Button
                     variant="outline"
                     className="lg:hidden"
@@ -1318,6 +1348,12 @@ function AppInner() {
                             <UploadIcon className="w-4 h-4 mr-2" />
                             Upload
                           </TabsTrigger>
+                          {canReviewCorrections && (
+                            <TabsTrigger value="correction">
+                              <ClipboardCheck className="w-4 h-4 mr-2" />
+                              Correction Queue
+                            </TabsTrigger>
+                          )}
                           <button
                             className="text-xs text-gray-400 hover:text-gray-600 px-2"
                             onClick={() => setBulkBarVisible(v => !v)}
@@ -1509,6 +1545,19 @@ function AppInner() {
                         />
                       </TabsContent>
                     )}
+
+                    {canReviewCorrections && (
+                      <TabsContent value="correction" className="mt-2 h-full">
+                        <CorrectionQueuePage
+                          darkMode={darkMode}
+                          onDocumentChanged={() => {
+                            void refreshDocuments();
+                            void refreshTagPool();
+                            void refreshDuePayments();
+                          }}
+                        />
+                      </TabsContent>
+                    )}
                   </div>
                 </Tabs>
               )}
@@ -1558,6 +1607,9 @@ function AppInner() {
             if (!open) setEditingTagsDoc(null);
           }}
           onSave={handleSaveDocumentTags}
+          canAssignDocumentType={accessPermissions.has("document.update")}
+          canCreateDocumentType={accessPermissions.has("tags.document_type_create")}
+          canDeleteDocumentType={accessPermissions.has("tags.document_type_delete")}
           darkMode={darkMode}
         />
 

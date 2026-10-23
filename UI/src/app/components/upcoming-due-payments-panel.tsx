@@ -80,7 +80,7 @@ export function UpcomingDuePaymentsPanel({
           <div>
             <div className="text-lg font-semibold">Upcoming Payments</div>
             <div className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
-              Incoming invoice due dates
+              Files with upcoming due dates
             </div>
           </div>
         </div>

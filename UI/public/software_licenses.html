@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Third-Party Software Notices</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f4f7f8;
+            color: #334155;
+            line-height: 1.6;
+            margin: 0;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 850px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            overflow: hidden;
+        }
+        .header {
+            background-color: #1e293b;
+            color: #ffffff;
+            padding: 40px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 26px;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+        }
+        .header p {
+            margin: 10px 0 0 0;
+            color: #94a3b8;
+            font-size: 15px;
+        }
+        .content {
+            padding: 40px;
+        }
+        h2 {
+            color: #0f172a;
+            font-size: 18px;
+            margin-top: 0;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 12px;
+            margin-bottom: 24px;
+        }
+        .category {
+            margin-bottom: 48px;
+        }
+        .item-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .item {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 16px 0;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .item:last-child {
+            border-bottom: none;
+        }
+        .component-info {
+            flex: 1;
+            padding-right: 20px;
+        }
+        .component-name {
+            font-weight: 600;
+            color: #1e293b;
+            font-size: 15px;
+        }
+        .component-desc {
+            font-size: 14px;
+            color: #64748b;
+            margin-top: 4px;
+        }
+        .badge {
+            padding: 6px 12px;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            white-space: nowrap;
+        }
+        .badge.permissive { background-color: #dcfce7; color: #166534; }
+        .badge.copyleft { background-color: #fef08a; color: #854d0e; }
+        .badge.custom { background-color: #e0e7ff; color: #3730a3; }
+        .badge.warning { background-color: #fee2e2; color: #991b1b; }
+        
+        .note {
+            background-color: #f8fafc;
+            border-left: 4px solid #94a3b8;
+            padding: 16px 24px;
+            font-size: 14px;
+            margin-bottom: 32px;
+            border-radius: 0 6px 6px 0;
+            color: #475569;
+        }
+        .note strong { color: #334155; }
+        
+        .warning-note {
+            background-color: #fff1f2;
+            border-left: 4px solid #e11d48;
+            padding: 16px 24px;
+            font-size: 14px;
+            margin-top: 12px;
+            border-radius: 0 6px 6px 0;
+            color: #881337;
+        }
+        .footer {
+            text-align: center;
+            padding: 24px;
+            background-color: #f8fafc;
+            border-top: 1px solid #e2e8f0;
+            font-size: 13px;
+            color: #64748b;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>Third-Party Software Notices</h1>
+        <p>This Document Management System is built utilizing the following open-source, community-licensed, and third-party software components.</p>
+    </div>
+
+    <div class="content">
+        
+        <div class="category">
+            <h2>Permissive Licenses</h2>
+            <ul class="item-list">
+                <li class="item">
+                    <div class="component-info">
+                        <div class="component-name">React, MUI, Radix UI, Tailwind CSS, pdfjs-dist</div>
+                        <div class="component-desc">Frontend frameworks, UI components, styling, and PDF rendering.</div>
+                    </div>
+                    <span class="badge permissive">MIT / Apache 2.0</span>
+                </li>
+                <li class="item">
+                    <div class="component-info">
+                        <div class="component-name">FastAPI, Pydantic, SQLAlchemy, Uvicorn</div>
+                        <div class="component-desc">Core backend API framework and ORM stack.</div>
+                    </div>
+                    <span class="badge permissive">MIT / BSD</span>
+                </li>
+                <li class="item">
+                    <div class="component-info">
+                        <div class="component-name">docTR, transformers, boto3, requests</div>
+                        <div class="component-desc">Backend Python processing, OCR, and AWS/S3 communication.</div>
+                    </div>
+                    <span class="badge permissive">Apache 2.0</span>
+                </li>
+                <li class="item">
+                    <div class="component-info">
+                        <div class="component-name">Caddy, Tesseract-OCR, Label Studio</div>
+                        <div class="component-desc">Reverse proxy, optical character recognition, and data labeling.</div>
+                    </div>
+                    <span class="badge permissive">Apache 2.0</span>
+                </li>
+                <li class="item">
+                    <div class="component-info">
+                        <div class="component-name">PostgreSQL</div>
+                        <div class="component-desc">Primary relational database.</div>
+                    </div>
+                    <span class="badge permissive">PostgreSQL License</span>
+                </li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <h2>Copyleft & Custom Infrastructure Licenses</h2>
+            <div class="note">
+                <strong>Internal Usage Note:</strong> The following components are executed as independent processes or accessed via network APIs using permissively licensed client libraries. They remain unmodified and are utilized strictly for internal operations.
+            </div>
+            <ul class="item-list">
+                <li class="item">
+                    <div class="component-info">
+                        <div class="component-name">MinIO Server</div>
+                        <div class="component-desc">S3-compatible object storage server.</div>
+                    </div>
+                    <span class="badge copyleft">GNU AGPLv3</span>
+                </li>
+                <li class="item">
+                    <div class="component-info">
+                        <div class="component-name">poppler-utils</div>
+                        <div class="component-desc">PDF rendering and conversion utilities via command-line interface.</div>
+                    </div>
+                    <span class="badge copyleft">GNU GPL-2.0+</span>
+                </li>
+                <li class="item">
+                    <div class="component-info">
+                        <div class="component-name">psycopg</div>
+                        <div class="component-desc">PostgreSQL database adapter for Python.</div>
+                    </div>
+                    <span class="badge copyleft">GNU LGPL-3.0</span>
+                </li>
+            </ul>
+        </div>
+
+        <div class="category">
+            <h2>Machine Learning Models</h2>
+            <ul class="item-list">
+                <li class="item">
+                    <div class="component-info">
+                        <div class="component-name">microsoft/trocr-base-handwritten</div>
+                        <div class="component-desc">Transformer-based model for optical character recognition of handwriting.</div>
+                    </div>
+                    <span class="badge permissive">MIT</span>
+                </li>
+                <li class="item">
+                    <div class="component-info">
+                        <div class="component-name">Llama 3.1</div>
+                        <div class="component-desc">Large language model served via Ollama.</div>
+                    </div>
+                    <span class="badge custom">Llama 3.1 Community</span>
+                </li>
+                <li class="item">
+                    <div class="component-info">
+                        <div class="component-name">microsoft/layoutlmv3-base</div>
+                        <div class="component-desc">Document image understanding and layout analysis model.</div>
+                        <div class="warning-note">
+                            <strong>Compliance Notice:</strong> This model is licensed under CC BY-NC-SA 4.0 (Non-Commercial). Its current use must be strictly evaluated against internal corporate policies regarding non-commercial software restrictions.
+                        </div>
+                    </div>
+                    <span class="badge warning">CC BY-NC-SA 4.0</span>
+                </li>
+            </ul>
+        </div>
+    </div>
+    <div class="footer">
+        Generated for internal compliance tracking.
+    </div>
+</div>
+
+</body>
+</html>

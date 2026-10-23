@@ -71,6 +71,15 @@ const getGroupValue = (doc: Document, field: GroupField): string => {
   }
 };
 
+const formatGroupLabel = (value: string, field: GroupField): string => {
+  if (field !== "documentType") return value;
+  return value
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+};
+
 const getFileIcon = (type: string) => {
   if (type.includes("image")) return Image;
   if (type.includes("pdf") || type.includes("document")) return FileText;
@@ -335,7 +344,7 @@ export function CompactProjectView({
                     className="flex items-center gap-2"
                   >
                     {isUpperCollapsed ? <ChevronRight /> : <ChevronDown />}
-                    <span className="font-semibold">{upper}</span>
+                    <span className="font-semibold">{formatGroupLabel(upper, upperGroup)}</span>
                     <span className="text-sm text-gray-500 dark:text-gray-400">
                       ({upperDocs.length} {upperDocs.length === 1 ? "file" : "files"})
                     </span>
@@ -398,7 +407,7 @@ export function CompactProjectView({
                           className="flex items-center gap-2 pl-6"
                         >
                           {isTypeCollapsed ? <ChevronRight /> : <ChevronDown />}
-                          <span className="font-medium">{lower}</span>
+                          <span className="font-medium">{formatGroupLabel(lower, lowerGroup)}</span>
                           <span className="text-xs text-gray-500 dark:text-gray-400">
                             ({sortedDocs.length})
                           </span>
