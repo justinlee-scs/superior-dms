@@ -307,7 +307,7 @@ RBAC behavior:
 - New OIDC users get default `unassigned` role if present
 
 The repository now includes scaffold code for:
-- S3/MinIO object storage backend (`app/storage/backends.py`)
+- S3/SILO object storage backend (`app/storage/backends.py`)
 - OpenCV preprocessing (`app/services/extraction/opencv_preprocess.py`)
 - HuggingFace TrOCR provider (`app/services/extraction/trocr_hf_provider.py`)
 - Label Studio API client + sync script (`app/services/labelstudio/client.py`, `scripts/labelstudio_sync.py`)
@@ -315,31 +315,31 @@ The repository now includes scaffold code for:
 Runtime status:
 - TrOCR HF + OpenCV preprocessing are now active in the OCR pipeline.
 - Label Studio export is active only when `LABEL_STUDIO_ENABLED=true`.
-- MinIO/S3 object storage is available when enabled via environment variables.
+- SILO/S3 object storage is available when enabled via environment variables.
 - `app/services/extraction/ocr_sync.py`
 - `app/api/documents.py` (Label Studio hooks only)
 
 
-## 16. Why MinIO (Object Storage)
+## 16. Why SILO (Object Storage)
 
-By default, uploaded file bytes are stored in Postgres. When MinIO is enabled, raw files live in object storage while Postgres keeps only metadata and a pointer to the file.
+By default, uploaded file bytes are stored in Postgres. When SILO is enabled, raw files live in object storage while Postgres keeps only metadata and a pointer to the file. SILO uses the S3 API and retains compatibility with the existing MinIO object data.
 
 Benefits:
 1. Keeps the database smaller and faster.
 2. Scales storage independently of the DB.
 3. Makes backups and migrations easier.
 
-### Enable MinIO
+### Enable SILO
 
 Set the following environment variables before starting the app:
 
 ```bash
 export OBJECT_STORAGE_ENABLED=true
-export OBJECT_STORAGE_BACKEND=minio
-export MINIO_ENDPOINT=127.0.0.1:9000
-export MINIO_ACCESS_KEY=YOUR_KEY
-export MINIO_SECRET_KEY=YOUR_SECRET
-export MINIO_SECURE=false
+export OBJECT_STORAGE_BACKEND=silo
+export SILO_ENDPOINT=127.0.0.1:9000
+export SILO_ACCESS_KEY=YOUR_KEY
+export SILO_SECRET_KEY=YOUR_SECRET
+export SILO_SECURE=false
 export OBJECT_STORAGE_BUCKET=dms
 ```
 
@@ -351,7 +351,7 @@ cd /home/justinlee/.LINUXPRACTICE/dms
 alembic upgrade head
 ```
 
-When MinIO is enabled, new uploads are stored in object storage instead of Postgres blobs. Existing data remains in Postgres unless you migrate it separately.
+When SILO is enabled, new uploads are stored in object storage instead of Postgres blobs. Existing data remains in Postgres unless you migrate it separately. Existing MinIO data is served from the same Compose volume after switching the image to SILO.
 
 ```bash
 alembic downgrade -1

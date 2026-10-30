@@ -27,6 +27,16 @@ const getDocumentTypeLabel = (type: string) => {
     .join(" ");
 };
 
+const getProjectLabel = (project: string) =>
+  project
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => {
+      const normalized = part.toLocaleLowerCase();
+      return normalized.charAt(0).toLocaleUpperCase() + normalized.slice(1);
+    })
+    .join(" ");
+
 const getDocumentTypeIcon = (_type: string) => FileText;
 
 export function GroupedDocuments({
@@ -113,7 +123,7 @@ export function GroupedDocuments({
                   }
                   className="flex items-center gap-2"
                 >
-                  <span className="font-semibold">{project}</span>
+                  <span className="font-semibold">{getProjectLabel(project)}</span>
                   <span className="text-sm text-gray-500">
                     ({projectDocs.length} {projectDocs.length === 1 ? "file" : "files"})
                   </span>

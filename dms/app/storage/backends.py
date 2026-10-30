@@ -124,7 +124,7 @@ class S3ObjectStorage:
 
 
 class MinioObjectStorage:
-    """MinIO backend using minio client library."""
+    """S3-compatible storage backend for SILO using the minio Python client."""
 
     def __init__(
         self,
@@ -209,7 +209,7 @@ class MinioObjectStorage:
 
 def build_object_storage_from_env() -> ObjectStorage:
     """Build an object-storage backend from environment variables."""
-    backend = os.getenv("OBJECT_STORAGE_BACKEND", "minio").strip().lower()
+    backend = os.getenv("OBJECT_STORAGE_BACKEND", "silo").strip().lower()
 
     if backend == "s3":
         return S3ObjectStorage(
@@ -220,11 +220,12 @@ def build_object_storage_from_env() -> ObjectStorage:
             session_token=os.getenv("AWS_SESSION_TOKEN"),
         )
 
-    if backend == "minio":
-        endpoint = os.getenv("MINIO_ENDPOINT", "127.0.0.1:9000")
-        access_key = os.getenv("MINIO_ACCESS_KEY", "")
-        secret_key = os.getenv("MINIO_SECRET_KEY", "")
-        secure = os.getenv("MINIO_SECURE", "false").strip().lower() in {"1", "true", "yes"}
+    if backend in {"silo", "minio"}:
+        # SILO retains MinIO's S3 API and legacy MINIO_* server/client settings.
+        endpoint = os.getenv("SILO_ENDPOINT", os.getenv("MINIO_ENDPOINT", "127.0.0.1:9000"))
+        access_key = os.getenv("SILO_ACCESS_KEY", os.getenv("MINIO_ACCESS_KEY", ""))
+        secret_key = os.getenv("SILO_SECRET_KEY", os.getenv("MINIO_SECRET_KEY", ""))
+        secure = os.getenv("SILO_SECURE", os.getenv("MINIO_SECURE", "false")).strip().lower() in {"1", "true", "yes"}
         return MinioObjectStorage(
             endpoint=endpoint,
             access_key=access_key,

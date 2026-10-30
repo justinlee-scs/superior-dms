@@ -35,6 +35,7 @@ output/
 *.safetensors
 .env
 postgres_data/
+backups/
 
 # Label Studio and training scratch artifacts
 scripts/training/*-at-*.json
