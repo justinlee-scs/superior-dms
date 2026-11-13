@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from app.db.models.user import User
+from app.db.repositories.roles import inherited_roles
 
 
 def get_role_permissions(db: Session, user: User) -> set[str]:
@@ -10,7 +11,7 @@ def get_role_permissions(db: Session, user: User) -> set[str]:
         user (type=User): Authenticated user context for authorization and ownership checks.
     """
     perms: set[str] = set()
-    for role in user.roles:
+    for role in inherited_roles(user.roles):
         for perm in role.permissions:
             perms.add(perm.key)
 

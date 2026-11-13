@@ -83,7 +83,7 @@ import {
   updateDocumentWorkspace,
   uploadDocument,
 } from "@/lib/dms";
-import { API_BASE_URL } from "@/lib/api";
+import { API_BASE_URL, apiFetch } from "@/lib/api";
 import { getMyAccess } from "@/lib/rbac";
 import { formatBytes } from "@/lib/format";
 import { normalizeWorkflowStatus } from "@/lib/dms";
@@ -167,6 +167,7 @@ function AppInner() {
   const [deletedQueue, setDeletedQueue] = useState<
     { doc: Document; timeoutId: ReturnType<typeof setTimeout> }[]
   >([]);
+  const pendingDeleteIdsRef = useRef<Set<string>>(new Set());
   const [filters, setFilters] = useState<FilterState>({
     searchText: "",
     selectedTags: [],
@@ -189,6 +190,7 @@ function AppInner() {
   );
   const [isAdmin, setIsAdmin] = useState(false);
   const [canReviewCorrections, setCanReviewCorrections] = useState(false);
+  const [correctionQueueCount, setCorrectionQueueCount] = useState(0);
   const [versionModalDoc, setVersionModalDoc] = useState<Document | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -250,7 +252,15 @@ function AppInner() {
   const refreshDocuments = async (query = searchTextRef.current) => {
     const apiDocs = (await listDocuments(query.trim() || undefined)) as any[];
     const baseDocs = apiDocs.map(mapApiDocument);
-    setDocuments(baseDocs);
+    const visibleDocumentIds = new Set(baseDocs.map((doc) => doc.id));
+    for (const pendingId of pendingDeleteIdsRef.current) {
+      if (!visibleDocumentIds.has(pendingId)) {
+        pendingDeleteIdsRef.current.delete(pendingId);
+      }
+    }
+    setDocuments(
+      baseDocs.filter((doc) => !pendingDeleteIdsRef.current.has(doc.id)),
+    );
   };
 
   // wait until backend actually returns the uploaded file
@@ -299,6 +309,12 @@ function AppInner() {
     }
   };
 
+  const refreshCorrectionQueueCount = async () => {
+    if (!canReviewCorrections) return;
+    const queue = await apiFetch<{ id: string }[]>("/correction-queue");
+    setCorrectionQueueCount(queue.length);
+  };
+
   const pollDocumentStatus = async (documentId: string) => {
     const maxAttempts = 45;
     const delayMs = 2000;
@@ -317,6 +333,7 @@ function AppInner() {
       );
 
       if (normalizeWorkflowStatus(next.workflow).toLowerCase() !== "processing") {
+        await refreshCorrectionQueueCount().catch(() => undefined);
         return;
       }
 
@@ -324,6 +341,7 @@ function AppInner() {
     }
 
     toast.info("Processing is still running in the background.");
+    await refreshCorrectionQueueCount().catch(() => undefined);
   };
 
   useEffect(() => {
@@ -352,6 +370,15 @@ function AppInner() {
   }, []);
 
   useEffect(() => {
+    if (!canReviewCorrections) {
+      setCorrectionQueueCount(0);
+      return;
+    }
+    refreshCorrectionQueueCount().catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canReviewCorrections]);
+
+  useEffect(() => {
     refreshDocuments().catch(() => toast.error("Failed to load documents"));
     refreshTagPool().catch(() => toast.error("Failed to load tags"));
     refreshDuePayments().catch(() =>
@@ -367,12 +394,14 @@ function AppInner() {
     const intervalId = window.setInterval(() => {
       refreshDocuments().catch(() => undefined);
       refreshTagPool().catch(() => undefined);
-    }, 3000);
+      refreshCorrectionQueueCount().catch(() => undefined);
+    }, 30000);
 
     const onVisible = () => {
       if (document.visibilityState === "visible") {
         refreshDocuments().catch(() => undefined);
         refreshTagPool().catch(() => undefined);
+        refreshCorrectionQueueCount().catch(() => undefined);
       }
     };
 
@@ -649,7 +678,11 @@ function AppInner() {
     }
   };
 
+  const DELETE_UNDO_DELAY_MS = 30_000;
+
   const handleDelete = (doc: Document) => {
+    pendingDeleteIdsRef.current.add(doc.id);
+
     // Remove from UI immediately
     setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
 
@@ -661,22 +694,24 @@ function AppInner() {
           prev.filter((item) => item.doc.id !== doc.id),
         );
       } catch {
+        pendingDeleteIdsRef.current.delete(doc.id);
         toast.error(`Failed to delete ${doc.name}`);
         await refreshDocuments();
       }
-    }, 30000);
+    }, DELETE_UNDO_DELAY_MS);
 
     // Add to deleted queue
     setDeletedQueue((prev) => [...prev, { doc, timeoutId }]);
 
     // Show toast with Undo button
     const toastId = toast(
-      <div className="flex items-center gap-4">
-        <span>{doc.name} deleted</span>
+      <div className="flex min-w-0 items-center gap-4">
+        <span className="min-w-0 break-words">{doc.name} deleted</span>
         <button
-          className="underline text-blue-600"
+          className="shrink-0 whitespace-nowrap underline text-blue-600"
           onClick={() => {
             clearTimeout(timeoutId); // cancel backend delete
+            pendingDeleteIdsRef.current.delete(doc.id);
             setDocuments((prev) => [...prev, doc]); // restore UI
             setDeletedQueue((prev) =>
               prev.filter((item) => item.doc.id !== doc.id),
@@ -687,7 +722,7 @@ function AppInner() {
           Undo
         </button>
       </div>,
-      { duration: 30000 },
+      { duration: DELETE_UNDO_DELAY_MS },
     );
   };
 
@@ -1327,7 +1362,7 @@ function AppInner() {
                 <Tabs
                   value={activeTab}
                   onValueChange={(value) =>
-                    setActiveTab(value as "documents" | "workspace" | "upload" | "admin")
+                    setActiveTab(value as "documents" | "workspace" | "upload" | "admin" | "correction")
                   }
                   className="flex flex-col flex-1 overflow-hidden"
                 >
@@ -1352,6 +1387,14 @@ function AppInner() {
                             <TabsTrigger value="correction">
                               <ClipboardCheck className="w-4 h-4 mr-2" />
                               Correction Queue
+                              {correctionQueueCount > 0 && (
+                                <span
+                                  className="ml-1 inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-amber-500 px-1 text-xs font-semibold text-white"
+                                  aria-label={`${correctionQueueCount} documents need review`}
+                                >
+                                  {correctionQueueCount > 99 ? "99+" : correctionQueueCount}
+                                </span>
+                              )}
                             </TabsTrigger>
                           )}
                           <button
@@ -1554,6 +1597,7 @@ function AppInner() {
                             void refreshDocuments();
                             void refreshTagPool();
                             void refreshDuePayments();
+                            void refreshCorrectionQueueCount();
                           }}
                         />
                       </TabsContent>

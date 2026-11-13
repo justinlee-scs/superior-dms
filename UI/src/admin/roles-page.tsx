@@ -1022,7 +1022,7 @@ export default function RolesPage({
             <div className="px-3 py-2">
               <h2 className="text-2xl font-semibold">Role Hierarchy</h2>
               <p className={`mt-1 text-sm ${darkMode ? "text-gray-300" : "text-gray-600"}`}>
-                Visual representation of which roles can manage other roles and users. Management does not grant extra permissions.
+                Role-to-role links grant the parent role all permissions and document clearance of roles beneath it. User management links only control management scope.
               </p>
 
               <div

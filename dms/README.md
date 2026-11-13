@@ -288,6 +288,25 @@ Start services:
 docker compose up -d
 ```
 
+Ollama runs as an internal Compose service, with its model cache stored in
+the `ollama_data` volume. Compose pins both the Ollama server and its model
+initializer to image version `0.40.16`, and the extraction model to
+`llama3.1:8b-instruct-q4_K_M`. Compose downloads the model before starting the
+web service on each machine:
+
+```bash
+set -a
+. ./.env
+set +a
+docker compose up -d --build
+```
+
+The API container connects to `ollama:11434` over the Compose network; Ollama's
+port is not published on the host. Each machine needs enough memory and disk
+for the model. Compare the model digest across machines with
+`docker compose exec ollama ollama list`; all three should report the same
+digest for `llama3.1:8b-instruct-q4_K_M`.
+
 ## 17. Google OIDC Login
 
 Set these variables in `.env`:

@@ -14,7 +14,7 @@ from datetime import datetime
 import sqlalchemy as sa
 from sqlalchemy import Column, ForeignKey, Text, Float
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import backref, relationship
 
 from app.db.session import Base  # matches document_versions.py's actual import
 
@@ -51,7 +51,15 @@ class OCRCorrectionQueue(Base):
         nullable=True,
     )
 
-    document_version = relationship("DocumentVersion", backref="correction_queue_item")
+    document_version = relationship(
+        "DocumentVersion",
+        backref=backref(
+            "correction_queue_item",
+            uselist=False,
+            cascade="all, delete-orphan",
+            passive_deletes=True,
+        ),
+    )
 
 
 class OCRWordBox(Base):
@@ -74,7 +82,14 @@ class OCRWordBox(Base):
     text_raw = Column(Text, nullable=False)
     confidence = Column(Float, nullable=False, index=True)
 
-    document_version = relationship("DocumentVersion", backref="ocr_word_boxes")
+    document_version = relationship(
+        "DocumentVersion",
+        backref=backref(
+            "ocr_word_boxes",
+            cascade="all, delete-orphan",
+            passive_deletes=True,
+        ),
+    )
 
 
 class ExtractionFieldCorrection(Base):
@@ -95,4 +110,11 @@ class ExtractionFieldCorrection(Base):
     value_corrected = Column(Text, nullable=True)
     created_at = Column(sa.DateTime, nullable=False, default=datetime.utcnow)
 
-    document_version = relationship("DocumentVersion", backref="field_corrections")
+    document_version = relationship(
+        "DocumentVersion",
+        backref=backref(
+            "field_corrections",
+            cascade="all, delete-orphan",
+            passive_deletes=True,
+        ),
+    )

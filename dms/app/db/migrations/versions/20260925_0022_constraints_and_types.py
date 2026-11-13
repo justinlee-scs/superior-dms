@@ -33,11 +33,14 @@ TIMESTAMPTZ_COLUMNS = [
 
 def upgrade():
     conn = op.get_bind()
+    tables = set(sa.inspect(conn).get_table_names())
 
     # --- timestamp -> timestamptz ---
     # Server confirmed running in UTC (SHOW timezone -> UTC), so this is
     # a direct reinterpretation of the stored values, not a shift.
     for table, column in TIMESTAMPTZ_COLUMNS:
+        if table not in tables:
+            continue
         op.execute(
             f"ALTER TABLE {table} "
             f"ALTER COLUMN {column} TYPE timestamptz "
@@ -45,10 +48,11 @@ def upgrade():
         )
 
     # --- json -> jsonb, only for columns that survive Phase 6 ---
-    op.execute(
-        "ALTER TABLE processing_jobs "
-        "ALTER COLUMN result TYPE jsonb USING result::jsonb"
-    )
+    if "processing_jobs" in tables:
+        op.execute(
+            "ALTER TABLE processing_jobs "
+            "ALTER COLUMN result TYPE jsonb USING result::jsonb"
+        )
     op.execute(
         "ALTER TABLE training_feedback_events "
         "ALTER COLUMN predicted_tags TYPE jsonb USING predicted_tags::jsonb"
@@ -102,6 +106,7 @@ def upgrade():
 
 
 def downgrade():
+    tables = set(sa.inspect(op.get_bind()).get_table_names())
     op.drop_constraint(
         "fk_documents_current_version_document",
         "documents",
@@ -128,12 +133,15 @@ def downgrade():
         "ALTER TABLE training_feedback_events "
         "ALTER COLUMN predicted_tags TYPE json USING predicted_tags::json"
     )
-    op.execute(
-        "ALTER TABLE processing_jobs "
-        "ALTER COLUMN result TYPE json USING result::json"
-    )
+    if "processing_jobs" in tables:
+        op.execute(
+            "ALTER TABLE processing_jobs "
+            "ALTER COLUMN result TYPE json USING result::json"
+        )
 
     for table, column in reversed(TIMESTAMPTZ_COLUMNS):
+        if table not in tables:
+            continue
         op.execute(
             f"ALTER TABLE {table} "
             f"ALTER COLUMN {column} TYPE timestamp "

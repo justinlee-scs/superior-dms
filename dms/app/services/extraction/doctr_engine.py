@@ -163,7 +163,9 @@ DETECTION_WEIGHTS = WEIGHTS_ROOT / "detection" / "current" / "weights.pt"
 RECOGNITION_WEIGHTS = WEIGHTS_ROOT / "recognition" / "current" / "weights.pt"
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/generate")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1")
+OLLAMA_MODEL = os.environ.get(
+    "OLLAMA_MODEL", "llama3.1:8b-instruct-q4_K_M"
+)
 OLLAMA_MAX_CHARS = int(os.environ.get("OLLAMA_MAX_CHARS", "60000"))
 OLLAMA_MAX_RETRIES = 2
 
@@ -350,10 +352,10 @@ def _run_ollama_kie(text: str) -> dict[str, Any]:
                 time.sleep(2 * (attempt + 1))
                 continue
 
-    # All retries exhausted: return an empty field set rather than raising,
-    # so the document still lands in the correction queue instead of
-    # failing the whole ingest job.
-    return {k: None for k in TARGET_FIELDS} | {"_ollama_error": str(last_err)}
+    raise RuntimeError(
+        f"Ollama field extraction failed after {OLLAMA_MAX_RETRIES + 1} attempts: "
+        f"{last_err}"
+    )
 
 
 # --------------------------------------------------------------------------

@@ -13,6 +13,7 @@ Create Date: 2026-09-25
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+from sqlalchemy import inspect
 
 # revision identifiers, used by Alembic.
 revision = "20260925_0019"
@@ -22,6 +23,54 @@ depends_on = None
 
 
 def upgrade():
+    # Older deployments and some reconstructed databases may not have
+    # these auxiliary tables. Keep the upgrade usable on both schemas.
+    tables = set(inspect(op.get_bind()).get_table_names())
+    if "ml_classifications" not in tables:
+        op.create_table(
+            "ml_classifications",
+            sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column("document_version_id", postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column("model_name", sa.String(), nullable=False),
+            sa.Column("label", sa.String(), nullable=False),
+            sa.Column("confidence", sa.Float(), nullable=False),
+            sa.Column("created_at", sa.DateTime(), nullable=False),
+            sa.PrimaryKeyConstraint("id"),
+        )
+        op.create_index(
+            "ix_ml_classifications_document_version_id",
+            "ml_classifications",
+            ["document_version_id"],
+        )
+        tables.add("ml_classifications")
+    if "processing_jobs" not in tables:
+        processing_stage = postgresql.ENUM(
+            "CLASSIFICATION", "OCR", "POST_PROCESS",
+            name="processing_stage", create_type=False,
+        )
+        processing_status = postgresql.ENUM(
+            "processing", "uploaded", "failed",
+            name="processing_status", create_type=False,
+        )
+        processing_stage.create(op.get_bind(), checkfirst=True)
+        processing_status.create(op.get_bind(), checkfirst=True)
+        op.create_table(
+            "processing_jobs",
+            sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column("document_version_id", postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column("stage", processing_stage, nullable=False),
+            sa.Column("status", processing_status, nullable=False),
+            sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
+            sa.Column("updated_at", sa.DateTime(), server_default=sa.func.now()),
+            sa.Column("result", postgresql.JSON(), nullable=True),
+            sa.ForeignKeyConstraint(
+                ["document_version_id"], ["document_versions.id"],
+                name="fk_document_version", ondelete="CASCADE",
+            ),
+            sa.PrimaryKeyConstraint("id"),
+        )
+        tables.add("processing_jobs")
+
     # ------------------------------------------------------------------
     # tag_catalog: enforce unique names, add a kind discriminator so
     # document-type tags can be distinguished from plain label tags.
@@ -120,13 +169,10 @@ def upgrade():
 
     # GIN index for containment queries on documents.data, e.g.
     #   WHERE data @> '{"document_type": "invoice"}'
-    # Built CONCURRENTLY so it doesn't lock documents during creation.
-    # Must run outside a transaction block.
-    with op.get_context().autocommit_block():
-        op.execute(
-            "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_documents_data "
-            "ON documents USING gin (data jsonb_path_ops)"
-        )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_documents_data "
+        "ON documents USING gin (data jsonb_path_ops)"
+    )
 
     # ------------------------------------------------------------------
     # document_versions: new columns to hold the collapsed extraction
@@ -181,22 +227,25 @@ def upgrade():
     # is currently missing entirely (only a PK exists) and zero
     # orphaned rows, so it's safe to add here.
     # ------------------------------------------------------------------
-    op.create_foreign_key(
-        "fk_ml_classifications_document_version_id",
-        "ml_classifications",
-        "document_versions",
-        ["document_version_id"],
-        ["id"],
-        ondelete="CASCADE",
-    )
+    if "ml_classifications" in set(inspect(op.get_bind()).get_table_names()):
+        op.create_foreign_key(
+            "fk_ml_classifications_document_version_id",
+            "ml_classifications",
+            "document_versions",
+            ["document_version_id"],
+            ["id"],
+            ondelete="CASCADE",
+        )
 
 
 def downgrade():
-    op.drop_constraint(
-        "fk_ml_classifications_document_version_id",
-        "ml_classifications",
-        type_="foreignkey",
-    )
+    tables = set(inspect(op.get_bind()).get_table_names())
+    if "ml_classifications" in tables:
+        op.drop_constraint(
+            "fk_ml_classifications_document_version_id",
+            "ml_classifications",
+            type_="foreignkey",
+        )
 
     op.drop_column("document_versions", "ocr_meta")
     op.drop_column("document_versions", "extraction_raw")
@@ -208,8 +257,7 @@ def downgrade():
     )
     op.drop_column("document_versions", "kind")
 
-    with op.get_context().autocommit_block():
-        op.execute("DROP INDEX CONCURRENTLY IF EXISTS ix_documents_data")
+    op.execute("DROP INDEX IF EXISTS ix_documents_data")
 
     op.drop_constraint(
         "fk_documents_uploaded_by_user_id", "documents", type_="foreignkey"

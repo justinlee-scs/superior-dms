@@ -10,6 +10,7 @@ from app.db.models.user import User
 from app.db.models.training_feedback_event import TrainingFeedbackEvent
 from app.db.models.enums import ProcessingStatus
 from app.db.models.ocr_correction import CorrectionStatus, OCRCorrectionQueue, OCRWordBox
+from app.db.repositories.roles import inherited_role_names
 from app.services.extraction.tags import normalize_tag
 
 
@@ -26,7 +27,7 @@ def _user_passes_security_clearance(user: User | None, tags: list[str] | None) -
         return True
     if user is None:
         return False
-    user_roles = {role.name.lower() for role in (user.roles or [])}
+    user_roles = inherited_role_names(user.roles)
     for tag in clearance_tags:
         required = tag.split(":", 1)[1].strip().lower()
         if required not in user_roles:

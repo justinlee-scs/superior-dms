@@ -8,6 +8,8 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
     depends_on:
       - web
       - ui
@@ -16,15 +18,19 @@ services:
   silo:
     image: docker.io/pgsty/silo:RELEASE.2026-10-26T00-00-00Z
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${SILO_ACCESS_KEY:?Set SILO_ACCESS_KEY in .env}
+      MINIO_ROOT_PASSWORD: ${SILO_SECRET_KEY:?Set SILO_SECRET_KEY in .env}
     ports:
       - "9000:9000"
       - "9001:9001"
     volumes:
       # Keep the existing volume name so SILO takes over the current object data.
       - minio_data:/data
-      - /home/justinlee/minio/certs:/etc/minio/certs # keep absolute — outside project
+      - ${MINIO_CERTS_DIR:-./certs}:/etc/minio/certs
+    networks:
+      default:
+        aliases:
+          - minio
     command: server /data --console-address ":9001"
     restart: unless-stopped
     healthcheck:
@@ -33,12 +39,36 @@ services:
       timeout: 20s
       retries: 3
 
+  ollama:
+    image: ollama/ollama:0.40.16
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  ollama-model-init:
+    image: ollama/ollama:0.40.16
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: llama3.1:8b-instruct-q4_K_M
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["ollama pull \"$$OLLAMA_MODEL\""]
+    restart: "no"
+
   db:
     image: postgres:15-alpine
     environment:
-      POSTGRES_USER: dms_user
-      POSTGRES_PASSWORD: psqladminpass
-      POSTGRES_DB: dms
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-dms}
     command:
       [
         "postgres",
@@ -65,25 +95,30 @@ services:
       - .env
     environment:
       APP_ENV: development
-      DATABASE_URL: postgresql+psycopg://dms_user:psqladminpass@db:5432/dms
-      LICENSING_DATABASE_URL: postgresql+psycopg://dms_user:psqladminpass@db:5432/licensing_db
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
+      LICENSING_DATABASE_URL: ${LICENSING_DATABASE_URL:?Set LICENSING_DATABASE_URL in .env}
       OBJECT_STORAGE_ENABLED: "true"
       OBJECT_STORAGE_BACKEND: silo
       OBJECT_STORAGE_BUCKET: dms
       SILO_ENDPOINT: silo:9000
-      SILO_ACCESS_KEY: minioadmin
-      SILO_SECRET_KEY: minioadmin
+      SILO_ACCESS_KEY: ${SILO_ACCESS_KEY:?Set SILO_ACCESS_KEY in .env}
+      SILO_SECRET_KEY: ${SILO_SECRET_KEY:?Set SILO_SECRET_KEY in .env}
       SILO_SECURE: "false"
       UVICORN_WORKERS: "4"
-      OLLAMA_URL: "http://host.docker.internal:11434/api/generate"
+      OLLAMA_URL: "http://ollama:11434/api/generate"
+      OLLAMA_MODEL: "llama3.1:8b-instruct-q4_K_M"
       CORS_ALLOW_ORIGINS: "https://dms.scsgroup.ca,http://localhost,http://127.0.0.1,http://localhost:5173,http://127.0.0.1:5173"
     ports:
       - "8008:8008"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     depends_on:
-      - db
-      - silo
+      db:
+        condition: service_started
+      silo:
+        condition: service_started
+      ollama:
+        condition: service_healthy
+      ollama-model-init:
+        condition: service_completed_successfully
     volumes:
       - .:/app:delegated
     command:
@@ -142,6 +177,8 @@ services:
 
 volumes:
   minio_data:
+    name: ${MINIO_VOLUME_NAME:-dms_minio_data}
   labelstudio_data:
   caddy_data:
   caddy_config:
+  ollama_data:

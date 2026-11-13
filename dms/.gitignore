@@ -34,6 +34,7 @@ output/
 /output/models/
 *.safetensors
 .env
+docker-compose.override.yml
 postgres_data/
 backups/
 

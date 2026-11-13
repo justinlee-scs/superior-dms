@@ -187,6 +187,18 @@ def add_role_hierarchy(role_id: UUID, managed_role_id: UUID, db: Session = Depen
     if role.id == managed_role.id:
         raise HTTPException(400, "Role cannot manage itself")
 
+    # Role hierarchy links also inherit document clearance, so prevent a
+    # cycle from making roles mutually inherit one another.
+    pending = list(managed_role.managed_roles)
+    visited: set[UUID] = set()
+    while pending:
+        descendant = pending.pop()
+        if descendant.id == role.id:
+            raise HTTPException(400, "Role hierarchy cannot contain a cycle")
+        if descendant.id not in visited:
+            visited.add(descendant.id)
+            pending.extend(descendant.managed_roles)
+
     add_managed_role(db, role, managed_role)
     return {"status": "ok"}
 

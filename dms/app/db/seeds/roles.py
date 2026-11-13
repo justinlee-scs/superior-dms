@@ -75,4 +75,16 @@ def seed_roles(db: Session):
                 if key in permission_lookup
             ]
 
+    # Initialize the common clearance ladder only for a new, empty role
+    # hierarchy. Once an administrator configures any links, preserve them.
+    roles_by_name = {role.name.lower(): role for role in db.query(Role).all()}
+    if not any(role.managed_roles for role in roles_by_name.values()):
+        admin = roles_by_name.get("admin")
+        editor = roles_by_name.get("editor")
+        viewer = roles_by_name.get("viewer")
+        if admin and editor:
+            admin.managed_roles.append(editor)
+        if editor and viewer:
+            editor.managed_roles.append(viewer)
+
     db.commit()

@@ -5,6 +5,33 @@ from app.db.models.user import User
 from app.db.models.permission import Permission
 
 
+def inherited_roles(roles) -> set[Role]:
+    """Return assigned roles plus all roles beneath them in hierarchy."""
+    inherited: set[Role] = set()
+    visited: set[object] = set()
+    pending = list(roles or [])
+
+    while pending:
+        role = pending.pop()
+        role_id = role.id or id(role)
+        if role_id in visited:
+            continue
+        visited.add(role_id)
+        inherited.add(role)
+        pending.extend(role.managed_roles or [])
+
+    return inherited
+
+
+def inherited_role_names(roles) -> set[str]:
+    """Return assigned role names plus all roles beneath them in hierarchy."""
+    return {
+        role.name.strip().lower()
+        for role in inherited_roles(roles)
+        if role.name
+    }
+
+
 def attach_permission(db: Session, role: Role, permission: Permission) -> None:
     """Attach permission.
 
